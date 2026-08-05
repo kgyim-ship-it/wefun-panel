@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.05 18:58';
+  var VERSION = '26.08.05 19:42';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -370,14 +370,17 @@
     });
   }
 
-  var LCACHE = {};
+  var LCACHE = {}, LOADSEQ = 0;
   function listReqSWR(elId, f, cb) {
-    var key = elId + '|' + JSON.stringify(f);
+    var my = ++LOADSEQ;
     var el = document.getElementById(elId);
-    var c = LCACHE[key];
-    if (c && (Date.now() - c.t) < 120000) { try { cb(c.items); } catch (e) {} }
-    else if (el) { el.innerHTML = '<div style="color:#94a3b8;padding:10px">불러오는 중…</div>'; }
-    return listReq(f).then(function(items) { LCACHE[key] = { items: items, t: Date.now() }; cb(items); return items; });
+    if (el) { el.innerHTML = '<div style="color:#94a3b8;padding:10px">불러오는 중…</div>'; }
+    return listReq(f).then(function(items) {
+      if (my === LOADSEQ) { cb(items); }
+      return items;
+    }, function(err) {
+      if (my === LOADSEQ) { throw err; }
+    });
   }
 
   /* 쓰기 응답이 깨졌을 때(badResponse) 실제 반영 여부를 '읽기'로만 확인한다.
