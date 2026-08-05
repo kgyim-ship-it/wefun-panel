@@ -1,0 +1,19 @@
+위펀 배송관리 패널 · 북마크릿 (최종/방탄 버전)
+=====================================================
+※ 컴퓨터당 딱 한 번만 교체하면 됨. 이후 패널 업데이트는 전부 서버(Apps Script)에서 되므로 다시 안 바꿔도 됨.
+※ "패널 로드 실패: Unexpected token '<'" 를 없앰:
+   - 구글이 HTML을 뱉으면 자동 재시도(최대 4번)
+   - 그래도 실패하면 직전에 성공했던 패널을 캐시에서 불러와 띄움(구글 순간장애에도 열림)
+
+--- 아래 한 줄 전체를 복사해서 북마크릿 URL 칸에 붙여넣기 ---
+
+javascript:(function(){var U='https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec?e=code&v=',K='__wpPanelCache',n=0;function run(t){try{(0,eval)(t);return true;}catch(e){return false;}}function fb(){var c=null;try{c=sessionStorage.getItem(K);}catch(_){}if(c&&run(c))return;alert('패널 로드 실패: 서버 응답 지연. 잠시 후 다시 눌러주세요.');}function go(){n++;fetch(U+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(t){if(t&&t.charAt(0)!=='<'&&t.indexOf('wefunPanel')>-1){try{sessionStorage.setItem(K,t);}catch(_){}if(!run(t))fb();}else if(n<4){setTimeout(go,700);}else{fb();}}).catch(function(){if(n<4){setTimeout(go,700);}else{fb();}});}go();})();
+
+=====================================================
+교체 방법 (PC 크롬 기준)
+1. 기존 위펀패널 북마크릿 우클릭 → 수정
+2. URL 칸 전부 지우고 위 코드 한 줄 붙여넣기 → 저장
+3. office.wefun.kr 에서 클릭
+
+팀 배포 안내(그대로 복붙해서 보내면 됨):
+"위펀패널 북마크릿이 가끔 '패널 로드 실패' 뜨는 분들은, 북마크릿 우클릭→수정→주소를 아래 코드로 교체해주세요. 한 번만 바꾸면 됩니다. (코드 붙여넣기)"
