@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.06 12:20';
+  var VERSION = '26.08.06 14:05';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -336,7 +336,7 @@
     var qs = Object.keys(params).map(function(k) {
       return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
     }).join('&');
-    var READS = { list: 1, ping: 1, one: 1, comment_list: 1, board_list: 1 };
+    var READS = { list: 1, ping: 1, one: 1, comment_list: 1, board_list: 1, sent: 1 };  /* sent=멱등 쓰기라 재시도 안전 */
     return fetch(u, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: qs }).then(function(r) {
       return r.text();
     }).then(function(t) {
@@ -518,12 +518,23 @@
     if (launcher) launcher.style.display = 'none';
   }
 
+  /* 미전달(승인됐는데 코드전달 안 된 건) 개수 — 배지용. 서버 부담 줄이려 5분 캐시 */
+  var _pendCache = { n: 0, t: 0 };
+  function pendingCodeCount() {
+    if (Date.now() - _pendCache.t < 300000) { return Promise.resolve(_pendCache.n); }
+    return listReq({ pending: 'code' }).then(function(items) {
+      _pendCache = { n: items.length, t: Date.now() };
+      return items.length;
+    }).catch(function() { return _pendCache.n; });
+  }
+
   function updateBadge() {
     if (!launcher || launcher.style.display === 'none') return;
-    var p = IS_ADMIN ? listReq({
-      status: '대기'
-    }).then(function(items) {
-      return items.length;
+    var p = IS_ADMIN ? Promise.all([
+      listReq({ status: '대기' }).then(function(items) { return items.length; }),
+      pendingCodeCount()
+    ]).then(function(a) {
+      return a[0] + a[1];
     }) : listReq({
       email: REQ.email
     }).then(function(items) {
@@ -2382,15 +2393,24 @@ document.getElementById('__wpSave').onclick = function() {
       REV_DR.from = todayStr();
       REV_DR.to = todayStr();
     }
-    var filters = ['대기', '완료', '반려', '전체'];
+    /* 미전달 = 승인 완료됐는데 아직 코드전달 엑셀에 안 담긴 건. 시너지(코드전달) 그룹에서만 의미 있음 */
+    if (REV_STATUS === '미전달' && group !== 'syn') { REV_STATUS = '대기'; }
+    var PEND = (REV_STATUS === '미전달');
+    var filters = (group === 'syn') ? ['대기', '완료', '미전달', '반려', '전체'] : ['대기', '완료', '반려', '전체'];
     var actSel = '<select id="__wpAf" class="wp-inp" style="min-height:38px;padding:7px 9px;max-width:190px"><option value="전체">전체 작업</option>' + GACTS.map(function(a) {
       return '<option value="' + esc(a) + '"' + (a === REV_ACTION ? ' selected' : '') + '>' + esc(a) + '</option>';
     }).join('') + '</select>';
     VIEW.innerHTML = '<div style="margin-bottom:10px"><div style="margin-bottom:8px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">' + filters.map(function(f) {
       return '<button class="wp-btn ' + (f === REV_STATUS ? 'pri' : 'gh') + ' __wpFt" data-f="' + f + '" style="padding:7px 13px">' + f + '</button>';
-    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button id="__wpRCode" class="wp-btn gh" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
+    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 코드전달 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
     document.getElementById('__wpRF').value = REV_DR.from;
     document.getElementById('__wpRT').value = REV_DR.to;
+    if (PEND) {  /* 미전달은 기간 개념이 없다 — 날짜칸 잠금 */
+      document.getElementById('__wpRF').disabled = true;
+      document.getElementById('__wpRT').disabled = true;
+      document.getElementById('__wpRF').style.opacity = '.45';
+      document.getElementById('__wpRT').style.opacity = '.45';
+    }
     [].forEach.call(VIEW.querySelectorAll('.__wpFt'), function(b) {
       b.onclick = function() {
         REV_STATUS = b.getAttribute('data-f');
@@ -2406,17 +2426,17 @@ document.getElementById('__wpSave').onclick = function() {
     function load() {
       REV_DR.from = document.getElementById('__wpRF').value;
       REV_DR.to = document.getElementById('__wpRT').value;
-      listReqSWR('__wpRevList', {
+      listReqSWR('__wpRevList', PEND ? { pending: 'code' } : {
         status: REV_STATUS === '전체' ? '' : REV_STATUS,
         from: REV_DR.from,
         to: REV_DR.to
       }, function(items) {
-        cache = filterByDate(items, REV_DR.from, REV_DR.to);
+        cache = PEND ? items : filterByDate(items, REV_DR.from, REV_DR.to);
         cache = cache.filter(function(it) { return GACTS.indexOf(it.action) > -1; });
         if (REV_ACTION !== '전체') cache = cache.filter(function(it) {
           return it.action === REV_ACTION;
         });
-        renderReqTable('__wpRevList', cache, true);
+        renderReqTable('__wpRevList', cache, true, { codeSent: (group === 'syn') });
       }).catch(function(e) {
         document.getElementById('__wpRevList').innerHTML = '<div style="color:#b00;padding:10px">' + esc(e.message) + '</div>';
       });
@@ -2426,7 +2446,12 @@ document.getElementById('__wpSave').onclick = function() {
       reqCsv(cache, '배송요청_' + REV_STATUS + '_' + REV_DR.from + '~' + REV_DR.to + '.csv');
     };
     document.getElementById('__wpRCode').onclick = function() {
-      buildCodeXlsx(cache, '코드전달_' + REV_DR.from + '~' + REV_DR.to + '.xlsx');
+      /* 승인 완료된 건만 내보낸다 — 예전엔 '대기' 건까지 섞여 나갔다 */
+      var ok = cache.filter(function(it) { return codeGubun(it.action) && it.status === '완료'; });
+      var notYet = cache.filter(function(it) { return codeGubun(it.action) && it.status !== '완료'; }).length;
+      if (!ok.length) { toast('코드전달 대상(승인 완료된 건)이 없습니다', '#c0392b'); return; }
+      if (notYet && !confirm('아직 승인되지 않은 ' + notYet + '건은 빼고 뽑습니다.\n\n계속할까요?')) return;
+      buildCodeXlsx(ok, '코드전달_' + todayStr() + '.xlsx', true, load);
     };
     document.getElementById('__wpRPick').onclick = function() {
       buildPickingXlsx(cache, '수기피킹_' + REV_DR.from + '~' + REV_DR.to + '.xlsx');
@@ -2487,7 +2512,7 @@ document.getElementById('__wpSave').onclick = function() {
     return Promise.resolve([nmC, '기존', course, gubun, phone, it.hot || '', it.cold || '']);
   }
 
-  function buildCodeXlsx(items, fname) {
+  function buildCodeXlsx(items, fname, markSent, onDone) {
     var targets = (items || []).filter(function(it) {
       return codeGubun(it.action);
     });
@@ -2520,6 +2545,15 @@ document.getElementById('__wpSave').onclick = function() {
       }
       return xlsxDownload(rows, [{ wch: 40 }, { wch: 52 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 11 }, { wch: 11 }], '코드전달', fname).then(function() {
         toast('✓ 코드전달 엑셀 변경 ' + changeData.length + ' · 신규 ' + newData.length + '건 생성', '#0a7d47');
+        if (!markSent) return;
+        /* 엑셀에 담긴 건에 전달일을 찍어 미전달 큐에서 뺀다 */
+        return api({ e: 'sent', ids: targets.map(function(t) { return t.id; }).join(','), val: todayStr() }).then(function() {
+          _pendCache = { n: 0, t: 0 };  /* 배지 캐시 무효화 */
+          toast('✓ ' + targets.length + '건 전달완료 표시', '#0a7d47');
+          if (onDone) onDone();
+        }).catch(function(e) {
+          alert('엑셀은 받았는데 전달완료 표시에 실패했습니다.\n' + ((e && e.message) || e) + '\n\n해당 건들이 미전달 목록에 그대로 남아 있습니다.\n이미 자회사에 보내셨다면 중복 전달되지 않게 확인해주세요.');
+        });
       });
     }).catch(function(e) {
       alert('코드전달 생성 실패: ' + (e && e.message || e));
@@ -2672,6 +2706,13 @@ document.getElementById('__wpSave').onclick = function() {
     }).join('') + '</tr></thead><tbody>';
     items.forEach(function(it) {
       var doneInfo = it.admin ? ('<div style="font-size:12px;line-height:1.55"><b style="color:#334155">' + esc(it.admin) + '</b>' + (it.decidedTs ? ' <span style="color:#94a3b8">' + esc(fmtTs(it.decidedTs)) + '</span>' : '') + (it.adminNote ? '<div style="color:#64748b;margin-top:1px">' + esc(it.adminNote).split(' · ').join('<br>') + '</div>' : '') + '</div>') : '';
+      /* 코드전달 대상(시너지) 완료건은 전달 여부를 눈에 보이게 — 놓친 건이 목록에서 티나게 */
+      var sentInfo = '';
+      if (admin && opt.codeSent && it.status === '완료' && codeGubun(it.action)) {
+        sentInfo = it.sent ?
+          ('<div style="font-size:11.5px;color:#0a7d47;margin-top:3px">📤 코드전달 ' + esc(it.sent) + ' <button class="wp-act __wpUnsent" data-id="' + esc(it.id) + '" style="height:21px;font-size:11px;padding:0 6px;margin:0 0 0 3px;border-color:#cbd5e1;color:#94a3b8">취소</button></div>') :
+          '<div style="font-size:11.5px;color:#b45309;margin-top:3px;font-weight:700">⚠ 코드 미전달</div>';
+      }
       var last;
       if (admin) {
         if (it.status === '대기') {
@@ -2685,7 +2726,7 @@ document.getElementById('__wpSave').onclick = function() {
             last = '<td style="white-space:nowrap"><button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:#0a7d47;color:#0a7d47">승인</button><button class="wp-act __wpFix" data-id="' + esc(it.id) + '" style="border-color:#b45309;color:#b45309">수정승인</button><button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button></td>';
           }
         } else {
-          last = '<td>' + doneInfo + '</td>';
+          last = '<td>' + doneInfo + sentInfo + '</td>';
         }
       } else {
         var _mine = (String(it.email || '') === String(REQ.email || ''));
@@ -2712,6 +2753,22 @@ document.getElementById('__wpSave').onclick = function() {
     [].forEach.call(box.querySelectorAll('.__wpAp2'), function(b) {
       b.onclick = function() {
         approveStage(map[b.getAttribute('data-id')], b.getAttribute('data-stage'), b);
+      };
+    });
+    [].forEach.call(box.querySelectorAll('.__wpUnsent'), function(b) {
+      b.onclick = function() {
+        var it = map[b.getAttribute('data-id')];
+        if (!it || b.disabled) return;
+        if (!confirm('[전달취소] ' + (it.branchName || '') + '\n\n미전달 목록으로 되돌립니다. 다음 코드전달 엑셀에 다시 담깁니다.\n진행할까요?')) return;
+        b.disabled = true;
+        api({ e: 'sent', ids: it.id, val: '' }).then(function() {
+          _pendCache = { n: 0, t: 0 };
+          toast('전달취소됨 · 미전달 목록으로 돌아갑니다', '#b45309');
+          try { viewReview(); } catch (_ue) {}
+        }).catch(function(e) {
+          b.disabled = false;
+          alert('전달취소 실패: ' + ((e && e.message) || e));
+        });
       };
     });
     [].forEach.call(box.querySelectorAll('.__wpRj'), function(b) {
