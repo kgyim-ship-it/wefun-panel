@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.06 16:10';
+  var VERSION = '26.08.06 17:15';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -336,7 +336,8 @@
     var qs = Object.keys(params).map(function(k) {
       return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
     }).join('&');
-    var READS = { list: 1, ping: 1, one: 1, comment_list: 1, board_list: 1, sent: 1 };  /* sent=멱등 쓰기라 재시도 안전 */
+    var READS = { list: 1, ping: 1, one: 1, comment_list: 1, board_list: 1 };            /* 순수 읽기 */
+    var RETRY_OK = { list: 1, ping: 1, one: 1, comment_list: 1, board_list: 1, sent: 1 };  /* sent=멱등이라 재시도 안전 */
     return fetch(u, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: qs }).then(function(r) {
       return r.text();
     }).then(function(t) {
@@ -345,9 +346,10 @@
          끝났을 수 있으므로 '실패'로 단정하면 안 된다 → badResponse 로 표시만 하고 호출부가 확인. */
       try { j = JSON.parse(t); } catch (pe) { throw new Error('서버 응답이 JSON이 아닙니다(구글 일시장애)'); }
       if (!j || j.ok === false) { var ae = new Error((j && j.error) || '응답 오류'); ae.appError = true; throw ae; }
+      if (!READS[params.e]) { cacheBust(); }   /* 쓰기 성공 → 목록 캐시 즉시 폐기 (옛 목록 보이는 것 방지) */
       return j;
     }).catch(function(e) {
-      if (!_retry && READS[params.e]) {
+      if (!_retry && RETRY_OK[params.e]) {
         return new Promise(function(rs) { setTimeout(rs, 600); }).then(function() { return api(params, true); });
       }
       if (e && !e.appError) { try { e.badResponse = true; } catch (_be) {} }  /* 전송·응답 단계 실패 = 서버엔 반영됐을 수 있음 */
@@ -370,16 +372,49 @@
     });
   }
 
+  /* 목록 캐시: 있으면 즉시 그려주고(=대기 화면 없음) 뒤에서 새로 받아 교체한다.
+     쓰기가 성공하면 api()가 cacheBust()로 통째로 버리므로 옛 목록이 남지 않는다.
+     LOADSEQ: 늦게 도착한 응답이 최신 화면을 덮어쓰는 것 방지. */
   var LCACHE = {}, LOADSEQ = 0;
+  function cacheBust() { LCACHE = {}; _pendCache = { n: 0, t: 0 }; }
   function listReqSWR(elId, f, cb) {
     var my = ++LOADSEQ;
+    var key = elId + '|' + JSON.stringify(f);
     var el = document.getElementById(elId);
-    if (el) { el.innerHTML = '<div style="color:#94a3b8;padding:10px">불러오는 중…</div>'; }
+    var c = LCACHE[key];
+    var shown = false;
+    if (c && (Date.now() - c.t) < 120000) {
+      try { cb(c.items); shown = true; } catch (e) {}
+    } else if (el) {
+      el.innerHTML = '<div style="color:#94a3b8;padding:10px">불러오는 중…</div>';
+    }
     return listReq(f).then(function(items) {
+      LCACHE[key] = { items: items, t: Date.now() };
       if (my === LOADSEQ) { cb(items); }
       return items;
     }, function(err) {
-      if (my === LOADSEQ) { throw err; }
+      if (my === LOADSEQ && !shown) { throw err; }   /* 캐시로 이미 보여줬으면 조용히 넘어간다 */
+    });
+  }
+
+  /* 동시 실행 개수 제한 — 한꺼번에 다 던지면 브라우저 연결 한도에 걸려 오히려 느려진다 */
+  function mapLimit(arr, limit, fn, onProgress) {
+    var res = new Array(arr.length), nx = 0, done = 0, active = 0;
+    return new Promise(function(resolve, reject) {
+      if (!arr.length) { resolve(res); return; }
+      function pump() {
+        while (active < limit && nx < arr.length) {
+          active++;
+          (function(idx) {
+            Promise.resolve().then(function() { return fn(arr[idx], idx); }).then(function(v) {
+              res[idx] = v; active--; done++;
+              if (onProgress) { try { onProgress(done, arr.length); } catch (_p) {} }
+              if (done === arr.length) { resolve(res); } else { pump(); }
+            }, reject);
+          })(nx++);
+        }
+      }
+      pump();
     });
   }
 
@@ -402,7 +437,7 @@
     return api({ e: 'meta', id: id, custNotice: val });
   }
   function ncXlsx(items) {
-    return ensureXLSX().then(function() {
+    return ensureExcel().then(function() {   /* 이 경로는 ExcelJS만 쓴다 — SheetJS(≈900KB) 받을 이유 없음 */
       var head = ['요청일시', '고객사 안내', '구분', '월예산', '거래처명', '주소', '담당자성함', '담당자연락처', '요청주기', '정기배송요일', '첫배송희망일', '배송형태', '배송특이사항', '요청설비', '설치일', '점포코드(상온)', '점포코드(저온)', '상태', '처리자', '처리메모', '처리일시'];
       function g(it, k) { return detailGet(it.detail, k) || ''; }
       var rows = [head].concat(items.map(function(it) {
@@ -2484,13 +2519,13 @@ document.getElementById('__wpSave').onclick = function() {
       var drvCourse = dm ? dm[1].trim() : '';
       if (drvCourse === '-') drvCourse = '';
       var stored = ((detailGet(it.detail, '주소') || '') + ' ' + (detailGet(it.detail, '상세주소') || '')).trim();
-      if (it.hot && it.cold && stored) {
+      // 주소는 요청 제출 시점에 이미 시트에 저장된다(doSubmit의 '주소:' 항목).
+      // 코드전달은 '코드를 발급해달라'는 요청서라 상온/저온코드는 비어 있는 게 정상 →
+      // 주소만 있으면 오피스를 볼 이유가 없다. (예전엔 hot·cold 둘 다 있어야 넘어가서 사실상 매번 조회했다)
+      if (stored || !it.branchId) {
         return Promise.resolve([it.branchName || '', stored, drvCourse, gubun, phone, it.hot || '', it.cold || '']);
       }
-      if (!it.branchId) {
-        return Promise.resolve([it.branchName || '', stored, drvCourse, gubun, phone, it.hot || '', it.cold || '']);
-      }
-      // 코드/주소는 승인 후 오피스에 반영 → 비어있으면 조회
+      // 주소가 없는 옛 요청만 오피스에서 보충
       return getForm(it.branchId).then(function(f) {
         var a1 = getVal(f, 'address1') || '';
         var a2 = getVal(f, 'address2') || '';
@@ -2520,18 +2555,20 @@ document.getElementById('__wpSave').onclick = function() {
       toast('코드전달 대상(신규·주소변경·거래처명변경·담당자변경)이 없습니다', '#c0392b');
       return;
     }
-    var changeT = targets.filter(function(it) {
-      return it.action !== '신규코드발급';
-    });
-    var newT = targets.filter(function(it) {
-      return it.action === '신규코드발급';
-    });
+    /* codeRow 는 신규건일 때 오피스 거래처 페이지를 통째로 받아온다.
+       전부 동시에 던지면 서로 밀려 더 느려지므로 4개씩 끊어서 돌린다. */
+    var btnP = document.getElementById('__wpRCode');
+    var btnP0 = btnP ? btnP.textContent : '';
+    function prog(d, t) { if (btnP) { btnP.textContent = '조회 중 ' + d + '/' + t; } }
     toast('코드전달 생성 중… (신규 주소 조회)', '#1f4e78');
-    ensureXLSX().then(function() {
-      return Promise.all([Promise.all(changeT.map(codeRow)), Promise.all(newT.map(codeRow))]);
-    }).then(function(res) {
-      var changeData = res[0],
-        newData = res[1];
+    ensureExcel().then(function() {
+      return mapLimit(targets, 4, codeRow, prog);
+    }).then(function(all) {
+      if (btnP) { btnP.textContent = btnP0; }
+      var changeData = [], newData = [];
+      targets.forEach(function(it, i) {
+        if (it.action === '신규코드발급') { newData.push(all[i]); } else { changeData.push(all[i]); }
+      });
       var head1 = ['거래처명', '주소', '코스', '구분', '담당자번호', '상온코드', '저온코드'];
       var head2 = ['거래처명', '주소', '코스', '구분', '담당자번호', '상온코드', '저온코드'];
       var rows = [];
@@ -2556,6 +2593,7 @@ document.getElementById('__wpSave').onclick = function() {
         });
       });
     }).catch(function(e) {
+      if (btnP) { btnP.textContent = btnP0; }
       alert('코드전달 생성 실패: ' + (e && e.message || e));
     });
   }
@@ -2572,7 +2610,7 @@ document.getElementById('__wpSave').onclick = function() {
       toast('수기피킹 요청이 없습니다', '#c0392b');
       return;
     }
-    ensureXLSX().then(function() {
+    ensureExcel().then(function() {   /* ExcelJS 경로 */
       var head = ['신청일', '작성자', '거래처명', '상온코드', '저온코드', '배송일', '바코드', '품목명', '출고기준', '용량', '단가', '입수박스', '박스수량', '주문단위', '주문수량(EA)', '합계', '비고', '피킹구분'];
       var rows = [head];
       targets.forEach(function(it) {
@@ -3633,6 +3671,9 @@ document.getElementById('__wpSave').onclick = function() {
     }
   } catch (e) {}
   setMode('requester');
+  /* 관리자는 엑셀을 자주 뽑는다 → 패널 뜨고 4초 뒤 조용히 ExcelJS 미리 로드.
+     실패해도 무시(다운로드 시점에 다시 시도됨). */
+  setTimeout(function() { if (IS_ADMIN) { ensureExcel().catch(function() {}); } }, 4000);
   if (!REQ.email) {
     (function tryProfile(n) {
       loadProfile().then(function() {
