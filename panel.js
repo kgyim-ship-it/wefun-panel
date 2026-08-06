@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.06 14:05';
+  var VERSION = '26.08.06 16:10';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -3157,7 +3157,7 @@ document.getElementById('__wpSave').onclick = function() {
     return (window.daum && window.daum.Postcode) ? Promise.resolve() : loadScript('https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js');
   }
 
-  function getForm(id) {
+  function getForm(id, _retry) {
     return fetch('/office/sales/branch/update/' + id).then(function(r) {
       return r.text();
     }).then(function(html) {
@@ -3165,6 +3165,9 @@ document.getElementById('__wpSave').onclick = function() {
       var form = doc.querySelector('form');
       if (!form) throw new Error('수정 폼을 열 수 없음(권한/로그인 확인)');
       return form;
+    }).catch(function(e) {
+      if (!_retry) { return new Promise(function(rs) { setTimeout(rs, 700); }).then(function() { return getForm(id, true); }); }
+      throw e;
     });
   }
 
