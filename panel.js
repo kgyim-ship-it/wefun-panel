@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.05 19:42';
+  var VERSION = '26.08.06 12:20';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -1638,7 +1638,7 @@
         sb.textContent = '저장 중…';
         editDetail(edit.id, o.detail, REQ.name).then(function() {
           toast('✓ 요청 내용 수정됨 (대기 유지)', '#0a7d47');
-          if (typeof viewReview === 'function') { viewReview(); } else { successScreen('✓ 요청 내용이 수정됐습니다. 물류·자산 승인을 진행하세요.'); }
+          if (typeof viewReview === 'function') { viewReview(); } else { successScreen('✓ 요청 내용이 수정됐습니다. 물류승인을 진행하세요.'); }
         }).catch(function(e) {
           sb.disabled = false;
           sb.textContent = (IS_ADMIN ? '바로 반영' : '요청 제출');
@@ -2676,11 +2676,11 @@ document.getElementById('__wpSave').onclick = function() {
       if (admin) {
         if (it.status === '대기') {
           if (it.action === '신규코드발급') {
-            var d물 = /물류승인/.test(it.adminNote || ''),
-              d자 = /자산승인/.test(it.adminNote || '');
+            /* 자산승인 단계 폐지 — 물류승인만으로 완료. 설비건은 슬랙에서 자산담당에게 확인 요청만 나감 */
+            var d물 = /물류승인/.test(it.adminNote || '');
             var eqm = /요청설비:\s*([^·]*)/.exec(it.detail || '');
-            var needA = !!(eqm && eqm[1].trim() && eqm[1].trim() !== '없음');
-            last = '<td style="white-space:normal;line-height:1.9"><button class="wp-act __wpAp2" data-id="' + esc(it.id) + '" data-stage="물류" ' + (d물 ? 'disabled style="opacity:.45;border-color:#94a3b8;color:#94a3b8"' : 'style="border-color:#1f4e78;color:#1f4e78"') + '>물류승인' + (d물 ? ' ✓' : '') + '</button>' + (needA ? ('<button class="wp-act __wpAp2" data-id="' + esc(it.id) + '" data-stage="자산" ' + (d자 ? 'disabled style="opacity:.45;border-color:#94a3b8;color:#94a3b8"' : 'style="border-color:#7c3aed;color:#7c3aed"') + '>자산승인' + (d자 ? ' ✓' : '') + '</button>') : '') + '<button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button><button class="wp-act __wpFix" data-id="' + esc(it.id) + '" style="border-color:#b45309;color:#b45309">수정승인</button>' + (it.adminNote ? '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + esc(it.adminNote) + '</div>' : '') + '</td>';
+            var hasEq = !!(eqm && eqm[1].trim() && eqm[1].trim() !== '없음');
+            last = '<td style="white-space:normal;line-height:1.9"><button class="wp-act __wpAp2" data-id="' + esc(it.id) + '" data-stage="물류" ' + (d물 ? 'disabled style="opacity:.45;border-color:#94a3b8;color:#94a3b8"' : 'style="border-color:#1f4e78;color:#1f4e78"') + '>물류승인' + (d물 ? ' ✓' : '') + '</button>' + '<button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button><button class="wp-act __wpFix" data-id="' + esc(it.id) + '" style="border-color:#b45309;color:#b45309">수정승인</button>' + (hasEq ? '<div style="font-size:11.5px;color:#7c3aed;margin-top:2px">설비건 · 승인 시 자산담당 확인요청 발송</div>' : '') + (it.adminNote ? '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + esc(it.adminNote) + '</div>' : '') + '</td>';
           } else {
             last = '<td style="white-space:nowrap"><button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:#0a7d47;color:#0a7d47">승인</button><button class="wp-act __wpFix" data-id="' + esc(it.id) + '" style="border-color:#b45309;color:#b45309">수정승인</button><button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button></td>';
           }
@@ -2974,19 +2974,20 @@ document.getElementById('__wpSave').onclick = function() {
         alert(msg);
       });
     });
-  } /* 신규코드발급 2단계 승인 — 물류승인=오피스 배송세팅 반영, 자산승인=설비 확인. 둘 다면 최종완료 */
+  } /* 신규코드발급 승인 — 물류승인 1단계로 완료. 설비 요청건은 슬랙에서 자산담당 확인요청이 함께 나감 */
   function approveStage(it, stage, btn) {
     if (!it || btn.disabled) return;
-    if (stage === '물류') {
-      var drv = prompt('우린배송담당(코스)을 입력하세요.\n거래처 배송정보의 우린배송담당에 반영됩니다.', '');
-      if (drv === null) return;
-      it._driver = drv.trim();
-    }
-    if (!confirm('[' + stage + '승인] ' + (it.branchName || '') + '\n' + (stage === '물류' ? '우린담당·주기·배송시작일을 오피스에 반영합니다.' : '설비/설치 확인 승인입니다.') + '\n\n진행할까요?')) return;
+    stage = '물류';
+    var drv = prompt('우린배송담당(코스)을 입력하세요.\n거래처 배송정보의 우린배송담당에 반영됩니다.', '');
+    if (drv === null) return;
+    it._driver = drv.trim();
+    var _eqm = /요청설비:\s*([^·]*)/.exec(it.detail || '');
+    var _eq = (_eqm && _eqm[1].trim() !== '없음') ? _eqm[1].trim() : '';
+    if (!confirm('[물류승인] ' + (it.branchName || '') + '\n우린담당·주기·배송시작일을 오피스에 반영하고 요청을 완료 처리합니다.' + (_eq ? '\n\n설비 요청건 → 슬랙에 자산담당(김대홍) 확인요청이 함께 발송됩니다.\n · ' + _eq : '') + '\n\n진행할까요?')) return;
     btn.disabled = true;
     var o = btn.textContent;
     btn.textContent = '처리중…';
-    var chain = (stage === '물류') ? runActionCore(it) : Promise.resolve('자산 확인');
+    var chain = runActionCore(it);
     chain.then(function(note) {
       return decideStage(it.id, stage, note || '', it.slackTs);
     }).then(function() {
@@ -2994,7 +2995,7 @@ document.getElementById('__wpSave').onclick = function() {
       try { viewReview(); } catch (_se) {}
     }).catch(function(e) {
       btn.textContent = '확인 중…';
-      /* 단계승인은 부분승인이라 상태가 '대기' 로 남는다 → 처리메모의 'OO승인:' 표시로 판정 */
+      /* 물류승인은 완료 처리되지만, 응답이 깨진 경우 처리메모의 '물류승인:' 표시로도 판정 */
       if (e && e.badResponse) {
         reqStatus(it.id).then(function(r) {
           if (r && (String(r.memo || '').indexOf(stage + '승인:') > -1 || (r.status && r.status !== '대기'))) {
