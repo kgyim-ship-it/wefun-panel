@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.07 09:57';
+  var VERSION = '26.08.07 12:08';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -3559,13 +3559,11 @@ document.getElementById('__wpSave').onclick = function() {
                 var cur = getVal(form, 'woolinDriver');
                 setVal(form, 'woolinDriver', r.course);
                 msgs.push('코스 ' + cur + '→' + r.course);
-                if (r.course === '스낵택배') {
-                  setVal(form, 'deliveryType', '택배');
-                  msgs.push('배송방법=택배');
-                } else if (cur === '스낵택배') {
-                  setVal(form, 'deliveryType', '방문');
-                  msgs.push('배송방법=방문');
-                }
+                /* 배송방법은 조건 없이 항상 같이 맞춘다 (신규 일괄과 동일한 규칙).
+                   예전엔 '스낵택배로/에서' 바뀔 때만 손대서, 택배 아닌 코스끼리 옮기면 옛 값이 남았다. */
+                var dt = (r.course === '스낵택배') ? '택배' : '방문';
+                setVal(form, 'deliveryType', dt);
+                msgs.push('배송방법=' + dt);
               }
               if (r.parts.indexOf('거래처명') > -1) {
                 setVal(form, 'name', r.name);
