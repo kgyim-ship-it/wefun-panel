@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.07 09:51';
+  var VERSION = '26.08.07 09:57';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -2401,6 +2401,19 @@ document.getElementById('__wpSave').onclick = function() {
       }, function(items) {
         cache = filterByDate(items, MINE_DR.from, MINE_DR.to);
         renderReqTable('__wpMineList', cache, false);
+        /* 내가 넣은 대기 건은 기간 밖이어도 항상 위에 붙인다 — 어제 요청이 안 보여서
+           처리된 줄 알고 넘어가는 것 방지. 실패해도 기간 결과는 이미 그려져 있다. */
+        listReq({ email: REQ.email, status: '대기' }).then(function(pend) {
+          if (!pend || !pend.length) { return; }
+          var seen = {}, merged = [];
+          pend.concat(cache).forEach(function(it) {
+            if (!seen[it.id]) { seen[it.id] = 1; merged.push(it); }
+          });
+          if (merged.length === cache.length) { return; }   /* 새로 붙을 게 없으면 다시 안 그린다 */
+          merged.sort(function(a, b) { return String(b.ts || '').localeCompare(String(a.ts || '')); });
+          cache = merged;
+          renderReqTable('__wpMineList', cache, false);
+        }).catch(function() {});
       }).catch(function(e) {
         document.getElementById('__wpMineList').innerHTML = '<div style="color:#b00;padding:10px">' + esc(e.message) + '</div>';
       });
@@ -2435,16 +2448,20 @@ document.getElementById('__wpSave').onclick = function() {
     /* 미전달 = 승인 완료됐는데 아직 코드전달 엑셀에 안 담긴 건. 시너지(코드전달) 그룹에서만 의미 있음 */
     if (REV_STATUS === '미전달' && group !== 'syn') { REV_STATUS = '대기'; }
     var PEND = (REV_STATUS === '미전달');
+    /* 미처리 건은 날짜로 자르면 안 된다 — 어제 들어온 대기 건이 오늘 화면에서 사라져 그대로 묻힌다.
+       '대기'와 '미전달'은 기간을 무시하고 전부 보여준다. 완료·반려는 이력 조회라 기간 유지. */
+    var ALLW = (REV_STATUS === '대기');
+    var NODATE = PEND || ALLW;
     var filters = (group === 'syn') ? ['대기', '완료', '미전달', '반려', '전체'] : ['대기', '완료', '반려', '전체'];
     var actSel = '<select id="__wpAf" class="wp-inp" style="min-height:38px;padding:7px 9px;max-width:190px"><option value="전체">전체 작업</option>' + GACTS.map(function(a) {
       return '<option value="' + esc(a) + '"' + (a === REV_ACTION ? ' selected' : '') + '>' + esc(a) + '</option>';
     }).join('') + '</select>';
     VIEW.innerHTML = '<div style="margin-bottom:10px"><div style="margin-bottom:8px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">' + filters.map(function(f) {
       return '<button class="wp-btn ' + (f === REV_STATUS ? 'pri' : 'gh') + ' __wpFt" data-f="' + f + '" style="padding:7px 13px">' + f + '</button>';
-    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 코드전달 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
+    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 코드전달 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + (ALLW ? '<div style="margin-top:7px;padding:9px 12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E;line-height:1.65"><b>대기 — 아직 처리 안 된 요청 전부입니다.</b><br>기간과 상관없이 나옵니다. 어제·지난주에 들어온 건도 처리할 때까지 계속 보입니다.</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
     document.getElementById('__wpRF').value = REV_DR.from;
     document.getElementById('__wpRT').value = REV_DR.to;
-    if (PEND) {  /* 미전달은 기간 개념이 없다 — 날짜칸 잠금 */
+    if (NODATE) {  /* 대기·미전달은 기간 개념이 없다 — 날짜칸 잠금 */
       document.getElementById('__wpRF').disabled = true;
       document.getElementById('__wpRT').disabled = true;
       document.getElementById('__wpRF').style.opacity = '.45';
@@ -2465,12 +2482,12 @@ document.getElementById('__wpSave').onclick = function() {
     function load() {
       REV_DR.from = document.getElementById('__wpRF').value;
       REV_DR.to = document.getElementById('__wpRT').value;
-      listReqSWR('__wpRevList', PEND ? { pending: 'code' } : {
+      listReqSWR('__wpRevList', PEND ? { pending: 'code' } : ALLW ? { status: '대기' } : {
         status: REV_STATUS === '전체' ? '' : REV_STATUS,
         from: REV_DR.from,
         to: REV_DR.to
       }, function(items) {
-        cache = PEND ? items : filterByDate(items, REV_DR.from, REV_DR.to);
+        cache = NODATE ? items : filterByDate(items, REV_DR.from, REV_DR.to);
         cache = cache.filter(function(it) { return GACTS.indexOf(it.action) > -1; });
         if (REV_ACTION !== '전체') cache = cache.filter(function(it) {
           return it.action === REV_ACTION;
