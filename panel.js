@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.06 17:40';
+  var VERSION = '26.08.07 09:51';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -3082,7 +3082,7 @@ document.getElementById('__wpSave').onclick = function() {
     it._driver = drv.trim();
     var _eqm = /요청설비:\s*([^·]*)/.exec(it.detail || '');
     var _eq = (_eqm && _eqm[1].trim() !== '없음') ? _eqm[1].trim() : '';
-    if (!confirm('[물류승인] ' + (it.branchName || '') + '\n우린담당·주기·배송시작일을 오피스에 반영하고 요청을 완료 처리합니다.' + (_eq ? '\n\n설비 요청건 → 슬랙에 자산담당(김대홍) 확인요청이 함께 발송됩니다.\n · ' + _eq : '') + '\n\n진행할까요?')) return;
+    if (!confirm('[물류승인] ' + (it.branchName || '') + '\n우린담당·주기·배송시작일을 오피스에 반영하고 요청을 완료 처리합니다.' + (_eq ? '\n\n설비 요청건 → 슬랙에 @자산관리 확인요청이 함께 발송됩니다.\n · ' + _eq : '') + '\n\n진행할까요?')) return;
     btn.disabled = true;
     var o = btn.textContent;
     btn.textContent = '처리중…';
