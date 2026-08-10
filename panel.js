@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.07 12:08';
+  var VERSION = '26.08.10 17:48';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -437,6 +437,11 @@
       onFail(base + '\n\n반영 여부를 확인하지 못했습니다. 목록을 새로고침해 상태를 먼저 확인하세요.\n(이미 완료로 바뀌어 있으면 다시 승인하지 마세요 — 중복 알림이 갑니다)');
     });
   }
+  /* 일괄 반영 기록: 요약 1건 올리고 ts 받아 → 상세를 그 스레드에만 이어붙인다.
+     실패해도 반영 자체는 이미 끝난 상태라 사용자 흐름은 막지 않는다. */
+  function bulkLogStart(o) { o.e = 'bulklog'; return api(o).then(function(j) { return (j && j.ts) || ''; }); }
+  function bulkLogReply(threadTs, body) { return api({ e: 'bulklog', threadTs: threadTs, body: body }); }
+
   function setNotice(id, val) {
     return api({ e: 'meta', id: id, custNotice: val });
   }
@@ -771,6 +776,7 @@
       ['review_pick', '수기피킹검토'],
       ['find', '거래처 조회'],
       ['bulk', '배송정보 일괄입력'],
+      ['sched_bulk', '배송일정 일괄'],
       ['board_update', '업데이트 이력'],
       ['board_feature', '기능개선']
     ]
@@ -803,6 +809,7 @@
     else if (t === 'review_syn') viewReview('syn');
     else if (t === 'review_pick') viewReview('pick');
     else if (t === 'bulk') viewBulk();
+    else if (t === 'sched_bulk') viewSchedBulk();
     else if (t === 'newcode') viewNewCode();
     else if (t === 'board_update') viewBoard('update');
     else if (t === 'board_feature') viewBoard('feature');
@@ -971,6 +978,16 @@
       return ids;
     }).catch(function() {
       return [];
+    });
+  }
+
+  /* 스케줄이 아직 없는 거래처는 스케줄 페이지에서 serviceId가 안 나온다.
+     → 서비스 목록에서 거래처명+활동으로 한 번 더 찾는다. (신규코드발급이 쓰던 방식을 공용화) */
+  function resolveSid(branchId, branchName) {
+    return resolveServiceIds(branchId).then(function(ids) {
+      return (ids && ids.length) ? ids : (branchName ? resolveServicesByName(branchName) : []);
+    }).catch(function() {
+      return branchName ? resolveServicesByName(branchName) : [];
     });
   }
 
@@ -1797,7 +1814,7 @@
       _sbx.style.cssText = 'background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;font-size:12.5px;color:#475569;margin:2px 0 10px;box-shadow:0 1px 3px rgba(15,23,42,.06)';
       _sbx.textContent = '기존 배송일정 불러오는 중…';
       box.insertBefore(_sbx, box.firstChild);
-      resolveServiceIds(br.id).then(function(_ids) {
+      resolveSid(br.id, br.name).then(function(_ids) {
         if (!_ids.length) { _sbx.textContent = '기존 배송일정: (서비스 없음)'; return; }
         return getScheduleEvents(_ids[0]).then(function(_evs) {
           var _dl = _evs.map(function(e) { return e.deliveryDate; }).filter(function(v, i, a) { return a.indexOf(v) === i; }).sort();
@@ -2198,10 +2215,10 @@ document.getElementById('__wpSave').onclick = function() {
     if (action !== '배송일정생성' && action !== '배송일정삭제' && action !== '배송일정변경') return Promise.resolve({
       ok: true
     });
-    return resolveServiceIds(br.id).then(function(ids) {
+    return resolveSid(br.id, br.name).then(function(ids) {
       if (!ids.length) return {
         ok: false,
-        msg: '이 거래처에 스낵24 배송일정이 없습니다.'
+        msg: '이 거래처에 스낵24 서비스가 없습니다. (거래처명·서비스 상태 확인 필요)'
       };
       return getScheduleEvents(ids[0]).then(function(evs) {
         var set = {};
@@ -2910,8 +2927,8 @@ document.getElementById('__wpSave').onclick = function() {
     }
     if (it.action === '배송일정생성' || it.action === '배송일정변경' || it.action === '배송일정삭제') {
       if (!it.branchId) return Promise.reject(new Error('거래처ID 없음'));
-      return resolveServiceIds(it.branchId).then(function(ids) {
-        if (!ids.length) throw new Error('스낵24 배송일정(서비스) 없음');
+      return resolveSid(it.branchId, it.branchName).then(function(ids) {
+        if (!ids.length) throw new Error('스낵24 서비스 없음 (거래처명 확인 필요)');
         var sid = ids[0];
         if (it.action === '배송일정생성') {
           var gds = String(detailGet(it.detail, '배송일') || '').split(',').map(function(x) { return x.trim(); }).filter(Boolean);
@@ -2949,8 +2966,8 @@ document.getElementById('__wpSave').onclick = function() {
     }
     if (it.action === '배송주기변경') {
       if (!it.branchId) return Promise.reject(new Error('거래처ID 없음'));
-      return resolveServiceIds(it.branchId).then(function(ids) {
-        if (!ids.length) throw new Error('서비스 없음');
+      return resolveSid(it.branchId, it.branchName).then(function(ids) {
+        if (!ids.length) throw new Error('스낵24 서비스 없음 (거래처명 확인 필요)');
         var sid = ids[0];
         var cyc = detailGet(it.detail, '변경주기');
         if (cyc.indexOf('계획일정없음') > -1) cyc = '계획일정없음';
@@ -3588,6 +3605,216 @@ document.getElementById('__wpSave').onclick = function() {
         });
       });
     });
+  }
+
+  /* ---------- 배송일정 일괄 업로드 (주기변경·생성·변경·삭제) ----------
+     300건 이상을 패널로 한 건씩 넣는 건 불가능하다. 엑셀로 받아서 순차 반영한다.
+     요청큐/슬랙은 타지 않는다 — 물류팀 직접 반영이라 건별 알림이 오히려 소음이 된다. */
+  var SB_ACTS = ['배송주기변경', '배송일정생성', '배송일정변경', '배송일정삭제'];
+
+  function sbD(v) {
+    if (v instanceof Date) { var p = function(n) { return (n < 10 ? '0' : '') + n; }; return v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate()); }
+    var m = String(v == null ? '' : v).match(/(\d{4})[-.\/ ]+(\d{1,2})[-.\/ ]+(\d{1,2})/);
+    return m ? (m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2)) : '';
+  }
+  function sbDates(v) {
+    if (v instanceof Date) return [sbD(v)];
+    return String(v == null ? '' : v).split(/[,\n;]+/).map(sbD).filter(Boolean);
+  }
+
+  function sbTemplate() {
+    return ensureXLSX().then(function() {
+      var head = ['작업', '점포코드(상온)', '거래처명', '주기', '요일', '날짜1', '날짜2', '비고'];
+      var ex = [
+        ['배송주기변경', '40677', '', '매주2회', '월,수', '', '', '주기/요일만 채우면 됨'],
+        ['배송일정생성', '40677', '', '', '', '2026-08-13,2026-08-20', '', '날짜1에 쉼표로 여러 개'],
+        ['배송일정변경', '40677', '', '', '', '2026-08-13', '2026-08-14', '날짜1=기존, 날짜2=변경'],
+        ['배송일정삭제', '40677', '', '', '', '2026-08-13,2026-08-20', '', '날짜1에 쉼표로 여러 개']
+      ];
+      var ws = XLSX.utils.aoa_to_sheet([head].concat(ex));
+      ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 34 }, { wch: 18 }, { wch: 12 }, { wch: 26 }, { wch: 14 }, { wch: 26 }];
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '배송일정일괄');
+      XLSX.writeFile(wb, '배송일정_일괄업로드_양식.xlsx');
+    });
+  }
+
+  function sbParse(file) {
+    return ensureXLSX().then(function() { return file.arrayBuffer(); }).then(function(buf) {
+      var wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      var arr = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+      var out = [];
+      for (var i = 1; i < arr.length; i++) {
+        var r = arr[i] || [];
+        var act = norm(r[0]).replace(/\s+/g, '');
+        if (!act && !norm(r[1]) && !norm(r[2])) continue;
+        out.push({ _row: i + 1, action: act, code: norm(r[1]), name: norm(r[2]), cyc: norm(r[3]).replace(/\s+/g, ''), days: norm(r[4]), d1: sbDates(r[5]), d2: sbD(r[6]), memo: norm(r[7]) });
+      }
+      return out;
+    });
+  }
+
+  /* 실행 없이 형식만 본다 — 오피스 조회는 실행 단계에서 한다(300건 사전조회는 너무 느림) */
+  function sbCheck(r) {
+    if (SB_ACTS.indexOf(r.action) < 0) return '작업명이 올바르지 않음 (' + SB_ACTS.join('/') + ')';
+    if (!r.code && !r.name) return '점포코드 또는 거래처명 필요';
+    if (r.action === '배송주기변경') {
+      if (!r.cyc) return '주기 없음';
+      if (CYCLES.indexOf(r.cyc) < 0) return '주기값이 목록에 없음: ' + r.cyc;
+      if (/^매주/.test(r.cyc) && !r.days) return '매주 계열은 요일 필요';
+      return '';
+    }
+    if (r.action === '배송일정변경') {
+      if (r.d1.length !== 1) return '날짜1(기존배송일) 1개 필요';
+      if (!r.d2) return '날짜2(변경배송일) 필요';
+      if (r.d1[0] === r.d2) return '기존/변경 날짜가 같음';
+      return '';
+    }
+    if (!r.d1.length) return '날짜1 1개 이상 필요';
+    return '';
+  }
+
+  function sbDetail(r) {
+    if (r.action === '배송주기변경') { var p = ['변경주기: ' + r.cyc]; if (r.days) p.push('변경요일: ' + r.days); return p.join(' · '); }
+    if (r.action === '배송일정생성') return '배송일: ' + r.d1.join(',');
+    if (r.action === '배송일정삭제') return '삭제일: ' + r.d1.join(',');
+    return '기존배송일: ' + r.d1[0] + ' · 변경배송일: ' + r.d2;
+  }
+
+  function sbFind(r) {
+    var kw = r.code || r.name;
+    return searchBranch(kw).then(function(list) {
+      if (!list.length) return null;
+      if (r.code) {
+        var byCode = list.filter(function(x) { return x.cc === r.code || String(x.cc).indexOf(r.code) === 0; });
+        if (byCode.length === 1) return byCode[0];
+        if (byCode.length > 1) return { _many: byCode.length };
+      }
+      if (r.name) {
+        var byName = list.filter(function(x) { return nn(x.name) === nn(r.name); });
+        if (byName.length === 1) return byName[0];
+        if (byName.length > 1) return { _many: byName.length };
+      }
+      return list.length === 1 ? list[0] : { _many: list.length };
+    });
+  }
+
+  /* 요약 1건 + 상세는 스레드 답글로만 — 채널에 300줄이 쏟아지는 것 방지 */
+  function sbSlack(total, ok, ng, res, sblog) {
+    var kinds = {};
+    res.forEach(function(x) { kinds[x[1]] = (kinds[x[1]] || 0) + 1; });
+    var fails = res.filter(function(x) { return x[3] === '실패'; })
+      .map(function(x) { return x[0] + '행 ' + x[2] + ' — ' + x[4]; }).join('\n');
+    sblog('슬랙 기록 올리는 중…');
+    return bulkLogStart({
+      title: '배송일정 일괄 반영', name: REQ.name || '', email: REQ.email || '',
+      total: total, ok: ok, ng: ng,
+      kinds: Object.keys(kinds).map(function(k) { return k + ' ' + kinds[k]; }).join(' · '),
+      fails: fails
+    }).then(function(ts) {
+      if (!ts) { sblog('<span style="color:#b45309">슬랙 기록 실패(요약) — 결과 복사로 대신 남겨주세요.</span>'); return; }
+      /* 상세는 3000자 단위로 잘라 스레드에만. 순차로 보내 순서를 지킨다. */
+      var lines = res.map(function(x) { return x[0] + '행 | ' + x[1] + ' | ' + x[2] + ' | ' + x[3] + ' | ' + x[4]; });
+      var chunks = [], cur = '';
+      lines.forEach(function(l) {
+        if ((cur + l).length > 3000) { chunks.push(cur); cur = ''; }
+        cur += l + '\n';
+      });
+      if (cur) { chunks.push(cur); }
+      var ch = Promise.resolve();
+      chunks.slice(0, 12).forEach(function(c, ci) {
+        ch = ch.then(function() { return bulkLogReply(ts, '[' + (ci + 1) + '/' + Math.min(chunks.length, 12) + ']\n' + c); });
+      });
+      return ch.then(function() { sblog('<span style="color:#0a7d47">✓ 슬랙 기록 완료 (요약 1건 + 상세 ' + Math.min(chunks.length, 12) + '개 답글)</span>'); });
+    }).catch(function(e) {
+      sblog('<span style="color:#b45309">슬랙 기록 실패: ' + esc((e && e.message) || e) + ' — 반영 자체는 끝났습니다.</span>');
+    });
+  }
+
+  function viewSchedBulk() {
+    var SBROWS = [], SBRES = [], sbBusy = false;
+    VIEW.innerHTML = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155;line-height:1.7;margin-bottom:10px">' +
+      '<b>배송주기변경 · 일정생성 · 일정변경 · 일정삭제를 엑셀로 한 번에 반영합니다.</b><br>' +
+      '요청큐와 슬랙은 타지 않고 <b>위펀 오피스에 바로 반영</b>됩니다. 되돌리기가 없으니 검증 결과를 꼭 확인하세요.<br>' +
+      '거래처명에 <b>조식</b>이 들어가면 오피스 반영은 건너뜁니다(조식팀 별도 입력).' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
+      '<button id="__wpSbTpl" class="wp-btn gh">⬇ 양식 다운로드</button>' +
+      '<input type="file" id="__wpSbF" accept=".xlsx,.xls">' +
+      '<button id="__wpSbV" class="wp-btn pri">1. 검증</button>' +
+      '<button id="__wpSbR" class="wp-btn ok" disabled>2. 실행</button>' +
+      '<button id="__wpSbC" class="wp-btn gh" disabled>결과 복사</button>' +
+      '<label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:#334155;margin-left:4px;cursor:pointer"><input type="checkbox" id="__wpSbSlack" checked> #req-물류에 기록 남기기</label>' +
+      '</div><div id="__wpSbLog" class="wp-log"></div>';
+    var LOG = document.getElementById('__wpSbLog');
+    function sblog(h) { var d = document.createElement('div'); d.innerHTML = h; LOG.appendChild(d); LOG.scrollTop = LOG.scrollHeight; }
+
+    document.getElementById('__wpSbTpl').onclick = function() {
+      sbTemplate().then(function() { toast('✓ 양식 다운로드', '#0a7d47'); }).catch(function(e) { alert('양식 생성 실패: ' + ((e && e.message) || e)); });
+    };
+
+    document.getElementById('__wpSbV').onclick = function() {
+      var f = document.getElementById('__wpSbF').files[0];
+      if (!f) { alert('엑셀 파일을 선택해주세요.'); return; }
+      LOG.innerHTML = ''; SBRES = [];
+      sbParse(f).then(function(out) {
+        SBROWS = out;
+        var bad = 0, cnt = {};
+        out.forEach(function(r) {
+          r.err = sbCheck(r);
+          if (r.err) { bad++; sblog('· ' + badge('실패예정', '#b00') + ' [' + r._row + '행] ' + esc(r.code || r.name) + ' — ' + esc(r.err)); }
+          else { cnt[r.action] = (cnt[r.action] || 0) + 1; }
+        });
+        sblog('<b>검증 완료 — 총 ' + out.length + '행</b> · 정상 ' + (out.length - bad) + ' / 오류 ' + bad +
+          (Object.keys(cnt).length ? ' &nbsp; (' + Object.keys(cnt).map(function(k) { return k + ' ' + cnt[k]; }).join(' · ') + ')' : ''));
+        if (bad) { sblog('<span style="color:#b45309">오류 행은 실행에서 제외됩니다.</span>'); }
+        document.getElementById('__wpSbR').disabled = !(out.length - bad);
+      }).catch(function(e) { sblog(badge('오류', '#b00') + ' ' + esc((e && e.message) || e)); });
+    };
+
+    document.getElementById('__wpSbR').onclick = function() {
+      if (sbBusy) return;
+      var todo = SBROWS.filter(function(r) { return !r.err; });
+      if (!todo.length) return;
+      if (!confirm('[배송일정 일괄 반영]\n대상 ' + todo.length + '건\n\n위펀 오피스에 바로 반영되고 되돌릴 수 없습니다.\n진행할까요?')) return;
+      sbBusy = true; this.disabled = true;
+      document.getElementById('__wpSbV').disabled = true;
+      sblog('<hr>');
+      var i = 0, ok = 0, ng = 0;
+      var btn = this, o0 = btn.textContent;
+      function step() {
+        if (i >= todo.length) {
+          sbBusy = false; btn.textContent = o0;
+          document.getElementById('__wpSbV').disabled = false;
+          document.getElementById('__wpSbC').disabled = false;
+          sblog('<hr><b>완료 — 성공 ' + ok + ' / 실패 ' + ng + '</b>');
+          toast('일괄 반영 완료 · 성공 ' + ok + ' / 실패 ' + ng, ng ? '#b45309' : '#0a7d47');
+          var cb = document.getElementById('__wpSbSlack');
+          if (cb && cb.checked) { sbSlack(todo.length, ok, ng, SBRES, sblog); }
+          return;
+        }
+        var r = todo[i++];
+        btn.textContent = '실행 중 ' + i + '/' + todo.length;
+        sbFind(r).then(function(br) {
+          if (!br) throw new Error('거래처 검색 결과 없음');
+          if (br._many) throw new Error('거래처 ' + br._many + '건 매칭 — 점포코드로 지정 필요');
+          return runActionCore({ action: r.action, branchId: br.id, branchName: br.name, detail: sbDetail(r) }).then(function(note) {
+            ok++; SBRES.push([r._row, r.action, br.name, '성공', note || '']);
+            sblog('· ' + badge('성공', '#0a7d47') + ' [' + r._row + '행] ' + esc(br.name) + ' — ' + esc(r.action) + ' · ' + esc(note || ''));
+          });
+        }).catch(function(e) {
+          ng++; var m = (e && e.message) || String(e);
+          SBRES.push([r._row, r.action, r.code || r.name, '실패', m]);
+          sblog('· ' + badge('실패', '#b00') + ' [' + r._row + '행] ' + esc(r.code || r.name) + ' — ' + esc(m));
+        }).then(function() { setTimeout(step, 120); });   /* 오피스 부하 완화 */
+      }
+      step();
+    };
+
+    document.getElementById('__wpSbC').onclick = function() {
+      var tsv = '행\t작업\t거래처\t결과\t내용\n' + SBRES.map(function(x) { return x.join('\t'); }).join('\n');
+      navigator.clipboard.writeText(tsv).then(function() { toast('결과 복사됨', '#0a7d47'); });
+    };
   }
 
   function viewBulk() {
