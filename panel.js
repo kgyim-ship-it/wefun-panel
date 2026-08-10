@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.10 17:48';
+  var VERSION = '26.08.10 18:03';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -3612,8 +3612,16 @@ document.getElementById('__wpSave').onclick = function() {
      요청큐/슬랙은 타지 않는다 — 물류팀 직접 반영이라 건별 알림이 오히려 소음이 된다. */
   var SB_ACTS = ['배송주기변경', '배송일정생성', '배송일정변경', '배송일정삭제'];
 
+  /* 엑셀 날짜는 serial(숫자) 그대로 받아 XLSX.SSF 로 푼다.
+     cellDates:true + Date.getDate() 조합은 KST(+9)에서 하루 당겨진다
+     (SheetJS 가 만든 Date 가 로컬 자정 직전이라 날짜가 하나 내려감) → 쓰지 말 것. */
+  function sbP2(n) { return (n < 10 ? '0' : '') + n; }
   function sbD(v) {
-    if (v instanceof Date) { var p = function(n) { return (n < 10 ? '0' : '') + n; }; return v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate()); }
+    if (typeof v === 'number' && isFinite(v) && v > 0) {
+      var dc = (window.XLSX && XLSX.SSF && XLSX.SSF.parse_date_code) ? XLSX.SSF.parse_date_code(v) : null;
+      if (dc && dc.y) { return dc.y + '-' + sbP2(dc.m) + '-' + sbP2(dc.d); }
+    }
+    if (v instanceof Date) { return v.getFullYear() + '-' + sbP2(v.getMonth() + 1) + '-' + sbP2(v.getDate()); }
     var m = String(v == null ? '' : v).match(/(\d{4})[-.\/ ]+(\d{1,2})[-.\/ ]+(\d{1,2})/);
     return m ? (m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2)) : '';
   }
@@ -3641,7 +3649,7 @@ document.getElementById('__wpSave').onclick = function() {
 
   function sbParse(file) {
     return ensureXLSX().then(function() { return file.arrayBuffer(); }).then(function(buf) {
-      var wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      var wb = XLSX.read(buf, { type: 'array' });   /* cellDates 쓰지 않는다 — sbD 주석 참고 */
       var arr = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
       var out = [];
       for (var i = 1; i < arr.length; i++) {
@@ -3763,7 +3771,11 @@ document.getElementById('__wpSave').onclick = function() {
         out.forEach(function(r) {
           r.err = sbCheck(r);
           if (r.err) { bad++; sblog('· ' + badge('실패예정', '#b00') + ' [' + r._row + '행] ' + esc(r.code || r.name) + ' — ' + esc(r.err)); }
-          else { cnt[r.action] = (cnt[r.action] || 0) + 1; }
+          else {
+            cnt[r.action] = (cnt[r.action] || 0) + 1;
+            /* 해석된 값을 그대로 찍는다 — 날짜가 밀리거나 잘못 읽히면 실행 전에 눈으로 잡힌다 */
+            sblog('· ' + badge('확인', '#1f4e78') + ' [' + r._row + '행] ' + esc(r.code || r.name) + ' — ' + esc(r.action) + ' · <b>' + esc(sbDetail(r)) + '</b>');
+          }
         });
         sblog('<b>검증 완료 — 총 ' + out.length + '행</b> · 정상 ' + (out.length - bad) + ' / 오류 ' + bad +
           (Object.keys(cnt).length ? ' &nbsp; (' + Object.keys(cnt).map(function(k) { return k + ' ' + cnt[k]; }).join(' · ') + ')' : ''));
