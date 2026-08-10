@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.10 18:03';
+  var VERSION = '26.08.10 18:14';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -3626,8 +3626,9 @@ document.getElementById('__wpSave').onclick = function() {
     return m ? (m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2)) : '';
   }
   function sbDates(v) {
-    if (v instanceof Date) return [sbD(v)];
-    return String(v == null ? '' : v).split(/[,\n;]+/).map(sbD).filter(Boolean);
+    /* 숫자(엑셀 serial)와 Date 는 String() 으로 바꾸면 안 된다 — sbD 의 숫자 분기를 못 타고 전부 빈 값이 된다 */
+    if (typeof v === 'number' || v instanceof Date) { var one = sbD(v); return one ? [one] : []; }
+    return String(v == null ? '' : v).split(/[,\n;]+/).map(function(x) { return sbD(x); }).filter(Boolean);
   }
 
   function sbTemplate() {
