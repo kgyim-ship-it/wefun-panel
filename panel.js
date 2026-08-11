@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.11 11:49';
+  var VERSION = '26.08.11 11:54';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -2537,6 +2537,7 @@ document.getElementById('__wpSave').onclick = function() {
         /* 검토는 처리 대기열이다 → 들어온 순서(과거 → 최근)로 놓아야 위에서부터 순서대로 처리할 수 있다.
            (서버는 최근순으로 내려주므로 여기서 뒤집는다) */
         cache.sort(function(x, y) { return String(x.ts || '').localeCompare(String(y.ts || '')); });
+        REV_CACHE = cache;
         renderReqTable('__wpRevList', cache, true, { codeSent: (group === 'syn') });
       }).catch(function(e) {
         document.getElementById('__wpRevList').innerHTML = '<div style="color:#b00;padding:10px">' + esc(e.message) + '</div>';
@@ -2786,6 +2787,35 @@ document.getElementById('__wpSave').onclick = function() {
     openForm(it.action, br, { id: it.id, prefill: it.detail });
     try { host.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
   }
+  /* 승인·반려 후 목록 전체를 다시 그리면 '불러오는 중…'으로 한 번 비었다가 돌아와 눈이 아프다.
+     처리된 행만 지우고 끝낸다. 서버 캐시는 api() 가 이미 무효화했으므로 다음 조회 때 정상 반영된다. */
+  var REV_CACHE = [];
+  function dropReqRow(id) {
+    var box = document.getElementById('__wpRevList');
+    if (!box) { return false; }
+    var tr = box.querySelector('tr[data-id="' + id + '"]');
+    if (!tr) { return false; }
+    /* filter 로 새 배열을 만들면 viewReview 의 cache(엑셀 버튼이 참조)와 갈라진다 → 같은 배열을 제자리에서 지운다 */
+    for (var ri = REV_CACHE.length - 1; ri >= 0; ri--) {
+      if (String(REV_CACHE[ri].id) === String(id)) { REV_CACHE.splice(ri, 1); }
+    }
+    tr.style.transition = 'opacity .16s';
+    tr.style.opacity = '0';
+    setTimeout(function() {
+      var tb = tr.parentNode;
+      if (tb) { tb.removeChild(tr); }
+      if (tb && !tb.querySelectorAll('tr').length) {
+        box.innerHTML = '<div style="color:#94a3b8;padding:14px">처리할 요청이 없습니다.</div>';
+      }
+    }, 170);
+    return true;
+  }
+  /* 행 제거로 끝났으면 재조회를 건너뛴다 */
+  function afterDecide(id) {
+    if (dropReqRow(id)) { return; }
+    try { viewReview(); } catch (_ad) {}
+  }
+
   function renderReqTable(elId, items, admin, opt) {
     opt = opt || {};
     var cn = !!opt.custNotice;
@@ -2887,7 +2917,7 @@ document.getElementById('__wpSave').onclick = function() {
         if (ap) ap.disabled = true;
         decideReq(b.getAttribute('data-id'), '반려', note).then(function() {
           toast('반려 처리됐습니다', '#c0392b');
-          viewReview();
+          afterDecide(b.getAttribute('data-id'));
         }).catch(function(e) {
           b.disabled = false;
           b.textContent = ov;
@@ -3122,12 +3152,12 @@ document.getElementById('__wpSave').onclick = function() {
       return decideReq(it.id, '완료', note || '', it.slackTs);
     }).then(function() {
       toast(pick ? '✓ 수기피킹 완료 처리됐습니다' : (passthru ? ('✓ ' + it.action + ' 접수 · D+1 반영 예정') : ('✓ ' + it.action + ' 완료 처리됐습니다')), '#0a7d47');
-      try { viewReview(); } catch (_e) {}
+      afterDecide(it.id);
     }).catch(function(e) {
       btn.textContent = '확인 중…';
       afterWriteFail(e, it.id, '✓ ' + it.action + ' 완료 (응답 지연 → 서버에서 확인됨)', it.action + ' 반영 실패', function(msg) {
         toast(msg, '#0a7d47');
-        try { viewReview(); } catch (_e2) {}
+        afterDecide(it.id);
       }, function(msg) {
         btn.disabled = false;
         btn.textContent = orig;
@@ -3153,7 +3183,7 @@ document.getElementById('__wpSave').onclick = function() {
       return decideStage(it.id, stage, note || '', it.slackTs);
     }).then(function() {
       toast(stage + '승인 처리됐습니다', '#0a7d47');
-      try { viewReview(); } catch (_se) {}
+      afterDecide(it.id);
     }).catch(function(e) {
       btn.textContent = '확인 중…';
       /* 물류승인은 완료 처리되지만, 응답이 깨진 경우 처리메모의 '물류승인:' 표시로도 판정 */
@@ -3161,7 +3191,7 @@ document.getElementById('__wpSave').onclick = function() {
         reqStatus(it.id).then(function(r) {
           if (r && (String(r.memo || '').indexOf(stage + '승인:') > -1 || (r.status && r.status !== '대기'))) {
             toast(stage + '승인 처리됐습니다 (응답 지연 → 서버에서 확인됨)', '#0a7d47');
-            try { viewReview(); } catch (_se2) {}
+            afterDecide(it.id);
             return;
           }
           btn.disabled = false; btn.textContent = o;
