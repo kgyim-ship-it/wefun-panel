@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.11 12:06';
+  var VERSION = '26.08.11 12:13';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -788,7 +788,6 @@
       ['find', '거래처 조회'],
       ['bulk', '배송정보 일괄입력'],
       ['sched_bulk', '배송일정 일괄'],
-      ['dtime', '배송시간 문의'],
       ['board_update', '업데이트 이력'],
       ['board_feature', '기능개선']
     ]
@@ -822,7 +821,6 @@
     else if (t === 'review_pick') viewReview('pick');
     else if (t === 'bulk') viewBulk();
     else if (t === 'sched_bulk') viewSchedBulk();
-    else if (t === 'dtime') viewDeliveryTime();
     else if (t === 'newcode') viewNewCode();
     else if (t === 'board_update') viewBoard('update');
     else if (t === 'board_feature') viewBoard('feature');
@@ -1237,9 +1235,11 @@
     var m = document.createElement('div');
     m.id = '__wpActMenu';
     m.style.cssText = 'position:fixed;z-index:2147483647;background:#fff;border:1px solid #e2e8f0;border-radius:11px;box-shadow:0 16px 40px rgba(15,23,42,.22);min-width:168px;padding:5px;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif';
+    var DT_ITEM = '<div style="height:1px;background:#e2e8f0;margin:5px 8px"></div>' +
+      '<button class="wp-ami" data-a="__dtime" style="display:block;width:100%;text-align:left;border:none;background:none;padding:10px 14px;font-size:13px;color:#1f4e78;font-weight:700;cursor:pointer;border-radius:7px">배송시간문의</button>';
     m.innerHTML = acts.map(function(a) {
       return '<button class="wp-ami" data-a="' + esc(a) + '" style="display:block;width:100%;text-align:left;border:none;background:none;padding:10px 14px;font-size:13px;color:#1e293b;cursor:pointer;border-radius:7px">' + esc(a) + '</button>';
-    }).join('');
+    }).join('') + DT_ITEM;
     document.body.appendChild(m);
     var r = btn.getBoundingClientRect(),
       mw = m.offsetWidth,
@@ -1263,6 +1263,7 @@
       b.onclick = function() {
         var a = b.getAttribute('data-a');
         closeActMenu();
+        if (a === '__dtime') { openDeliveryTime(FOUND[bid]); return; }
         openForm(a, FOUND[bid]);
       };
     });
@@ -3820,51 +3821,7 @@ document.getElementById('__wpSave').onclick = function() {
     }).catch(function() { DT_PHONE = {}; return DT_PHONE; });
   }
 
-  /* 슬랙 문구에서 거래처를 뽑는다. 링크에 branchId 가 박혀 있으면 그게 제일 정확하다. */
-  function dtParseInput(s) {
-    s = String(s || '');
-    var id = (s.match(/\/office\/sales\/branch\/(\d+)/) || [])[1] || '';
-    if (id) { return { id: id }; }
-    /* 거래처 링크의 표시문구가 있으면 그게 정확한 거래처명 */
-    var md = s.match(/\[([^\]]{2,60})\]\(\s*https?:[^)]*branch[^)]*\)/);
-    if (md) { return { kw: md[1].trim() }; }
-    var lines = s.split('\n').map(function(x) { return x.replace(/^[\s\-·•]+/, '').trim(); })
-      .filter(function(x) { return x; })
-      .filter(function(x) { return !/^\[[^\]]*(문의|요청|접수)[^\]]*\]$/.test(x); })   /* [스낵v_배송시간문의] 같은 머리말 제외 */
-      .filter(function(x) { return !/^@/.test(x); })
-      .filter(function(x) { return !/^\d{2,3}-?\d{3,4}-?\d{4}$/.test(x); })
-      .filter(function(x) { return !/(문의|요청|회신|확인|안내|양해)\s*$/.test(x); });      /* 본문 문장 제외 */
-    var line = (lines[0] || '').replace(/^\[|\]$/g, '');
-    var alt = '';
-    if (line.indexOf('/') > -1) { var seg = line.split('/'); alt = seg[0].trim(); line = seg.pop().trim(); }
-    var codeM = s.match(/\b(\d{5,6})\b/);
-    return { kw: line || (codeM ? codeM[1] : ''), alt: alt };
-  }
 
-  function dtBranch(q) {
-    if (q.id) {
-      return getForm(q.id).then(function(f) {
-        return {
-          id: q.id, name: getVal(f, 'name') || '',
-          addr: ((getVal(f, 'address1') || '') + ' ' + (getVal(f, 'address2') || '')).trim(),
-          course: getVal(f, 'woolinDriver') || '', hot: getVal(f, 'woolinClientCode') || '',
-          cold: getVal(f, 'eyClientCode') || '', method: getVal(f, 'deliveryType') || ''
-        };
-      });
-    }
-    function pick(list, kw) {
-      if (!list || !list.length) { return null; }
-      var exact = list.filter(function(x) { return nn(x.name) === nn(kw); });
-      if (exact.length) { return exact[0]; }
-      var part = list.filter(function(x) { return nn(x.name).indexOf(nn(kw)) > -1; });
-      return (part.length ? part[0] : list[0]);
-    }
-    return searchRich(q.kw).then(function(list) {
-      var hit = pick(list, q.kw);
-      if (hit || !q.alt) { return hit; }
-      return searchRich(q.alt).then(function(l2) { return pick(l2, q.alt); });   /* 거래처명으로 실패하면 고객사명으로 */
-    });
-  }
 
   /* 기사업무현황 목록 — 거래처명 키워드로 오늘자 담당 기사 후보를 찾는다 */
   function dtDrivers(name, day) {
@@ -3918,93 +3875,83 @@ document.getElementById('__wpSave').onclick = function() {
     }).catch(function() { return { today: false, next: '', none: true }; });
   }
 
-  function viewDeliveryTime() {
-    VIEW.innerHTML = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155;line-height:1.7;margin-bottom:10px">' +
-      '<b>슬랙으로 들어온 배송시간 문의를 그대로 붙여넣고 Enter 를 누르세요.</b><br>' +
-      '거래처 링크가 있으면 그걸로, 없으면 거래처명으로 찾습니다. 점포코드나 거래처명만 쳐도 됩니다.</div>' +
-      '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px">' +
-      '<textarea id="__wpDtQ" class="wp-inp" style="flex:1;min-height:72px" placeholder="[스낵v_배송시간문의]\n- 페이오니아 코리아 / 페이오니아 3층\n- 박상은 / 010-0000-0000"></textarea>' +
-      '<button id="__wpDtGo" class="wp-btn pri" style="height:40px">조회</button></div>' +
-      '<div id="__wpDtR"></div>';
-    var Q = document.getElementById('__wpDtQ');
-    Q.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); run(); }
+  /* 거래처 단건 배송시간 조회 — [작업 요청] 드롭다운에서 호출. 요청 제출이 아니라 조회만 한다. */
+  function openDeliveryTime(br) {
+    if (!br) { toast('거래처 정보를 찾을 수 없습니다', '#c0392b'); return; }
+    var box = document.getElementById('__wpForm');
+    var qr = document.getElementById('__wpQr');
+    if (!box) { return; }
+    if (qr) { qr.style.display = 'none'; }
+    box.innerHTML = '<div class="wp-form"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+      '<b style="font-size:15px">배송시간 문의 · ' + esc(br.name || '') + '</b>' +
+      '<button id="__wpDtX" class="wp-btn gh">닫기</button></div>' +
+      '<div id="__wpDtR"><div style="color:#94a3b8;padding:12px">조회 중… (배송일정 → 담당기사 → 완료시각 순으로 확인합니다)</div></div></div>';
+    document.getElementById('__wpDtX').onclick = function() {
+      box.innerHTML = '';
+      if (qr) { qr.style.display = 'block'; }
+    };
+    var day = todayStr();
+    Promise.all([dtNextDay(br), dtDrivers(br.name, day), dtPhones()]).then(function(res) {
+      var sched = res[0], drv = res[1], ph = res[2];
+      if (!drv.length) { return dtRender(br, sched, [], ph); }
+      return mapLimit(drv.slice(0, 8), 3, function(d) {
+        return dtStop(d.mid, day, br.name).then(function(st) { d.stop = st; return d; });
+      }).then(function(list) { return dtRender(br, sched, list, ph); });
+    }).catch(function(e) {
+      var R = document.getElementById('__wpDtR');
+      if (R) { R.innerHTML = '<div style="color:#b00;padding:12px">' + esc((e && e.message) || e) + '</div>'; }
     });
-    document.getElementById('__wpDtGo').onclick = run;
+  }
 
-    function run() {
-      var R = document.getElementById('__wpDtR');
-      var q = dtParseInput(Q.value);
-      if (!q.id && !q.kw) { toast('거래처를 찾을 수 없습니다', '#c0392b'); return; }
-      R.innerHTML = '<div style="color:#94a3b8;padding:12px">조회 중… (거래처 → 배송일정 → 기사 순으로 확인합니다)</div>';
-      var day = todayStr(), BR = null;
-      dtBranch(q).then(function(br) {
-        if (!br) { throw new Error('거래처를 찾지 못했습니다: ' + (q.kw || q.id)); }
-        BR = br;
-        return Promise.all([dtNextDay(br), dtDrivers(br.name, day), dtPhones()]);
-      }).then(function(res) {
-        var sched = res[0], drv = res[1], ph = res[2];
-        if (!drv.length) { return render(BR, sched, [], ph); }
-        return mapLimit(drv.slice(0, 8), 3, function(d) {
-          return dtStop(d.mid, day, BR.name).then(function(s) { d.stop = s; return d; });
-        }).then(function(list) { return render(BR, sched, list, ph); });
-      }).catch(function(e) {
-        R.innerHTML = '<div style="color:#b00;padding:12px">' + esc((e && e.message) || e) + '</div>';
-      });
+  function dtRender(br, sched, drv, ph) {
+    var R = document.getElementById('__wpDtR');
+    if (!R) { return; }
+    var hit = drv.filter(function(d) { return d.stop && d.stop.found; });
+    var doneAt = hit.length ? (hit[0].stop.done || hit[0].stop.start || '') : '';
+    var mine = hit.length ? hit : drv;
+    var state, color, reply;
+    if (doneAt) {
+      state = '\u2705 배송 완료 · ' + doneAt; color = '#0a7d47';
+      reply = '금일 ' + doneAt + ' 배송 완료되었습니다. 확인 부탁드립니다.';
+    } else if (sched.today || drv.length) {
+      state = '\u23f3 아직 미완료 (금일 배송 예정)'; color = '#b45309';
+      reply = '확인 결과 금일 배송 예정 건으로, 담당 기사 확인 후 예정 시간 회신드리겠습니다.';
+    } else if (sched.none) {
+      state = '\u2754 배송일정(서비스) 확인 필요'; color = '#64748b';
+      reply = '확인 후 회신드리겠습니다.';
+    } else {
+      state = '\u26d4 금일은 배송일이 아닙니다'; color = '#c0392b';
+      reply = '확인 결과 금일은 배송일이 아닙니다.' + (sched.next ? ' 다음 배송일은 ' + addDow(sched.next) + ' 입니다.' : '');
     }
-
-    function render(br, sched, drv, ph) {
-      var R = document.getElementById('__wpDtR');
-      var hit = drv.filter(function(d) { return d.stop && d.stop.found; });
-      var doneAt = hit.length ? (hit[0].stop.done || hit[0].stop.start || '') : '';
-      var mine = hit.length ? hit : drv;
-      var state, color, reply;
-      if (doneAt) {
-        state = '✅ 배송 완료 · ' + doneAt; color = '#0a7d47';
-        reply = '금일 ' + doneAt + ' 배송 완료되었습니다. 확인 부탁드립니다.';
-      } else if (sched.today || drv.length) {
-        state = '⏳ 아직 미완료 (금일 배송 예정)'; color = '#b45309';
-        reply = '확인 결과 금일 배송 예정 건으로, 담당 기사 확인 후 예정 시간 회신드리겠습니다.';
-      } else if (sched.none) {
-        state = '❔ 배송일정(서비스) 확인 필요'; color = '#64748b';
-        reply = '확인 후 회신드리겠습니다.';
-      } else {
-        state = '⛔ 금일은 배송일이 아닙니다'; color = '#c0392b';
-        reply = '확인 결과 금일은 배송일이 아닙니다.' + (sched.next ? ' 다음 배송일은 ' + addDow(sched.next) + ' 입니다.' : '');
-      }
-      var h = '<div style="border:1px solid #E2E8F0;border-radius:9px;overflow:hidden;background:#fff">' +
-        '<div style="padding:11px 14px;background:#0B1220;color:#fff"><b style="font-size:14.5px">' + esc(br.name) + '</b>' +
-        '<span style="color:#94A3B8;font-size:12.5px;margin-left:9px">' + esc(br.hot || '') + (br.cold ? '/' + esc(br.cold) : '') +
-        (br.course ? ' · 담당코스 ' + esc(br.course) : '') + (br.method ? ' · ' + esc(br.method) : '') + '</span>' +
-        '<div style="color:#94A3B8;font-size:12px;margin-top:3px">' + esc(br.addr || '') + '</div></div>' +
-        '<div style="padding:12px 14px;font-size:15px;font-weight:800;color:' + color + '">' + state +
-        (sched.next && !doneAt ? '<span style="font-size:12.5px;font-weight:600;color:#64748b;margin-left:10px">다음 배송일 ' + esc(addDow(sched.next)) + '</span>' : '') + '</div>';
-
-      if (mine.length) {
-        h += '<table class="wp-tbl" style="width:100%"><thead><tr><th style="width:120px">배송코스</th><th style="width:90px">기사</th><th style="width:130px">연락처</th><th style="width:90px">진행률</th><th style="width:100px">업무시작</th><th>이 거래처</th></tr></thead><tbody>';
-        mine.forEach(function(d) {
-          var pn = ph[d.driver] || '';
-          h += '<tr><td>' + esc(d.course) + '</td><td><b>' + esc(d.driver) + '</b></td>' +
-            '<td>' + (pn ? ('<a href="tel:' + esc(pn) + '" style="color:#1f4e78;font-weight:700;text-decoration:none">' + esc(pn) + '</a> <button class="wp-act __wpDtCp" data-p="' + esc(pn) + '" style="height:22px;font-size:11px;padding:0 6px">복사</button>') : '<span style="color:#94a3b8">-</span>') + '</td>' +
-            '<td>' + esc(d.rate || '-') + '</td><td>' + esc(d.start || '-') + '</td>' +
-            '<td>' + (d.stop && d.stop.found ? ('<b style="color:#0a7d47">완료 ' + esc(d.stop.done || d.stop.start) + '</b>') : '<span style="color:#b45309">미완료</span>') + '</td></tr>';
-        });
-        h += '</tbody></table>';
-      } else {
-        h += '<div style="padding:12px 14px;color:#64748b;font-size:13px">금일 이 거래처를 도는 기사 배정이 조회되지 않습니다.</div>';
-      }
-      h += '<div style="padding:12px 14px;border-top:1px solid #E2E8F0">' +
-        '<div style="font-size:12.5px;color:#475569;font-weight:700;margin-bottom:5px">회신 문구</div>' +
-        '<textarea id="__wpDtMsg" class="wp-inp" style="width:100%;min-height:58px">' + esc(reply) + '</textarea>' +
-        '<button id="__wpDtCpMsg" class="wp-btn gh" style="margin-top:7px">회신문구 복사</button></div></div>';
-      R.innerHTML = h;
-      [].forEach.call(R.querySelectorAll('.__wpDtCp'), function(b) {
-        b.onclick = function() { navigator.clipboard.writeText(b.getAttribute('data-p')).then(function() { toast('연락처 복사됨', '#0a7d47'); }); };
+    var h = '<div class="wp-meta" style="margin-top:0">' + esc(br.hot || '-') + (br.cold ? '/' + esc(br.cold) : '') +
+      (br.course ? ' · 담당코스 <b>' + esc(br.course) + '</b>' : '') + (br.method ? ' · ' + esc(br.method) : '') +
+      '<br><span style="color:#94a3b8">' + esc(br.addr || '') + '</span></div>' +
+      '<div style="padding:9px 2px;font-size:16px;font-weight:800;color:' + color + '">' + state +
+      (sched.next && !doneAt ? '<span style="font-size:12.5px;font-weight:600;color:#64748b;margin-left:10px">다음 배송일 ' + esc(addDow(sched.next)) + '</span>' : '') + '</div>';
+    if (mine.length) {
+      h += '<table class="wp-tbl" style="width:100%"><thead><tr><th style="width:120px">배송코스</th><th style="width:90px">기사</th><th style="width:140px">연락처</th><th style="width:80px">진행률</th><th style="width:100px">업무시작</th><th>이 거래처</th></tr></thead><tbody>';
+      mine.forEach(function(d) {
+        var pn = ph[d.driver] || '';
+        h += '<tr><td>' + esc(d.course) + '</td><td><b>' + esc(d.driver) + '</b></td>' +
+          '<td>' + (pn ? ('<a href="tel:' + esc(pn) + '" style="color:#1f4e78;font-weight:700;text-decoration:none">' + esc(pn) + '</a> <button class="wp-act __wpDtCp" data-p="' + esc(pn) + '" style="height:22px;font-size:11px;padding:0 6px">복사</button>') : '<span style="color:#94a3b8">-</span>') + '</td>' +
+          '<td>' + esc(d.rate || '-') + '</td><td>' + esc(d.start || '-') + '</td>' +
+          '<td>' + (d.stop && d.stop.found ? ('<b style="color:#0a7d47">완료 ' + esc(d.stop.done || d.stop.start) + '</b>') : '<span style="color:#b45309">미완료</span>') + '</td></tr>';
       });
-      document.getElementById('__wpDtCpMsg').onclick = function() {
-        navigator.clipboard.writeText(document.getElementById('__wpDtMsg').value).then(function() { toast('회신문구 복사됨', '#0a7d47'); });
-      };
+      h += '</tbody></table>';
+    } else {
+      h += '<div style="padding:10px 2px;color:#64748b;font-size:13px">금일 이 거래처를 도는 기사 배정이 조회되지 않습니다.</div>';
     }
+    h += '<div style="margin-top:12px;padding-top:11px;border-top:1px solid #E2E8F0">' +
+      '<div style="font-size:12.5px;color:#475569;font-weight:700;margin-bottom:5px">회신 문구</div>' +
+      '<textarea id="__wpDtMsg" class="wp-inp" style="width:100%;min-height:56px">' + esc(reply) + '</textarea>' +
+      '<button id="__wpDtCpMsg" class="wp-btn pri" style="margin-top:7px">회신문구 복사</button></div>';
+    R.innerHTML = h;
+    [].forEach.call(R.querySelectorAll('.__wpDtCp'), function(b) {
+      b.onclick = function() { navigator.clipboard.writeText(b.getAttribute('data-p')).then(function() { toast('연락처 복사됨', '#0a7d47'); }); };
+    });
+    document.getElementById('__wpDtCpMsg').onclick = function() {
+      navigator.clipboard.writeText(document.getElementById('__wpDtMsg').value).then(function() { toast('회신문구 복사됨', '#0a7d47'); });
+    };
   }
 
   function viewSchedBulk() {
