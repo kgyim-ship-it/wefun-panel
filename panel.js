@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.11 11:54';
+  var VERSION = '26.08.11 12:06';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -788,6 +788,7 @@
       ['find', '거래처 조회'],
       ['bulk', '배송정보 일괄입력'],
       ['sched_bulk', '배송일정 일괄'],
+      ['dtime', '배송시간 문의'],
       ['board_update', '업데이트 이력'],
       ['board_feature', '기능개선']
     ]
@@ -821,6 +822,7 @@
     else if (t === 'review_pick') viewReview('pick');
     else if (t === 'bulk') viewBulk();
     else if (t === 'sched_bulk') viewSchedBulk();
+    else if (t === 'dtime') viewDeliveryTime();
     else if (t === 'newcode') viewNewCode();
     else if (t === 'board_update') viewBoard('update');
     else if (t === 'board_feature') viewBoard('feature');
@@ -3796,6 +3798,213 @@ document.getElementById('__wpSave').onclick = function() {
     }).catch(function(e) {
       sblog('<span style="color:#b45309">슬랙 기록 실패: ' + esc((e && e.message) || e) + ' — 반영 자체는 끝났습니다.</span>');
     });
+  }
+
+  /* ---------- 당일 배송시간 문의 조회 ----------
+     슬랙으로 들어온 문구를 그대로 붙여넣으면 오피스 네 화면을 한 번에 훑는다.
+       1) 거래처        : 담당코스·점포코드·주소
+       2) 배송일정      : 오늘이 배송일인가 / 아니면 다음 배송일
+       3) 기사업무현황  : 거래처명으로 역검색 → 담당 기사 후보 (코스가 1:N 이라 코스로는 못 좁힌다)
+       4) 기사업무상세  : 그 거래처 블록의 완료시간 / 배송추적: 기사 연락처 */
+  var DT_PHONE = null;
+
+  function dtPhones() {
+    if (DT_PHONE) { return Promise.resolve(DT_PHONE); }
+    return fetch('/office/delivery-manager/v2/tracking').then(function(r) { return r.text(); }).then(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var txt = (doc.body && doc.body.innerText) || doc.body.textContent || '';
+      var map = {}, re = /([가-힣]{2,5})\s*\[[^\]]*?(01[0-9\-]{7,12})\s*\]/g, m;
+      while ((m = re.exec(txt))) { map[m[1]] = m[2].replace(/-/g, ''); }
+      DT_PHONE = map;
+      return map;
+    }).catch(function() { DT_PHONE = {}; return DT_PHONE; });
+  }
+
+  /* 슬랙 문구에서 거래처를 뽑는다. 링크에 branchId 가 박혀 있으면 그게 제일 정확하다. */
+  function dtParseInput(s) {
+    s = String(s || '');
+    var id = (s.match(/\/office\/sales\/branch\/(\d+)/) || [])[1] || '';
+    if (id) { return { id: id }; }
+    /* 거래처 링크의 표시문구가 있으면 그게 정확한 거래처명 */
+    var md = s.match(/\[([^\]]{2,60})\]\(\s*https?:[^)]*branch[^)]*\)/);
+    if (md) { return { kw: md[1].trim() }; }
+    var lines = s.split('\n').map(function(x) { return x.replace(/^[\s\-·•]+/, '').trim(); })
+      .filter(function(x) { return x; })
+      .filter(function(x) { return !/^\[[^\]]*(문의|요청|접수)[^\]]*\]$/.test(x); })   /* [스낵v_배송시간문의] 같은 머리말 제외 */
+      .filter(function(x) { return !/^@/.test(x); })
+      .filter(function(x) { return !/^\d{2,3}-?\d{3,4}-?\d{4}$/.test(x); })
+      .filter(function(x) { return !/(문의|요청|회신|확인|안내|양해)\s*$/.test(x); });      /* 본문 문장 제외 */
+    var line = (lines[0] || '').replace(/^\[|\]$/g, '');
+    var alt = '';
+    if (line.indexOf('/') > -1) { var seg = line.split('/'); alt = seg[0].trim(); line = seg.pop().trim(); }
+    var codeM = s.match(/\b(\d{5,6})\b/);
+    return { kw: line || (codeM ? codeM[1] : ''), alt: alt };
+  }
+
+  function dtBranch(q) {
+    if (q.id) {
+      return getForm(q.id).then(function(f) {
+        return {
+          id: q.id, name: getVal(f, 'name') || '',
+          addr: ((getVal(f, 'address1') || '') + ' ' + (getVal(f, 'address2') || '')).trim(),
+          course: getVal(f, 'woolinDriver') || '', hot: getVal(f, 'woolinClientCode') || '',
+          cold: getVal(f, 'eyClientCode') || '', method: getVal(f, 'deliveryType') || ''
+        };
+      });
+    }
+    function pick(list, kw) {
+      if (!list || !list.length) { return null; }
+      var exact = list.filter(function(x) { return nn(x.name) === nn(kw); });
+      if (exact.length) { return exact[0]; }
+      var part = list.filter(function(x) { return nn(x.name).indexOf(nn(kw)) > -1; });
+      return (part.length ? part[0] : list[0]);
+    }
+    return searchRich(q.kw).then(function(list) {
+      var hit = pick(list, q.kw);
+      if (hit || !q.alt) { return hit; }
+      return searchRich(q.alt).then(function(l2) { return pick(l2, q.alt); });   /* 거래처명으로 실패하면 고객사명으로 */
+    });
+  }
+
+  /* 기사업무현황 목록 — 거래처명 키워드로 오늘자 담당 기사 후보를 찾는다 */
+  function dtDrivers(name, day) {
+    var u = '/office/delivery-manager/v2/manager-tasks?searchYN=Y&size=50&page=1&startDate=' + day + '&endDate=' + day +
+      '&searchKeyword=' + encodeURIComponent(name);
+    return fetch(u).then(function(r) { return r.text(); }).then(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var out = [];
+      [].slice.call(doc.querySelectorAll('table tbody tr')).forEach(function(tr) {
+        var td = [].slice.call(tr.querySelectorAll('td'));
+        if (td.length < 11) { return; }
+        var a = tr.querySelector('a[href*="deliveryManagerId="]');
+        var mid = a ? ((a.getAttribute('href') || '').match(/deliveryManagerId=(\d+)/) || [])[1] : '';
+        function t(i) { return (td[i] ? (td[i].innerText || '') : '').replace(/\s+/g, ' ').trim(); }
+        if (!mid) { return; }
+        out.push({ mid: mid, course: t(1), driver: t(2), tasks: t(5), rate: t(7), start: t(9), end: t(10) });
+      });
+      return out;
+    }).catch(function() { return []; });
+  }
+
+  /* 기사업무 상세 — 그 거래처 블록의 완료시간을 찾는다. 마크업이 바뀌어도 버티게 텍스트로 자른다. */
+  function dtStop(mid, day, branchName) {
+    var u = '/office/delivery-manager/v2/manager-tasks/details?deliveryManagerId=' + encodeURIComponent(mid) +
+      '&deliveryDateBegin=' + day + '&deliveryDateEnd=' + day;
+    return fetch(u).then(function(r) { return r.text(); }).then(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var txt = (doc.body && doc.body.innerText) || doc.body.textContent || '';
+      var parts = txt.split(/(?=\d{4}-\d{2}-\d{2}\s*\[)/);
+      var want = nn(branchName);
+      for (var i = 0; i < parts.length; i++) {
+        var b = parts[i];
+        if (nn(b).indexOf(want) < 0) { continue; }
+        var done = (b.match(/완료\s*시간\s*[:\s]*([0-2]?\d:[0-5]\d(?::[0-5]\d)?)/) || [])[1] || '';
+        var st = (b.match(/업무시작\s*시간\s*[:\s]*([0-2]?\d:[0-5]\d(?::[0-5]\d)?)/) || [])[1] || '';
+        return { found: true, done: done, start: st };
+      }
+      return { found: false, done: '', start: '' };
+    }).catch(function() { return { found: false, done: '', start: '' }; });
+  }
+
+  function dtNextDay(br) {
+    return resolveSid(br.id, br.name).then(function(ids) {
+      if (!ids.length) { return { today: false, next: '', none: true }; }
+      return getScheduleEvents(ids[0]).then(function(evs) {
+        var t = todayStr();
+        var ds = (evs || []).map(function(e) { return e.deliveryDate; }).filter(Boolean).sort();
+        var next = ds.filter(function(d) { return d > t; })[0] || '';
+        return { today: ds.indexOf(t) > -1, next: next, none: false };
+      });
+    }).catch(function() { return { today: false, next: '', none: true }; });
+  }
+
+  function viewDeliveryTime() {
+    VIEW.innerHTML = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155;line-height:1.7;margin-bottom:10px">' +
+      '<b>슬랙으로 들어온 배송시간 문의를 그대로 붙여넣고 Enter 를 누르세요.</b><br>' +
+      '거래처 링크가 있으면 그걸로, 없으면 거래처명으로 찾습니다. 점포코드나 거래처명만 쳐도 됩니다.</div>' +
+      '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px">' +
+      '<textarea id="__wpDtQ" class="wp-inp" style="flex:1;min-height:72px" placeholder="[스낵v_배송시간문의]\n- 페이오니아 코리아 / 페이오니아 3층\n- 박상은 / 010-0000-0000"></textarea>' +
+      '<button id="__wpDtGo" class="wp-btn pri" style="height:40px">조회</button></div>' +
+      '<div id="__wpDtR"></div>';
+    var Q = document.getElementById('__wpDtQ');
+    Q.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); run(); }
+    });
+    document.getElementById('__wpDtGo').onclick = run;
+
+    function run() {
+      var R = document.getElementById('__wpDtR');
+      var q = dtParseInput(Q.value);
+      if (!q.id && !q.kw) { toast('거래처를 찾을 수 없습니다', '#c0392b'); return; }
+      R.innerHTML = '<div style="color:#94a3b8;padding:12px">조회 중… (거래처 → 배송일정 → 기사 순으로 확인합니다)</div>';
+      var day = todayStr(), BR = null;
+      dtBranch(q).then(function(br) {
+        if (!br) { throw new Error('거래처를 찾지 못했습니다: ' + (q.kw || q.id)); }
+        BR = br;
+        return Promise.all([dtNextDay(br), dtDrivers(br.name, day), dtPhones()]);
+      }).then(function(res) {
+        var sched = res[0], drv = res[1], ph = res[2];
+        if (!drv.length) { return render(BR, sched, [], ph); }
+        return mapLimit(drv.slice(0, 8), 3, function(d) {
+          return dtStop(d.mid, day, BR.name).then(function(s) { d.stop = s; return d; });
+        }).then(function(list) { return render(BR, sched, list, ph); });
+      }).catch(function(e) {
+        R.innerHTML = '<div style="color:#b00;padding:12px">' + esc((e && e.message) || e) + '</div>';
+      });
+    }
+
+    function render(br, sched, drv, ph) {
+      var R = document.getElementById('__wpDtR');
+      var hit = drv.filter(function(d) { return d.stop && d.stop.found; });
+      var doneAt = hit.length ? (hit[0].stop.done || hit[0].stop.start || '') : '';
+      var mine = hit.length ? hit : drv;
+      var state, color, reply;
+      if (doneAt) {
+        state = '✅ 배송 완료 · ' + doneAt; color = '#0a7d47';
+        reply = '금일 ' + doneAt + ' 배송 완료되었습니다. 확인 부탁드립니다.';
+      } else if (sched.today || drv.length) {
+        state = '⏳ 아직 미완료 (금일 배송 예정)'; color = '#b45309';
+        reply = '확인 결과 금일 배송 예정 건으로, 담당 기사 확인 후 예정 시간 회신드리겠습니다.';
+      } else if (sched.none) {
+        state = '❔ 배송일정(서비스) 확인 필요'; color = '#64748b';
+        reply = '확인 후 회신드리겠습니다.';
+      } else {
+        state = '⛔ 금일은 배송일이 아닙니다'; color = '#c0392b';
+        reply = '확인 결과 금일은 배송일이 아닙니다.' + (sched.next ? ' 다음 배송일은 ' + addDow(sched.next) + ' 입니다.' : '');
+      }
+      var h = '<div style="border:1px solid #E2E8F0;border-radius:9px;overflow:hidden;background:#fff">' +
+        '<div style="padding:11px 14px;background:#0B1220;color:#fff"><b style="font-size:14.5px">' + esc(br.name) + '</b>' +
+        '<span style="color:#94A3B8;font-size:12.5px;margin-left:9px">' + esc(br.hot || '') + (br.cold ? '/' + esc(br.cold) : '') +
+        (br.course ? ' · 담당코스 ' + esc(br.course) : '') + (br.method ? ' · ' + esc(br.method) : '') + '</span>' +
+        '<div style="color:#94A3B8;font-size:12px;margin-top:3px">' + esc(br.addr || '') + '</div></div>' +
+        '<div style="padding:12px 14px;font-size:15px;font-weight:800;color:' + color + '">' + state +
+        (sched.next && !doneAt ? '<span style="font-size:12.5px;font-weight:600;color:#64748b;margin-left:10px">다음 배송일 ' + esc(addDow(sched.next)) + '</span>' : '') + '</div>';
+
+      if (mine.length) {
+        h += '<table class="wp-tbl" style="width:100%"><thead><tr><th style="width:120px">배송코스</th><th style="width:90px">기사</th><th style="width:130px">연락처</th><th style="width:90px">진행률</th><th style="width:100px">업무시작</th><th>이 거래처</th></tr></thead><tbody>';
+        mine.forEach(function(d) {
+          var pn = ph[d.driver] || '';
+          h += '<tr><td>' + esc(d.course) + '</td><td><b>' + esc(d.driver) + '</b></td>' +
+            '<td>' + (pn ? ('<a href="tel:' + esc(pn) + '" style="color:#1f4e78;font-weight:700;text-decoration:none">' + esc(pn) + '</a> <button class="wp-act __wpDtCp" data-p="' + esc(pn) + '" style="height:22px;font-size:11px;padding:0 6px">복사</button>') : '<span style="color:#94a3b8">-</span>') + '</td>' +
+            '<td>' + esc(d.rate || '-') + '</td><td>' + esc(d.start || '-') + '</td>' +
+            '<td>' + (d.stop && d.stop.found ? ('<b style="color:#0a7d47">완료 ' + esc(d.stop.done || d.stop.start) + '</b>') : '<span style="color:#b45309">미완료</span>') + '</td></tr>';
+        });
+        h += '</tbody></table>';
+      } else {
+        h += '<div style="padding:12px 14px;color:#64748b;font-size:13px">금일 이 거래처를 도는 기사 배정이 조회되지 않습니다.</div>';
+      }
+      h += '<div style="padding:12px 14px;border-top:1px solid #E2E8F0">' +
+        '<div style="font-size:12.5px;color:#475569;font-weight:700;margin-bottom:5px">회신 문구</div>' +
+        '<textarea id="__wpDtMsg" class="wp-inp" style="width:100%;min-height:58px">' + esc(reply) + '</textarea>' +
+        '<button id="__wpDtCpMsg" class="wp-btn gh" style="margin-top:7px">회신문구 복사</button></div></div>';
+      R.innerHTML = h;
+      [].forEach.call(R.querySelectorAll('.__wpDtCp'), function(b) {
+        b.onclick = function() { navigator.clipboard.writeText(b.getAttribute('data-p')).then(function() { toast('연락처 복사됨', '#0a7d47'); }); };
+      });
+      document.getElementById('__wpDtCpMsg').onclick = function() {
+        navigator.clipboard.writeText(document.getElementById('__wpDtMsg').value).then(function() { toast('회신문구 복사됨', '#0a7d47'); });
+      };
+    }
   }
 
   function viewSchedBulk() {
