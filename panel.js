@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.11 12:34';
+  var VERSION = '26.08.11 14:45';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -1271,6 +1271,8 @@
       b.onclick = function() {
         var a = b.getAttribute('data-a');
         closeActMenu();
+        /* 배송시간문의는 먼저 조회한다 — 이미 완료된 건이면 요청을 만들 이유가 없다 */
+        if (a === '배송시간문의') { openDeliveryTime(FOUND[bid]); return; }
         openForm(a, FOUND[bid]);
       };
     });
@@ -3984,7 +3986,7 @@ document.getElementById('__wpSave').onclick = function() {
       var mine = rows.filter(function(r) { return nn(r.branch).indexOf(nn(br.name)) > -1; });
       if (!mine.length && rows.length) { mine = rows; }
       if (!mine.length) {
-        return dtNextDay(br).then(function(sc) { return dtRender(br, sc, [], {}); });
+        return dtNextDay(br).then(function(sc) { return dtRender(br, sc, [], {}, inReview); });
       }
       return Promise.all([
         mapLimit(mine, 3, function(r) {
@@ -3995,14 +3997,14 @@ document.getElementById('__wpSave').onclick = function() {
           });
         }),
         dtPhones()
-      ]).then(function(res) { return dtRender(br, { today: true, next: '', none: false }, res[0], res[1]); });
+      ]).then(function(res) { return dtRender(br, { today: true, next: '', none: false }, res[0], res[1], inReview); });
     }).catch(function(e) {
       var R = document.getElementById('__wpDtR');
       if (R) { R.innerHTML = '<div style="color:#b00;padding:12px">' + esc((e && e.message) || e) + '</div>'; }
     });
   }
 
-  function dtRender(br, sched, rows, ph) {
+  function dtRender(br, sched, rows, ph, inReview) {
     var R = document.getElementById('__wpDtR');
     if (!R) { return; }
     var doneRow = rows.filter(function(r) { return r.status === '완료'; })[0] || null;
@@ -4035,14 +4037,14 @@ document.getElementById('__wpSave').onclick = function() {
       (mer ? '<span style="font-size:12.5px;font-weight:600;color:#64748b;margin-left:10px">' + esc(mer) + ' 배송</span>' : '') +
       (sched.next && !doneRow ? '<span style="font-size:12.5px;font-weight:600;color:#64748b;margin-left:10px">다음 배송일 ' + esc(addDow(sched.next)) + '</span>' : '') + '</div>';
     if (rows.length) {
-      h += '<table class="wp-tbl" style="width:100%"><thead><tr><th style="width:110px">배송코스</th><th style="width:80px">기사</th><th style="width:135px">연락처</th><th style="width:60px">순번</th><th style="width:70px">상태</th><th style="width:80px">업무시작</th><th style="width:80px">완료</th><th style="width:70px">진행률</th></tr></thead><tbody>';
+      h += '<table class="wp-tbl" style="width:100%"><thead><tr><th style="width:110px">배송코스</th><th style="width:80px">기사</th>' + (IS_ADMIN ? '<th style="width:135px">연락처</th>' : '') + '<th style="width:60px">순번</th><th style="width:70px">상태</th><th style="width:80px">업무시작</th><th style="width:80px">완료</th><th style="width:70px">진행률</th></tr></thead><tbody>';
       rows.forEach(function(r) {
-        var pn = ph[r.driver] || '';
+        var pn = IS_ADMIN ? (ph[r.driver] || '') : '';   /* 연락처는 물류팀만 */
         var stStart = (r.stop && r.stop.start) || '';
         var stDone = (r.stop && r.stop.done) || '';
         var sc = r.status === '완료' ? '#0a7d47' : (r.status === '출발' ? '#1f4e78' : '#b45309');
         h += '<tr><td>' + esc(r.course) + '</td><td><b>' + esc(r.driver) + '</b></td>' +
-          '<td>' + (pn ? ('<a href="tel:' + esc(pn) + '" style="color:#1f4e78;font-weight:700;text-decoration:none">' + esc(pn) + '</a> <button class="wp-act __wpDtCp" data-p="' + esc(pn) + '" style="height:22px;font-size:11px;padding:0 6px">복사</button>') : '<span style="color:#94a3b8">-</span>') + '</td>' +
+          (IS_ADMIN ? ('<td>' + (pn ? ('<a href="tel:' + esc(pn) + '" style="color:#1f4e78;font-weight:700;text-decoration:none">' + esc(pn) + '</a> <button class="wp-act __wpDtCp" data-p="' + esc(pn) + '" style="height:22px;font-size:11px;padding:0 6px">복사</button>') : '<span style="color:#94a3b8">-</span>') + '</td>') : '') +
           '<td>' + esc(r.seq || '-') + '</td>' +
           '<td><b style="color:' + sc + '">' + esc(r.status || '-') + '</b></td>' +
           '<td>' + (stStart ? esc(stStart) : '<span style="color:#94a3b8">-</span>') + '</td>' +
@@ -4063,17 +4065,24 @@ document.getElementById('__wpSave').onclick = function() {
     } else {
       h += '<div style="padding:10px 2px;color:#64748b;font-size:13px">금일 이 거래처의 배송 배정이 없습니다.</div>';
     }
-    h += '<div style="margin-top:12px;padding-top:11px;border-top:1px solid #E2E8F0">' +
-      '<div style="font-size:12.5px;color:#475569;font-weight:700;margin-bottom:5px">회신 문구</div>' +
-      '<textarea id="__wpDtMsg" class="wp-inp" style="width:100%;min-height:56px">' + esc(reply) + '</textarea>' +
-      '<button id="__wpDtCpMsg" class="wp-btn pri" style="margin-top:7px">회신문구 복사</button></div>';
+    /* 완료면 여기서 끝. 미완료면 물류팀에 확인 요청을 넣는다. */
+    if (!doneRow && !inReview) {
+      h += '<div style="margin-top:12px;padding-top:11px;border-top:1px solid #E2E8F0">' +
+        '<div style="font-size:12.5px;color:#475569;line-height:1.7;margin-bottom:8px">아직 배송이 완료되지 않았습니다. 물류팀에 확인을 요청하면 담당 기사에게 확인 후 회신드립니다.</div>' +
+        '<button id="__wpDtReq" class="wp-btn pri">물류팀에 확인 요청</button></div>';
+    }
     R.innerHTML = h;
     [].forEach.call(R.querySelectorAll('.__wpDtCp'), function(b) {
       b.onclick = function() { navigator.clipboard.writeText(b.getAttribute('data-p')).then(function() { toast('연락처 복사됨', '#0a7d47'); }); };
     });
-    document.getElementById('__wpDtCpMsg').onclick = function() {
-      navigator.clipboard.writeText(document.getElementById('__wpDtMsg').value).then(function() { toast('회신문구 복사됨', '#0a7d47'); });
-    };
+    var rq = document.getElementById('__wpDtReq');
+    if (rq) {
+      rq.onclick = function() {
+        var ovx = document.getElementById('__wpDtOv');
+        if (ovx) { ovx.remove(); }
+        openForm('배송시간문의', br);
+      };
+    }
   }
 
   function viewSchedBulk() {
