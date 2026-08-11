@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.11 12:24';
+  var VERSION = '26.08.11 12:29';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -3809,13 +3809,20 @@ document.getElementById('__wpSave').onclick = function() {
        4) 기사업무상세  : 그 거래처 블록의 완료시간 / 배송추적: 기사 연락처 */
   var DT_PHONE = null;
 
+  /* 서비스 관리 > 배송기사 관리 — 이름 → 휴대전화. 재직자를 우선한다. 한 번 받으면 캐싱. */
   function dtPhones() {
     if (DT_PHONE) { return Promise.resolve(DT_PHONE); }
-    return fetch('/office/delivery-manager/v2/tracking').then(function(r) { return r.text(); }).then(function(html) {
+    return fetch('/office/delivery-manager/v2/driver?size=500&page=1&searchYN=Y').then(function(r) { return r.text(); }).then(function(html) {
       var doc = new DOMParser().parseFromString(html, 'text/html');
-      var txt = (doc.body && doc.body.innerText) || doc.body.textContent || '';
-      var map = {}, re = /([가-힣]{2,5})\s*\[[^\]]*?(01[0-9\-]{7,12})\s*\]/g, m;
-      while ((m = re.exec(txt))) { map[m[1]] = m[2].replace(/-/g, ''); }
+      var map = {};
+      [].slice.call(doc.querySelectorAll('table tbody tr')).forEach(function(tr) {
+        var td = [].slice.call(tr.querySelectorAll('td'));
+        if (td.length < 7) { return; }
+        function t(i) { return (td[i] ? (td[i].innerText || '') : '').replace(/\s+/g, ' ').trim(); }
+        var nm = t(2), ph = t(3).replace(/[^0-9]/g, ''), live = /재직/.test(t(6));
+        if (!nm || !ph) { return; }
+        if (!map[nm] || live) { map[nm] = ph; }   /* 동명이인이면 재직자로 덮어쓴다 */
+      });
       DT_PHONE = map;
       return map;
     }).catch(function() { DT_PHONE = {}; return DT_PHONE; });
@@ -3861,24 +3868,30 @@ document.getElementById('__wpSave').onclick = function() {
     }).catch(function() { return { mid: '', rate: '', start: '' }; });
   }
 
-  /* 기사업무 상세 — 그 거래처 블록의 완료시간을 찾는다. 마크업이 바뀌어도 버티게 텍스트로 자른다. */
+  /* 기사업무 상세 — 스톱 하나당 <table> 하나다. 그 거래처 테이블에서 완료시각과 진열 전/후 사진을 뽑는다. */
   function dtStop(mid, day, branchName) {
     var u = '/office/delivery-manager/v2/manager-tasks/details?deliveryManagerId=' + encodeURIComponent(mid) +
       '&deliveryDateBegin=' + day + '&deliveryDateEnd=' + day;
     return fetch(u).then(function(r) { return r.text(); }).then(function(html) {
       var doc = new DOMParser().parseFromString(html, 'text/html');
-      var txt = (doc.body && doc.body.innerText) || doc.body.textContent || '';
-      var parts = txt.split(/(?=\d{4}-\d{2}-\d{2}\s*\[)/);
       var want = nn(branchName);
-      for (var i = 0; i < parts.length; i++) {
-        var b = parts[i];
-        if (nn(b).indexOf(want) < 0) { continue; }
-        var done = (b.match(/완료\s*시간\s*[:\s]*([0-2]?\d:[0-5]\d(?::[0-5]\d)?)/) || [])[1] || '';
-        var st = (b.match(/업무시작\s*시간\s*[:\s]*([0-2]?\d:[0-5]\d(?::[0-5]\d)?)/) || [])[1] || '';
-        return { found: true, done: done, start: st };
-      }
-      return { found: false, done: '', start: '' };
-    }).catch(function() { return { found: false, done: '', start: '' }; });
+      var tbs = [].slice.call(doc.querySelectorAll('table')).filter(function(tb) {
+        return nn(tb.innerText || tb.textContent || '').indexOf(want) > -1;
+      });
+      if (!tbs.length) { return { found: false, done: '', start: '', before: '', after: '' }; }
+      var tb = tbs[tbs.length - 1];
+      var txt = (tb.innerText || tb.textContent || '');
+      var done = (txt.match(/완료\s*시간\s*[:\s]*([0-2]?\d:[0-5]\d(?::[0-5]\d)?)/) || [])[1] || '';
+      var st = (txt.match(/업무시작\s*시간\s*[:\s]*([0-2]?\d:[0-5]\d(?::[0-5]\d)?)/) || [])[1] || '';
+      var before = '', after = '';
+      [].slice.call(tb.querySelectorAll('tr')).forEach(function(tr) {
+        if (!/진열/.test(tr.innerText || '')) { return; }
+        var im = [].slice.call(tr.querySelectorAll('img')).map(function(x) { return x.getAttribute('src') || ''; }).filter(Boolean);
+        if (im[0]) { before = im[0]; }
+        if (im[1]) { after = im[1]; }
+      });
+      return { found: true, done: done, start: st, before: before, after: after };
+    }).catch(function() { return { found: false, done: '', start: '', before: '', after: '' }; });
   }
 
   function dtNextDay(br) {
@@ -3978,6 +3991,16 @@ document.getElementById('__wpSave').onclick = function() {
           '<td>' + esc(r.rate || '-') + '</td></tr>';
       });
       h += '</tbody></table>';
+      /* 진열 전/후 사진 — 완료 건이면 여기서 바로 눈으로 확인된다 */
+      var pic = rows.filter(function(r) { return r.stop && (r.stop.before || r.stop.after); })[0];
+      if (pic) {
+        var cell = function(lab, src) {
+          return '<div style="text-align:center"><div style="font-size:12px;color:#475569;font-weight:700;margin-bottom:4px">' + lab + '</div>' +
+            (src ? ('<a href="' + esc(src) + '" target="_blank" rel="noopener"><img src="' + esc(src) + '" style="max-width:210px;max-height:210px;border:1px solid #E2E8F0;border-radius:8px;display:block"></a>')
+                 : '<div style="width:150px;height:110px;border:1px dashed #CBD5E1;border-radius:8px;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center">사진 없음</div>') + '</div>';
+        };
+        h += '<div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">' + cell('진열 전', pic.stop.before) + cell('진열 후', pic.stop.after) + '</div>';
+      }
     } else {
       h += '<div style="padding:10px 2px;color:#64748b;font-size:13px">금일 이 거래처의 배송 배정이 없습니다.</div>';
     }
