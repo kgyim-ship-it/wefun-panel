@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.12 15:15';
+  var VERSION = '26.08.12 17:34';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -2550,7 +2550,7 @@ document.getElementById('__wpSave').onclick = function() {
     }).join('') + '</select>';
     VIEW.innerHTML = '<div style="margin-bottom:10px"><div style="margin-bottom:8px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">' + filters.map(function(f) {
       return '<button class="wp-btn ' + (f === REV_STATUS ? 'pri' : 'gh') + ' __wpFt" data-f="' + f + '" style="padding:7px 13px">' + f + '</button>';
-    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 ' + (group === 'pick' ? '수기피킹' : '코드전달') + ' 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + (ALLW ? '<div style="margin-top:7px;padding:9px 12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E;line-height:1.65"><b>대기 — 아직 처리 안 된 요청 전부입니다.</b><br>기간과 상관없이 나옵니다. 어제·지난주에 들어온 건도 처리할 때까지 계속 보입니다.</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
+    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 ' + (group === 'pick' ? '수기피킹' : '코드전달') + ' 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + (ALLW ? '<div style="margin-top:7px;padding:9px 12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E;line-height:1.65"><b>대기 — 아직 처리 안 된 요청 전부입니다.</b><br>기간과 상관없이 나옵니다. 어제·지난주에 들어온 건도 처리할 때까지 계속 보입니다.</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' + (ALLW ? '<button id="__wpBulkAp" class="wp-btn ok" style="padding:7px 13px">✓ 일괄승인</button><button id="__wpBulkRj" class="wp-btn dg" style="padding:7px 13px">일괄반려</button><span style="color:#cbd5e1">|</span>' : '') + '<button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
     document.getElementById('__wpRF').value = REV_DR.from;
     document.getElementById('__wpRT').value = REV_DR.to;
     if (NODATE) {  /* 대기·미전달은 기간 개념이 없다 — 날짜칸 잠금 */
@@ -2594,6 +2594,75 @@ document.getElementById('__wpSave').onclick = function() {
       });
     }
     document.getElementById('__wpRGo').onclick = load;
+    /* ---- 일괄 승인/반려 (대기 화면 전용) ----
+       신규코드발급은 건별로 우린담당 입력이 필요해 일괄에서 제외한다.
+       주소변경의 '코스도 바꿀까요?' 질문은 일괄에선 건너뛴다(코스 유지). */
+    function bulkSelIds() {
+      var bx = document.getElementById('__wpRevList');
+      var m = {};
+      [].forEach.call(bx ? bx.querySelectorAll('.__wpSel:checked') : [], function(c) { m[c.getAttribute('data-id')] = 1; });
+      return m;
+    }
+    function bulkRun(items, worker, label, btn) {
+      var o0 = btn.textContent, i = 0, ok = 0, fails = [];
+      btn.disabled = true;
+      var other = document.getElementById(btn.id === '__wpBulkAp' ? '__wpBulkRj' : '__wpBulkAp');
+      if (other) { other.disabled = true; }
+      function fin() {
+        btn.disabled = false; btn.textContent = o0;
+        if (other) { other.disabled = false; }
+        toast(label + ' 완료 · 성공 ' + ok + (fails.length ? ' / 실패 ' + fails.length : ''), fails.length ? '#b45309' : '#0a7d47');
+        if (fails.length) { alert(label + ' 실패 ' + fails.length + '건 — 목록에 남아 있습니다.\n\n' + fails.join('\n')); }
+      }
+      function step() {
+        if (i >= items.length) { fin(); return; }
+        var it = items[i++];
+        btn.textContent = label + ' ' + i + '/' + items.length;
+        worker(it).then(function() {
+          ok++; dropReqRow(it.id);
+        }).catch(function(e) {
+          fails.push((it.branchName || it.id) + ' — ' + ((e && e.message) || e));
+        }).then(function() { setTimeout(step, 400); });   /* 웹앱 직렬 큐 배려 — 몰아치면 스로틀 걸린다 */
+      }
+      step();
+    }
+    var _bAp = document.getElementById('__wpBulkAp');
+    if (_bAp) {
+      _bAp.onclick = function() {
+        var ids = bulkSelIds();
+        var all = cache.filter(function(it) { return ids[it.id] && it.status === '대기'; });
+        var sel = all.filter(function(it) { return it.action !== '신규코드발급'; });
+        var skip = all.length - sel.length;
+        if (!sel.length) { toast(skip ? '신규코드발급은 일괄승인 불가 — 건별로 승인하세요' : '체크된 건이 없습니다', '#c0392b'); return; }
+        var byAct = {};
+        sel.forEach(function(it) { byAct[it.action] = (byAct[it.action] || 0) + 1; });
+        var msg = '[일괄승인] ' + sel.length + '건\n' +
+          Object.keys(byAct).map(function(k) { return ' · ' + k + ' ' + byAct[k] + '건'; }).join('\n') +
+          (skip ? '\n\n※ 신규코드발급 ' + skip + '건 제외 (우린담당 입력이 필요해 건별 승인)' : '') +
+          '\n\n배송 계열은 위펀 오피스에 바로 반영되고, 건별로 슬랙 회신이 나갑니다.\n진행할까요?';
+        if (!confirm(msg)) { return; }
+        bulkRun(sel, function(it) {
+          return runActionCore(it).then(function(note) {
+            return decideReq(it.id, '완료', note || '', it.slackTs);
+          });
+        }, '일괄승인', this);
+      };
+    }
+    var _bRj = document.getElementById('__wpBulkRj');
+    if (_bRj) {
+      _bRj.onclick = function() {
+        var ids = bulkSelIds();
+        var sel = cache.filter(function(it) { return ids[it.id] && it.status === '대기'; });
+        if (!sel.length) { toast('체크된 건이 없습니다', '#c0392b'); return; }
+        var note = prompt('[일괄반려] ' + sel.length + '건에 적용할 반려 사유를 입력하세요.', '');
+        if (note === null) { return; }
+        if (!note.trim()) { toast('반려 사유는 필수입니다', '#c0392b'); return; }
+        if (!confirm('[일괄반려] ' + sel.length + '건\n사유: ' + note + '\n\n건별로 요청자에게 슬랙 회신이 나갑니다.\n진행할까요?')) { return; }
+        bulkRun(sel, function(it) {
+          return decideReq(it.id, '반려', note, it.slackTs);
+        }, '일괄반려', this);
+      };
+    }
     document.getElementById('__wpRCsv').onclick = function() {
       reqCsv(cache, '배송요청_' + REV_STATUS + '_' + REV_DR.from + '~' + REV_DR.to + '.csv');
     };
@@ -3068,6 +3137,31 @@ document.getElementById('__wpSave').onclick = function() {
     });
   }
 
+  /* 배송일정 생성기간 창 — 정보수정 페이지의 최초계약일(contractDate) + 생성기간(period 개월).
+     이 창이 지난 서비스는 주기를 재생성해도 일정이 0건 생성되는데 폼 제출은 성공해서
+     '완료'로 넘어가버린다(성공처럼 보이는 실패). 승인 전에 계산해서 막는다. */
+  function schedWindow(sid) {
+    return fetch('/office/sales/service/update/' + sid).then(function(r) { return r.text(); }).then(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      function v(n) { var e = doc.querySelector('[name="' + n + '"]'); return e ? (e.value || '') : ''; }
+      var per = parseInt(v('period'), 10);
+      var cd = v('contractDate');
+      if (!per || per <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(cd)) { return null; }   /* 못 읽으면 판단 보류(막지 않음) */
+      var d = new Date(cd + 'T00:00:00');
+      d.setMonth(d.getMonth() + per);
+      var p2 = function(n) { return (n < 10 ? '0' : '') + n; };
+      return { period: per, contract: cd, expire: d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) };
+    }).catch(function() { return null; });
+  }
+  function schedWindowGuard(sid) {
+    return schedWindow(sid).then(function(w) {
+      if (w && w.expire <= todayStr()) {
+        throw new Error('배송일정 생성기간 만료 — 최초계약일 ' + w.contract + ' + ' + w.period + '개월 = ' + w.expire + ' 까지만 일정이 생성됩니다.\n[영업 > 서비스 > 정보수정]에서 배송일정 생성기간을 연장한 뒤 다시 승인하세요.');
+      }
+      return w;
+    });
+  }
+
   function runActionCore(it) {
     if (/조식/.test(String(it.branchName || '')) && (it.action === '배송주기변경' || it.action === '배송일정생성' || it.action === '배송일정변경' || it.action === '배송일정삭제')) {
       return Promise.resolve('조식 건 · 위펀오피스 미반영 → 조식팀 일정반영 요청');
@@ -3132,8 +3226,18 @@ document.getElementById('__wpSave').onclick = function() {
           return s.trim().charAt(0);
         }).filter(Boolean) : [];
         if (!cyc) throw new Error('변경주기 없음');
-        return driveCycle(sid, cyc, days).then(function() {
-          return cyc + (days.length ? '(' + days.join(',') + ')' : '') + ' 재생성';
+        var noGen = (cyc === '계획일정없음' || cyc === '수기일정생성');
+        return (noGen ? Promise.resolve(null) : schedWindowGuard(sid)).then(function() {
+          return driveCycle(sid, cyc, days);
+        }).then(function() {
+          if (noGen) { return cyc + ' 재생성'; }
+          /* 사후 검증 — 재생성 후 오늘 이후 일정이 실제로 찍혔는지 확인. 0건이면 승인 실패로 남긴다 */
+          return waitScheduleReady(sid, 5).then(function(evs) {
+            var t = todayStr();
+            var fut = (evs || []).filter(function(e) { return e.deliveryDate >= t; });
+            if (!fut.length) { throw new Error('주기를 재생성했지만 일정이 0건입니다 — [영업 > 서비스 > 정보수정]의 배송일정 생성기간을 확인하세요.'); }
+            return cyc + (days.length ? '(' + days.join(',') + ')' : '') + ' 재생성 (' + fut.length + '건 확인)';
+          });
         });
       });
     }
@@ -3185,6 +3289,7 @@ document.getElementById('__wpSave').onclick = function() {
         var begin1 = okBegin ? (begin.slice(0, 8) + '01') : begin;
         var noGen = (cyc2 === '계획일정없음' || cyc2 === '수기일정생성');
         if (cyc2) {
+          if (!noGen) { chain = chain.then(function() { return schedWindowGuard(sid); }); }
           chain = chain.then(function() {
             return driveCycle(sid, cyc2, days2, begin1);
           });
