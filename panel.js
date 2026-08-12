@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.12 09:15';
+  var VERSION = '26.08.12 09:24';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -3174,8 +3174,8 @@ document.getElementById('__wpSave').onclick = function() {
           return dtStop(mi.mid, dday, it.branchName).then(function(st) {
             if (st.start) { base.push('업무시작 ' + st.start); }
             if (st.done) { base.push('완료 ' + st.done); }
-            if (st.before) { base.push('진열전 ' + st.before); }
-            if (st.after) { base.push('진열후 ' + st.after); }
+            (st.before || []).forEach(function(u) { base.push('진열전 ' + u); });
+            (st.after || []).forEach(function(u) { base.push('진열후 ' + u); });
             return base.join(' · ');
           });
         });
@@ -3937,20 +3937,30 @@ document.getElementById('__wpSave').onclick = function() {
       var tbs = [].slice.call(doc.querySelectorAll('table')).filter(function(tb) {
         return nn(tb.innerText || tb.textContent || '').indexOf(want) > -1;
       });
-      if (!tbs.length) { return { found: false, done: '', start: '', before: '', after: '' }; }
+      if (!tbs.length) { return { found: false, done: '', start: '', before: [], after: [] }; }
       var tb = tbs[tbs.length - 1];
       var txt = (tb.innerText || tb.textContent || '');
       var done = (txt.match(/완료\s*시간\s*[:\s]*([0-2]?\d:[0-5]\d(?::[0-5]\d)?)/) || [])[1] || '';
       var st = (txt.match(/업무시작\s*시간\s*[:\s]*([0-2]?\d:[0-5]\d(?::[0-5]\d)?)/) || [])[1] || '';
-      var before = '', after = '';
+      /* 한 라벨에 사진이 여러 장일 수 있다. 행 전체에서 순서대로 집으면 진열전 2번째가 진열후로 밀린다.
+         → 라벨 셀을 만나면 현재 라벨을 바꾸고, 그 뒤 셀의 이미지를 해당 라벨에 담는다. */
+      var before = [], after = [];
       [].slice.call(tb.querySelectorAll('tr')).forEach(function(tr) {
         if (!/진열/.test(tr.innerText || '')) { return; }
-        var im = [].slice.call(tr.querySelectorAll('img')).map(function(x) { return x.getAttribute('src') || ''; }).filter(Boolean);
-        if (im[0]) { before = im[0]; }
-        if (im[1]) { after = im[1]; }
+        var cur = '';
+        [].slice.call(tr.querySelectorAll('td,th')).forEach(function(c) {
+          var lab = (c.innerText || '').replace(/\s+/g, '');
+          if (lab.indexOf('진열전') > -1) { cur = 'b'; }
+          else if (lab.indexOf('진열후') > -1) { cur = 'a'; }
+          if (!cur) { return; }
+          var ims = [].slice.call(c.querySelectorAll('img')).map(function(x) { return x.getAttribute('src') || ''; }).filter(Boolean);
+          if (!ims.length) { return; }
+          var tgt = (cur === 'b') ? before : after;
+          ims.forEach(function(u) { if (tgt.indexOf(u) < 0) { tgt.push(u); } });
+        });
       });
       return { found: true, done: done, start: st, before: before, after: after };
-    }).catch(function() { return { found: false, done: '', start: '', before: '', after: '' }; });
+    }).catch(function() { return { found: false, done: '', start: '', before: [], after: [] }; });
   }
 
   function dtNextDay(br) {
@@ -4067,14 +4077,17 @@ document.getElementById('__wpSave').onclick = function() {
       });
       h += '</tbody></table>';
       /* 진열 전/후 사진 — 완료 건이면 여기서 바로 눈으로 확인된다 */
-      var pic = rows.filter(function(r) { return r.stop && (r.stop.before || r.stop.after); })[0];
+      var pic = rows.filter(function(r) { return r.stop && ((r.stop.before || []).length || (r.stop.after || []).length); })[0];
       if (pic) {
-        var cell = function(lab, src) {
-          return '<div style="text-align:center"><div style="font-size:12px;color:#475569;font-weight:700;margin-bottom:4px">' + lab + '</div>' +
-            (src ? ('<a href="' + esc(src) + '" target="_blank" rel="noopener"><img src="' + esc(src) + '" style="max-width:210px;max-height:210px;border:1px solid #E2E8F0;border-radius:8px;display:block"></a>')
-                 : '<div style="width:150px;height:110px;border:1px dashed #CBD5E1;border-radius:8px;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center">사진 없음</div>') + '</div>';
+        var group = function(lab, arr) {
+          arr = arr || [];
+          var imgs = arr.length
+            ? arr.map(function(src) { return '<a href="' + esc(src) + '" target="_blank" rel="noopener"><img src="' + esc(src) + '" style="max-width:190px;max-height:190px;border:1px solid #E2E8F0;border-radius:8px;display:block"></a>'; }).join('')
+            : '<div style="width:150px;height:110px;border:1px dashed #CBD5E1;border-radius:8px;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center">사진 없음</div>';
+          return '<div><div style="font-size:12px;color:#475569;font-weight:700;margin-bottom:4px">' + lab + (arr.length > 1 ? ' <span style="color:#94a3b8;font-weight:600">' + arr.length + '장</span>' : '') + '</div>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap">' + imgs + '</div></div>';
         };
-        h += '<div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">' + cell('진열 전', pic.stop.before) + cell('진열 후', pic.stop.after) + '</div>';
+        h += '<div style="display:flex;gap:20px;margin-top:12px;flex-wrap:wrap">' + group('진열 전', pic.stop.before) + group('진열 후', pic.stop.after) + '</div>';
       }
     } else {
       h += '<div style="padding:10px 2px;color:#64748b;font-size:13px">금일 이 거래처의 배송 배정이 없습니다.</div>';
