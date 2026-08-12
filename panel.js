@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.12 09:24';
+  var VERSION = '26.08.12 09:44';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -136,7 +136,8 @@
         k: '변경주기',
         label: '변경 배송주기',
         type: 'select',
-        opts: CYCLES
+        opts: CYCLES,
+        req: true
       }, {
         k: '변경요일',
         label: '변경 배송요일(매주 계열)',
@@ -152,7 +153,8 @@
       fields: [{
         k: '배송일',
         label: '배송일(여러 날짜 추가 가능)',
-        type: 'dates'
+        type: 'dates',
+        req: true
       }, {
         k: '비고',
         label: '비고',
@@ -164,11 +166,13 @@
       fields: [{
         k: '기존배송일',
         label: '기존 배송일',
-        type: 'date'
+        type: 'date',
+        req: true
       }, {
         k: '변경배송일',
         label: '변경할 날짜',
-        type: 'date'
+        type: 'date',
+        req: true
       }, {
         k: '사유',
         label: '사유',
@@ -180,7 +184,8 @@
       fields: [{
         k: '삭제일',
         label: '삭제할 배송일(여러 날짜 추가 가능)',
-        type: 'dates'
+        type: 'dates',
+        req: true
       }, {
         k: '사유',
         label: '사유',
@@ -200,7 +205,8 @@
         k: '서비스구분',
         label: '서비스 구분',
         type: 'select',
-        opts: ['스낵24', '조식24']
+        opts: ['스낵24', '조식24'],
+        req: true
       }, {
         k: '월예산',
         label: '월 예산 (오피스 자동)',
@@ -209,30 +215,35 @@
       }, {
         k: '담당자성함',
         label: '담당자 성함',
-        type: 'text'
+        type: 'text',
+        req: true
       }, {
         k: '담당자연락처',
         label: '담당자 연락처',
-        type: 'text'
+        type: 'text',
+        req: true
       }, {
         k: '요청주기',
         label: '요청 배송주기(정기)',
         type: 'select',
-        opts: CYCLES
+        opts: CYCLES,
+        req: true
       }, {
         k: '정기배송요일',
         label: '정기 배송요일(매주 계열)',
         type: 'days'
       }, {
         k: '첫배송희망일',
-        label: '첫 배송희망일 (영업일 D+3부터 선택)',
+        label: '첫 배송희망일',
         type: 'date',
-        min3: true
+        min3: true,
+        req: true
       }, {
         k: '배송형태',
         label: '배송형태',
         type: 'select',
-        opts: ['택배', '방문진열', '보냉가방 적재']
+        opts: ['택배', '방문진열', '보냉가방 적재'],
+        req: true
       }, {
         k: '요청설비',
         label: '요청 설비 (복수 선택)',
@@ -241,11 +252,14 @@
       }, {
         k: '설치일',
         label: '설치 희망일 (자산 · 전체 날짜 선택 가능)',
-        type: 'date'
+        type: 'date',
+        req: true,
+        reqIf: '요청설비'
       }, {
         k: '배송특이사항',
         label: '배송 특이사항 및 요청사항',
-        type: 'textarea'
+        type: 'textarea',
+        req: true
       }]
     },
     '수기피킹': {
@@ -257,7 +271,8 @@
       fields: [{
         k: '변경주소',
         label: '변경 주소 (신주소)',
-        type: 'addr'
+        type: 'addr',
+        req: true
       }, {
         k: '변경상세주소',
         label: '상세주소 (동/호 등)',
@@ -274,7 +289,8 @@
       fields: [{
         k: '변경거래처명',
         label: '변경 거래처명 (신규 상호)',
-        type: 'text'
+        type: 'text',
+        req: true
       }, {
         k: '사유',
         label: '변경 사유',
@@ -288,11 +304,13 @@
       fields: [{
         k: '담당자성함',
         label: '담당자 성함',
-        type: 'text'
+        type: 'text',
+        req: true
       }, {
         k: '담당자연락처',
         label: '담당자 연락처',
-        type: 'text'
+        type: 'text',
+        req: true
       }, {
         k: '사유',
         label: '변경 사유',
@@ -313,7 +331,8 @@
       fields: [{
         k: '변경코스',
         label: '변경 코스 (우린배송담당)',
-        type: 'text'
+        type: 'text',
+        req: true
       }, {
         k: '사유',
         label: '변경 사유',
@@ -1448,25 +1467,27 @@
       };
     });
   } /* ---------- 요청 폼 ---------- */
+  function flab(f) { return esc(f.label) + (f.req ? ' <span style="color:#dc2626" title="필수">*</span>' : ''); }
+
   function fieldHtml(f) {
     var id = '__wpf_' + f.k;
-    if (f.type === 'dates') return '<div class="wp-fld"><span>' + esc(f.label) + '</span><div style="flex:1"><div style="display:flex;gap:6px"><input type="date" id="' + id + '_pick" class="wp-inp" style="flex:1"><button type="button" id="' + id + '_add" class="wp-btn gh" style="white-space:nowrap">+ 추가</button></div><div id="' + id + '_chips" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px"></div><input type="hidden" id="' + id + '"></div></div>';
-    if (f.type === 'select') return '<div class="wp-fld"><span>' + esc(f.label) + '</span><select id="' + id + '" class="wp-inp"><option value=""></option>' + f.opts.map(function(o) {
+    if (f.type === 'dates') return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1"><div style="display:flex;gap:6px"><input type="date" id="' + id + '_pick" class="wp-inp" style="flex:1"><button type="button" id="' + id + '_add" class="wp-btn gh" style="white-space:nowrap">+ 추가</button></div><div id="' + id + '_chips" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px"></div><input type="hidden" id="' + id + '"></div></div>';
+    if (f.type === 'select') return '<div class="wp-fld"><span>' + flab(f) + '</span><select id="' + id + '" class="wp-inp"><option value=""></option>' + f.opts.map(function(o) {
       return '<option>' + esc(o) + '</option>';
     }).join('') + '</select></div>';
-    if (f.type === 'days') return '<div class="wp-fld"><span>' + esc(f.label) + '</span><div style="flex:1;position:relative"><input id="' + id + '" class="wp-inp" readonly placeholder="요일 선택(복수 가능)" style="width:100%;cursor:pointer"><div id="' + id + '_dd" style="display:none;position:absolute;z-index:9;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:9px;padding:8px;margin-top:3px;box-shadow:0 10px 30px rgba(0,0,0,.18)">' + DAYS.map(function(d) {
+    if (f.type === 'days') return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;position:relative"><input id="' + id + '" class="wp-inp" readonly placeholder="요일 선택(복수 가능)" style="width:100%;cursor:pointer"><div id="' + id + '_dd" style="display:none;position:absolute;z-index:9;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:9px;padding:8px;margin-top:3px;box-shadow:0 10px 30px rgba(0,0,0,.18)">' + DAYS.map(function(d) {
       return '<button type="button" class="wp-day" data-d="' + d + '">' + d.slice(0, 1) + '</button>';
     }).join('') + '</div></div></div>';
-    if (f.type === 'multi') return '<div class="wp-fld"><span>' + esc(f.label) + '</span><div style="flex:1;position:relative"><input id="' + id + '" class="wp-inp" readonly placeholder="설비 선택(복수 가능)" style="width:100%;cursor:pointer"><div id="' + id + '_dd" style="display:none;position:absolute;z-index:9;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:9px;padding:6px;margin-top:3px;box-shadow:0 10px 30px rgba(0,0,0,.18);max-height:260px;overflow:auto">' + f.opts.map(function(o) {
+    if (f.type === 'multi') return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;position:relative"><input id="' + id + '" class="wp-inp" readonly placeholder="설비 선택(복수 가능)" style="width:100%;cursor:pointer"><div id="' + id + '_dd" style="display:none;position:absolute;z-index:9;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:9px;padding:6px;margin-top:3px;box-shadow:0 10px 30px rgba(0,0,0,.18);max-height:260px;overflow:auto">' + f.opts.map(function(o) {
       return '<label style="display:block;padding:5px 8px;font-size:13px;cursor:pointer;border-radius:6px"><input type="checkbox" value="' + esc(o) + '" style="margin-right:8px;vertical-align:middle">' + esc(o) + '</label>';
     }).join('') + '</div></div></div>';
-    if (f.type === 'textarea') return '<div style="margin:10px 0"><div style="color:#475569;font-size:13px;margin-bottom:4px">' + esc(f.label) + '</div><textarea id="' + id + '" class="wp-inp" style="width:100%;height:130px;font-family:inherit"></textarea></div>';
-    if (f.type === 'addr') return '<div class="wp-fld"><span>' + esc(f.label) + '</span><div style="flex:1;display:flex;gap:6px"><input id="' + id + '" class="wp-inp" type="text" style="flex:1" placeholder="주소검색 버튼으로 입력"><button type="button" id="' + id + '_btn" class="wp-btn gh" style="padding:7px 12px;white-space:nowrap">주소검색</button></div></div>';
+    if (f.type === 'textarea') return '<div style="margin:10px 0"><div style="color:#475569;font-size:13px;margin-bottom:4px">' + flab(f) + '</div><textarea id="' + id + '" class="wp-inp" style="width:100%;height:130px;font-family:inherit"></textarea></div>';
+    if (f.type === 'addr') return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;gap:6px"><input id="' + id + '" class="wp-inp" type="text" style="flex:1" placeholder="주소검색 버튼으로 입력"><button type="button" id="' + id + '_btn" class="wp-btn gh" style="padding:7px 12px;white-space:nowrap">주소검색</button></div></div>';
     if (f.type === 'date') {
       /* 날짜 고르면 옆에 요일이 바로 뜬다 — 잘못된 요일 선택을 입력 시점에 잡기 위함 */
-      return '<div class="wp-fld"><span>' + esc(f.label) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="date" style="flex:1"><span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span></div></div>';
+      return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="date" style="flex:1"><span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span></div></div>';
     }
-    return '<div class="wp-fld"><span>' + esc(f.label) + '</span><input id="' + id + '" class="wp-inp" type="text"' + (f.ro ? ' readonly style="background:#f1f5f9;color:#475569"' : '') + '></div>';
+    return '<div class="wp-fld"><span>' + flab(f) + '</span><input id="' + id + '" class="wp-inp" type="text"' + (f.ro ? ' readonly style="background:#f1f5f9;color:#475569"' : '') + '></div>';
   }
 
   function openPostcodeModal(cb) {
@@ -1893,6 +1914,22 @@ document.getElementById('__wpSave').onclick = function() {
         vals[f.k] = v;
         if (v) parts.push(f.k + ': ' + v);
       });
+      /* 필수값 검사 — 빈 채로 요청이 올라가면 물류팀이 되물어야 한다 */
+      var miss = (spec.fields || []).filter(function(f) {
+        if (!f.req) { return false; }
+        /* reqIf: 지정한 항목이 채워진 경우에만 필수 (예: 설비가 있어야 설치일이 의미 있음) */
+        if (f.reqIf) {
+          var g = vals[f.reqIf] || '';
+          if (!g || g === '없음') { return false; }
+        }
+        return !vals[f.k];
+      }).map(function(f) { return f.label || f.k; });
+      if (miss.length) {
+        alert('빈 값을 확인하세요.\n\n다음 항목을 입력해주세요\n · ' + miss.join('\n · '));
+        var _fe = document.getElementById('__wpf_' + (spec.fields || []).filter(function(f) { return (f.label || f.k) === miss[0]; })[0].k);
+        if (_fe && _fe.focus) { try { _fe.focus(); } catch (_ff) {} }
+        return;
+      }
       var cycV = vals['변경주기'] || vals['요청주기'] || '',
         dayV = vals['변경요일'] || vals['정기배송요일'] || '';
       if (/^매월/.test(cycV) && dayV && dayV.split(',').filter(Boolean).length > 1) {
