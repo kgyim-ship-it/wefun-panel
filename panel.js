@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.12 14:43';
+  var VERSION = '26.08.12 15:15';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -2588,7 +2588,7 @@ document.getElementById('__wpSave').onclick = function() {
            (서버는 최근순으로 내려주므로 여기서 뒤집는다) */
         cache.sort(function(x, y) { return String(x.ts || '').localeCompare(String(y.ts || '')); });
         REV_CACHE = cache;
-        renderReqTable('__wpRevList', cache, true, { codeSent: PENDOK });
+        renderReqTable('__wpRevList', cache, true, { codeSent: PENDOK, selectable: PEND });
       }).catch(function(e) {
         document.getElementById('__wpRevList').innerHTML = '<div style="color:#b00;padding:10px">' + esc(e.message) + '</div>';
       });
@@ -2597,19 +2597,35 @@ document.getElementById('__wpSave').onclick = function() {
     document.getElementById('__wpRCsv').onclick = function() {
       reqCsv(cache, '배송요청_' + REV_STATUS + '_' + REV_DR.from + '~' + REV_DR.to + '.csv');
     };
+    /* 미전달 화면에서 체크된 건들의 id — 하나도 안 찍었으면 null(=전체) */
+    function selPick() {
+      var bx = document.getElementById('__wpRevList');
+      if (!bx) { return null; }
+      var cbs = bx.querySelectorAll('.__wpSel:checked');
+      if (!cbs.length) { return null; }
+      var m = {};
+      [].forEach.call(cbs, function(c) { m[c.getAttribute('data-id')] = 1; });
+      return m;
+    }
     document.getElementById('__wpRCode').onclick = function() {
+      var selM = selPick();
+      var pool = selM ? cache.filter(function(it) { return selM[it.id]; }) : cache;
       /* 승인 완료된 건만 내보낸다 — 예전엔 '대기' 건까지 섞여 나갔다 */
-      var ok = cache.filter(function(it) { return codeGubun(it.action) && it.status === '완료'; });
-      var notYet = cache.filter(function(it) { return codeGubun(it.action) && it.status !== '완료'; }).length;
-      if (!ok.length) { toast('코드전달 대상(승인 완료된 건)이 없습니다', '#c0392b'); return; }
+      var ok = pool.filter(function(it) { return codeGubun(it.action) && it.status === '완료'; });
+      var notYet = pool.filter(function(it) { return codeGubun(it.action) && it.status !== '완료'; }).length;
+      if (!ok.length) { toast(selM ? '선택한 건 중 코드전달 대상(완료)이 없습니다' : '코드전달 대상(승인 완료된 건)이 없습니다', '#c0392b'); return; }
+      if (selM) { toast('선택한 ' + ok.length + '건만 담습니다', '#1f4e78'); }
       if (notYet && !confirm('아직 승인되지 않은 ' + notYet + '건은 빼고 뽑습니다.\n\n계속할까요?')) return;
       buildCodeXlsx(ok, '코드전달_' + todayStr() + '.xlsx', true, load);
     };
     document.getElementById('__wpRPick').onclick = function() {
+      var selP = selPick();
+      var poolP = selP ? cache.filter(function(it) { return selP[it.id]; }) : cache;
       /* 코드전달과 같은 원칙 — 승인 완료된 건만 담고, 담은 건 전달완료로 표시해 미전달 큐에서 뺀다 */
-      var okp = cache.filter(function(it) { return it.action === '수기피킹' && it.status === '완료'; });
-      var notYetP = cache.filter(function(it) { return it.action === '수기피킹' && it.status !== '완료'; }).length;
-      if (!okp.length) { toast('수기피킹 대상(승인 완료된 건)이 없습니다', '#c0392b'); return; }
+      var okp = poolP.filter(function(it) { return it.action === '수기피킹' && it.status === '완료'; });
+      var notYetP = poolP.filter(function(it) { return it.action === '수기피킹' && it.status !== '완료'; }).length;
+      if (!okp.length) { toast(selP ? '선택한 건 중 수기피킹 대상(완료)이 없습니다' : '수기피킹 대상(승인 완료된 건)이 없습니다', '#c0392b'); return; }
+      if (selP) { toast('선택한 ' + okp.length + '건만 담습니다', '#1f4e78'); }
       if (notYetP && !confirm('아직 승인되지 않은 ' + notYetP + '건은 빼고 뽑습니다.\n\n계속할까요?')) return;
       buildPickingXlsx(okp, '수기피킹_' + todayStr() + '.xlsx', true, load);
     };
@@ -2887,6 +2903,7 @@ document.getElementById('__wpSave').onclick = function() {
       box.innerHTML = '<div style="color:#94a3b8;padding:14px">해당 기간에 요청이 없습니다.</div>';
       return;
     }
+    var sel = !!opt.selectable;   /* 미전달 화면: 맨 왼쪽 체크박스 — 선택한 건만 엑셀에 담기 */
     var cols = [
       ['시각', 80],
       [cn ? '고객사 안내' : '부서', cn ? 90 : 56],
@@ -2898,6 +2915,7 @@ document.getElementById('__wpSave').onclick = function() {
       ['상태', 60],
       [admin ? '처리' : '처리결과', admin ? 150 : 150]
     ];
+    if (sel) { cols.unshift(['<input type="checkbox" id="__wpSelAll" title="전체 선택/해제" style="cursor:pointer">', 30]); }
     var h = '<table class="wp-tbl" style="table-layout:fixed;width:100%"><thead><tr>' + cols.map(function(c) {
       return '<th style="' + (c[1] ? 'width:' + c[1] + 'px;' : '') + '">' + c[0] + '</th>';
     }).join('') + '</tr></thead><tbody>';
@@ -2938,7 +2956,7 @@ document.getElementById('__wpSave').onclick = function() {
         last = '<td style="white-space:normal">' + _lastInner + '</td>';
       }
       var bn = it.branchId ? ('<a href="/office/sales/branch/' + esc(it.branchId) + '" target="_blank" style="color:#1f4e78;text-decoration:none">' + esc(it.branchName) + '</a>') : esc(it.branchName);
-      h += '<tr data-id="' + esc(it.id) + '">' + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;min-width:240px">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill(it.status) + '</td>' + last + '</tr>';
+      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;min-width:240px">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill(it.status) + '</td>' + last + '</tr>';
     });
     h += '</tbody></table>';
     box.innerHTML = h;
@@ -2963,6 +2981,12 @@ document.getElementById('__wpSave').onclick = function() {
         openDeliveryTime({ id: it.branchId, name: it.branchName, hot: it.hot, cold: it.cold, addr: '', course: '', method: '' }, true);
       };
     });
+    var selAll = document.getElementById('__wpSelAll');
+    if (selAll) {
+      selAll.onclick = function() {
+        [].forEach.call(box.querySelectorAll('.__wpSel'), function(c) { c.checked = selAll.checked; });
+      };
+    }
     [].forEach.call(box.querySelectorAll('.__wpUnsent'), function(b) {
       b.onclick = function() {
         var it = map[b.getAttribute('data-id')];
