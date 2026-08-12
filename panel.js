@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.12 09:44';
+  var VERSION = '26.08.12 14:43';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -605,7 +605,7 @@
   /* 미전달(승인됐는데 코드전달 안 된 건) 개수 — 배지용. 서버 부담 줄이려 5분 캐시 */
   var _pendCache = { n: 0, t: 0 };
   function pendingCodeCount() {
-    if (Date.now() - _pendCache.t < 300000) { return Promise.resolve(_pendCache.n); }
+    if (Date.now() - _pendCache.t < 600000) { return Promise.resolve(_pendCache.n); }
     return listReq({ pending: 'code' }).then(function(items) {
       _pendCache = { n: items.length, t: Date.now() };
       return items.length;
@@ -614,11 +614,10 @@
 
   function updateBadge() {
     if (!launcher || launcher.style.display === 'none') return;
-    var p = IS_ADMIN ? Promise.all([
-      listReq({ status: '대기' }).then(function(items) { return items.length; }),
-      pendingCodeCount()
-    ]).then(function(a) {
-      return a[0] + a[1];
+    /* 두 발을 동시에 던지면 서버(Apps Script)가 직렬화하며 서로 막는다 → 순차로 */
+    var p = IS_ADMIN ? listReq({ status: '대기' }).then(function(items) {
+      var n = items.length;
+      return pendingCodeCount().then(function(m) { return n + m; });
     }) : listReq({
       email: REQ.email
     }).then(function(items) {
@@ -645,7 +644,7 @@
   function startPoll() {
     stopPoll();
     updateBadge();
-    badgePoll = setInterval(updateBadge, 30000);
+    badgePoll = setInterval(updateBadge, 180000);   /* 30초는 너무 잦다 — Apps Script 직렬 큐를 계속 점유해 다른 조회를 막았다 */
   }
 
   function stopPoll() {
