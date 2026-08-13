@@ -117,10 +117,10 @@
       email: ''
     };
   var MODE = localStorage.getItem('__wpMode') || 'requester'; /* ===== 설정: 배포 전에 이 두 줄만 채우세요 ===== */
-  var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
+  var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.13 12:56';
+  var VERSION = '26.08.13 14:09';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -356,7 +356,10 @@
   } /* ---------- 공유 큐 API ---------- */
   function apiUrl() {
     var b = (API_URL.indexOf('PASTE') === -1) ? API_URL : '';
-    return localStorage.getItem('__wpApi') || b;
+    /* 구 앱스크립트 주소로 수동 설정해둔 경우 자동 해제 → 새 기본(워커)으로 전환 */
+    var ov = localStorage.getItem('__wpApi') || '';
+    if (ov && ov.indexOf('script.google.com') > -1) { try { localStorage.removeItem('__wpApi'); } catch (e) {} ov = ''; }
+    return ov || b;
   }
 
   function api(params, _retry) {
