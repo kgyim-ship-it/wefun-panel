@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.13 14:09';
+  var VERSION = '26.08.13 14:58';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -835,6 +835,7 @@
       ['find', '거래처 조회'],
       ['bulk', '배송정보 일괄입력'],
       ['sched_bulk', '배송일정 일괄'],
+      ['stats', '배송통계'],
       ['board_update', '업데이트 이력'],
       ['board_feature', '기능개선']
     ]
@@ -868,6 +869,7 @@
     else if (t === 'review_pick') viewReview('pick');
     else if (t === 'bulk') viewBulk();
     else if (t === 'sched_bulk') viewSchedBulk();
+    else if (t === 'stats') viewStats();
     else if (t === 'newcode') viewNewCode();
     else if (t === 'board_update') viewBoard('update');
     else if (t === 'board_feature') viewBoard('feature');
@@ -4321,6 +4323,175 @@ document.getElementById('__wpSave').onclick = function() {
         openForm('배송시간문의', br);
       };
     }
+  }
+
+  /* ---------- 배송통계 (관리자) ---------- */
+  function viewStats() {
+    var _n = new Date();
+    var stY = _n.getFullYear(), stM = _n.getMonth(); /* 표시 중인 달 */
+    var ST_KEY = '__wpStats1';
+    var stSeq = 0; /* 달 이동 시 이전 로딩 무효화 */
+    function stPad(n) { return (n < 10 ? '0' : '') + n; }
+    function stDs(y, m, d) { return y + '-' + stPad(m + 1) + '-' + stPad(d); }
+    function stToday() { var t = new Date(); return stDs(t.getFullYear(), t.getMonth(), t.getDate()); }
+    function stCache() { try { return JSON.parse(localStorage.getItem(ST_KEY)) || {}; } catch (e) { return {}; } }
+    function stSave(c) { try { localStorage.setItem(ST_KEY, JSON.stringify(c)); } catch (e) {} }
+    function stWon(v) { return '₩' + Number(v || 0).toLocaleString(); }
+
+    /* 건수: 스낵24·활동 서비스의 해당일 배송 (서비스검색 deliveryDate 필터) */
+    function stCnt(d) {
+      var u = '/office/sales/service?searchYN=Y&serviceType=' + encodeURIComponent('스낵24') +
+        '&serviceStatus=' + encodeURIComponent('활동') + '&size=1&deliveryDate=' + d;
+      return fetch(u).then(function(r) { return r.text(); }).then(function(t) {
+        var m = t.match(/총\s*([\d,]+)\s*건의 서비스/);
+        if (m) return parseInt(m[1].replace(/,/g, ''), 10);
+        if (t.indexOf('검색 결과가 없습니다') > -1) return 0; /* 배송 없는 날 */
+        throw new Error('건수 파싱 실패');
+      });
+    }
+    /* 금액: 거래명세 합계(부가세 포함) 합산 · 주문취소 제외 · 1000건 초과 시 페이지 순회 */
+    function stAmt(d, page, acc) {
+      page = page || 1; acc = acc || { sum: 0, n: 0 };
+      var u = '/office/order/order?searchYN=Y&deliveryDateBegin=' + d + '&deliveryDateEnd=' + d +
+        '&serviceTypes=' + encodeURIComponent('스낵24') + '&size=1000&page=' + page;
+      return fetch(u).then(function(r) { return r.text(); }).then(function(t) {
+        var doc = new DOMParser().parseFromString(t, 'text/html');
+        var rows = [].slice.call(doc.querySelectorAll('table.orderSearchTable tbody tr'));
+        rows.forEach(function(tr) {
+          var tds = tr.querySelectorAll('td');
+          if (tds.length < 15) return;
+          var cancel = false;
+          for (var i = 0; i < tds.length; i++) { if (tds[i].textContent.trim() === '주문취소') { cancel = true; break; } }
+          if (cancel) return;
+          var m = (tds[4].textContent.match(/₩\s*([\d,]+)/) || [])[1];
+          acc.sum += m ? parseInt(m.replace(/,/g, ''), 10) : 0;
+          acc.n++;
+        });
+        var tm = t.match(/총\s*([\d,]+)\s*건/);
+        var total = tm ? parseInt(tm[1].replace(/,/g, ''), 10) : 0;
+        if (rows.length >= 1000 && page * 1000 < total) { return stAmt(d, page + 1, acc); }
+        return acc;
+      });
+    }
+
+    function stCellHtml(d, info, isToday, dow) {
+      var day = parseInt(d.slice(8), 10);
+      var col = dow === 0 ? '#DC2626' : (dow === 6 ? '#2563EB' : '#334155');
+      var h = '<div style="font-size:11.5px;font-weight:700;color:' + col + '">' + day + (isToday ? ' <span style="background:#0EA5E9;color:#fff;border-radius:4px;padding:0 4px;font-size:10px">오늘</span>' : '') + '</div>';
+      if (info && (info.errc || info.erra)) {
+        h += '<div class="__wpStRetry" data-d="' + d + '" style="color:#DC2626;font-size:11px;cursor:pointer;text-decoration:underline">⚠ 재시도</div>';
+      } else {
+        if (info && typeof info.c === 'number') { h += '<div style="font-size:12px;font-weight:700;color:#0F172A">🚚 ' + info.c.toLocaleString() + '건</div>'; }
+        else { h += '<div style="font-size:11px;color:#94A3B8">…</div>'; }
+        if (info && typeof info.a === 'number') { h += '<div style="font-size:11px;color:#0a7d47;font-weight:600">' + stWon(info.a) + '</div>'; }
+        else if (d < stToday()) { h += '<div style="font-size:10.5px;color:#CBD5E1">금액 조회중…</div>'; }
+      }
+      return h;
+    }
+
+    function stRender() {
+      var first = new Date(stY, stM, 1), last = new Date(stY, stM + 1, 0);
+      var today = stToday();
+      var h = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
+        '<button id="__wpStPrev" class="wp-btn gh">◀</button>' +
+        '<button id="__wpStNext" class="wp-btn gh">▶</button>' +
+        '<button id="__wpStNow" class="wp-btn gh">오늘</button>' +
+        '<b style="font-size:15px;margin:0 6px">' + stY + '년 ' + (stM + 1) + '월</b>' +
+        '<span style="font-size:12px;color:#64748B">스낵24 · 활동 기준 / 금액=거래명세 합계(부가세 포함, 주문취소 제외)</span>' +
+        '<span style="flex:1"></span>' +
+        '<span id="__wpStProg" style="font-size:12px;color:#64748B"></span>' +
+        '<button id="__wpStRef" class="wp-btn gh">↻ 새로고침</button></div>';
+      h += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:12px">';
+      ['일', '월', '화', '수', '목', '금', '토'].forEach(function(w, i) {
+        h += '<div style="text-align:center;font-weight:700;padding:4px 0;color:' + (i === 0 ? '#DC2626' : (i === 6 ? '#2563EB' : '#475569')) + '">' + w + '</div>';
+      });
+      for (var b = 0; b < first.getDay(); b++) { h += '<div></div>'; }
+      for (var dd = 1; dd <= last.getDate(); dd++) {
+        var ds = stDs(stY, stM, dd);
+        var dow = new Date(stY, stM, dd).getDay();
+        h += '<div id="__wpStC_' + ds + '" style="min-height:64px;border:1px solid #E2E8F0;border-radius:7px;padding:5px 7px;background:' + (ds === today ? '#FEF9E7' : '#fff') + '"></div>';
+      }
+      h += '</div>';
+      h += '<div id="__wpStSum" style="margin-top:10px;padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:13px;color:#334155"></div>';
+      VIEW.innerHTML = h;
+      document.getElementById('__wpStPrev').onclick = function() { stM--; if (stM < 0) { stM = 11; stY--; } stRender(); };
+      document.getElementById('__wpStNext').onclick = function() { stM++; if (stM > 11) { stM = 0; stY++; } stRender(); };
+      document.getElementById('__wpStNow').onclick = function() { var t = new Date(); stY = t.getFullYear(); stM = t.getMonth(); stRender(); };
+      document.getElementById('__wpStRef').onclick = function() { stLoad(true); };
+      VIEW.onclick = function(ev) { /* onclick 재할당 방식이라 달 이동/재진입 시 중복 안 쌓임 */
+        var el = ev.target;
+        if (el && el.className === '__wpStRetry') {
+          var c = stCache(); delete c[el.getAttribute('data-d')]; stSave(c); stLoad(false);
+        }
+      };
+      stLoad(false);
+    }
+
+    function stPaint(ds, info) {
+      var el = document.getElementById('__wpStC_' + ds);
+      if (!el) return;
+      var dow = new Date(ds.slice(0, 4), parseInt(ds.slice(5, 7), 10) - 1, parseInt(ds.slice(8), 10)).getDay();
+      el.innerHTML = stCellHtml(ds, info, ds === stToday(), dow);
+    }
+
+    function stSummary(days) {
+      var el = document.getElementById('__wpStSum');
+      if (!el) return;
+      var c = stCache(), tc = 0, ta = 0, na = 0, miss = 0;
+      days.forEach(function(ds) {
+        var v = c[ds];
+        if (v && typeof v.c === 'number') tc += v.c; else miss++;
+        if (v && typeof v.a === 'number') { ta += v.a; na++; }
+      });
+      el.innerHTML = '<b>이번 달 합계</b> · 배송 <b>' + tc.toLocaleString() + '건</b>' + (miss ? ' (조회중 ' + miss + '일)' : '') +
+        ' · 매출(과거 ' + na + '일) <b style="color:#0a7d47">' + stWon(ta) + '</b>';
+    }
+
+    function stLoad(force) {
+      var seq = ++stSeq;
+      var today = stToday();
+      var nowMs = Date.now();
+      var last = new Date(stY, stM + 1, 0).getDate();
+      var days = [];
+      for (var dd = 1; dd <= last; dd++) { days.push(stDs(stY, stM, dd)); }
+      var c = stCache();
+      if (force) { days.forEach(function(ds) { delete c[ds]; }); stSave(c); }
+      /* 캐시 유효성: 과거 건수 영구 / 오늘·미래 건수 10분 / 금액: 최근2일 6시간, 그 전 영구 */
+      function cntOk(ds) { var v = c[ds]; if (!v || typeof v.c !== 'number') return false; if (ds < today) return true; return (nowMs - (v.t || 0)) < 600000; }
+      function amtOk(ds) { if (ds >= today) return true; var v = c[ds]; if (!v || typeof v.a !== 'number') return false; var d2 = new Date(nowMs - 2 * 86400000); var lim = stDs(d2.getFullYear(), d2.getMonth(), d2.getDate()); if (ds < lim) return true; return (nowMs - (v.ta || 0)) < 21600000; }
+      days.forEach(function(ds) { stPaint(ds, c[ds]); });
+      stSummary(days);
+      var tasks = [];
+      days.forEach(function(ds) { if (!cntOk(ds)) tasks.push({ d: ds, k: 'c' }); });
+      days.forEach(function(ds) { if (!amtOk(ds)) tasks.push({ d: ds, k: 'a' }); });
+      var done = 0, totalT = tasks.length;
+      var prog = document.getElementById('__wpStProg');
+      function upProg() { if (prog) prog.textContent = totalT ? ('조회 ' + done + '/' + totalT) : ''; if (done >= totalT && prog) prog.textContent = ''; }
+      upProg();
+      if (!tasks.length) return;
+      var idx = 0;
+      function worker() {
+        if (seq !== stSeq) return Promise.resolve();
+        if (idx >= tasks.length) return Promise.resolve();
+        var t = tasks[idx++];
+        var p = t.k === 'c'
+          ? stCnt(t.d).then(function(n) { var cc = stCache(); cc[t.d] = cc[t.d] || {}; cc[t.d].c = n; cc[t.d].t = Date.now(); delete cc[t.d].errc; stSave(cc); })
+          : stAmt(t.d).then(function(a) { var cc = stCache(); cc[t.d] = cc[t.d] || {}; cc[t.d].a = a.sum; cc[t.d].ta = Date.now(); delete cc[t.d].erra; stSave(cc); });
+        return p.catch(function() { var cc = stCache(); cc[t.d] = cc[t.d] || {}; cc[t.d][t.k === 'c' ? 'errc' : 'erra'] = 1; stSave(cc); })
+          .then(function() {
+            if (seq !== stSeq) return;
+            done++; upProg();
+            var cc = stCache();
+            stPaint(t.d, cc[t.d]);
+            stSummary(days);
+            return worker();
+          });
+      }
+      var pool = [];
+      for (var w = 0; w < 3; w++) { pool.push(worker()); }
+    }
+
+    stRender();
   }
 
   function viewSchedBulk() {
