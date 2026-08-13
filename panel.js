@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.13 18:53';
+  var VERSION = '26.08.13 19:01';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -4387,7 +4387,7 @@ document.getElementById('__wpSave').onclick = function() {
     }
     /* 거래명세 (서비스별): 방문만 · 주문취소 제외 → { sum, n, map(거래처→금액) } */
     function stStmts(sv, d, page, acc) {
-      page = page || 1; acc = acc || { sum: 0, n: 0, map: {}, miss: [] };
+      page = page || 1; acc = acc || { sum: 0, n: 0, map: {} };
       var u = '/office/order/order?searchYN=Y&deliveryDateBegin=' + d + '&deliveryDateEnd=' + d +
         '&serviceTypes=' + encodeURIComponent(sv) + '&size=1000&page=' + page;
       return fetch(u).then(function(r) { return r.text(); }).then(function(t) {
@@ -4766,7 +4766,7 @@ document.getElementById('__wpSave').onclick = function() {
     function kStmts(sv, d, page, acc) {
       var mk = sv + '|' + d;
       if (!page && KMEM.maps[mk]) return Promise.resolve(KMEM.maps[mk]);
-      page = page || 1; acc = acc || { sum: 0, n: 0, map: {} };
+      page = page || 1; acc = acc || { sum: 0, n: 0, map: {}, miss: [] };
       var u = '/office/order/order?searchYN=Y&deliveryDateBegin=' + d + '&deliveryDateEnd=' + d +
         '&serviceTypes=' + encodeURIComponent(sv) + '&size=1000&page=' + page;
       return fetch(u).then(function(r) { return r.text(); }).then(function(t) {
@@ -4867,8 +4867,7 @@ document.getElementById('__wpSave').onclick = function() {
         '<button id="__wpKRef" class="wp-btn gh">↻ 새로고침</button></div>' +
         '<div id="__wpKSum" style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:13px;color:#334155;margin-bottom:8px"></div>' +
         '<div id="__wpKMst" style="display:none;margin-bottom:8px"></div>' +
-        '<div id="__wpKMissBox" style="display:none;margin-bottom:8px"></div>' +
-        '<div id="__wpKTbl"></div>';
+        '<div style="display:flex;gap:8px;align-items:flex-start"><div id="__wpKTbl" style="flex:1.7;min-width:0"></div><div id="__wpKMissBox" style="flex:1;min-width:0;display:none;position:sticky;top:0"></div></div>';
       VIEW.innerHTML = h;
       document.getElementById('__wpKXls').onclick = function() { kXls(); };
       document.getElementById('__wpKMiss').onclick = function() { kMissToggle(); };
@@ -5159,9 +5158,9 @@ document.getElementById('__wpSave').onclick = function() {
       kTable(days);
       var tasks = [];
       days.forEach(function(ds) { if (ds <= today && !dvOk(ds)) tasks.push(ds); });
-      var done = 0, totalT = tasks.length;
+      var done = 0, totalT = tasks.length, kFails = 0;
       var prog = document.getElementById('__wpKProg');
-      function upProg() { if (prog) prog.textContent = (done < totalT) ? ('집계 ' + done + '/' + totalT + '일') : ''; }
+      function upProg() { if (prog) prog.textContent = (done < totalT) ? ('집계 ' + done + '/' + totalT + '일' + (kFails ? ' · 실패 ' + kFails : '')) : (kFails ? '⚠ ' + kFails + '일 집계 실패 — 새로고침으로 재시도' : ''); }
       upProg();
       if (!tasks.length) return;
       var idx = 0;
@@ -5176,11 +5175,12 @@ document.getElementById('__wpSave').onclick = function() {
           if (typeof cc[ds].sp !== 'number') { cc[ds].sp = res.sp; cc[ds].tp = Date.now(); }
           if (typeof cc[ds].as !== 'number') { cc[ds].as = res.as; cc[ds].aj = res.aj; cc[ds].nj = res.nj; cc[ds].ta = Date.now(); }
           kSave(cc);
-        }).catch(function() {})
+        }).catch(function() { kFails++; })
           .then(function() {
             if (seq !== kSeq) return;
             done++; upProg();
             kTable(days);
+            var mb = document.getElementById('__wpKMissBox'); if (mb && mb.style.display !== 'none') kMissRender();
             return worker();
           });
       }
