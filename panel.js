@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.13 17:42';
+  var VERSION = '26.08.13 18:53';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -4387,7 +4387,7 @@ document.getElementById('__wpSave').onclick = function() {
     }
     /* 거래명세 (서비스별): 방문만 · 주문취소 제외 → { sum, n, map(거래처→금액) } */
     function stStmts(sv, d, page, acc) {
-      page = page || 1; acc = acc || { sum: 0, n: 0, map: {} };
+      page = page || 1; acc = acc || { sum: 0, n: 0, map: {}, miss: [] };
       var u = '/office/order/order?searchYN=Y&deliveryDateBegin=' + d + '&deliveryDateEnd=' + d +
         '&serviceTypes=' + encodeURIComponent(sv) + '&size=1000&page=' + page;
       return fetch(u).then(function(r) { return r.text(); }).then(function(t) {
@@ -4786,6 +4786,8 @@ document.getElementById('__wpSave').onclick = function() {
           acc.sum += v; acc.n++;
           var k = kNn(name);
           acc.map[k] = (acc.map[k] || 0) + v;
+          var mi = (td[19] ? td[19].textContent.replace(/\s+/g, ' ').trim() : '');
+          if (mi && mi !== '-') acc.miss.push(name); /* 미출 처리 요청/처리중/완료 */
         });
         var tm = t.match(/총\s*([\d,]+)\s*건/);
         var total = tm ? parseInt(tm[1].replace(/,/g, ''), 10) : 0;
@@ -4826,7 +4828,7 @@ document.getElementById('__wpSave').onclick = function() {
               var dv = {};
               function add(list, map, io) {
                 list.forEach(function(x) {
-                  if (!dv[x.drv]) dv[x.drv] = [0, 0, 0, 0];
+                  if (!dv[x.drv]) dv[x.drv] = [0, 0, 0, 0, 0]; /* ss, sa, js, ja, 미출 */
                   dv[x.drv][io] += 1;
                   var amt = map[kNn(x.br)];
                   if (typeof amt === 'number') dv[x.drv][io + 1] += amt;
@@ -4834,7 +4836,16 @@ document.getElementById('__wpSave').onclick = function() {
               }
               add(ss.list, sm.map, 0);
               add(js.list, jm.map, 2);
-              return { dv: dv, sp: ss.list.length + js.list.length, as: sm.sum, aj: jm.sum, nj: jm.n };
+              /* 미출: 명세의 미출 표시를 착지의 기사와 조인 → [거래처, 기사] */
+              var brDrv = {};
+              ss.list.concat(js.list).forEach(function(x) { brDrv[kNn(x.br)] = x.drv; });
+              var ms = [];
+              sm.miss.concat(jm.miss).forEach(function(nm) {
+                var dvr = brDrv[kNn(nm)] || '-';
+                ms.push([nm, dvr]);
+                if (dv[dvr]) dv[dvr][4] += 1;
+              });
+              return { dv: dv, ms: ms, sp: ss.list.length + js.list.length, as: sm.sum, aj: jm.sum, nj: jm.n };
             });
           });
         });
@@ -4850,14 +4861,17 @@ document.getElementById('__wpSave').onclick = function() {
         '<span style="font-size:12px;color:#64748B">기사별 월 누적 · 스낵24/조식24 · 방문 / 금액=거래명세 합계(부가세 포함)</span>' +
         '<span style="flex:1"></span>' +
         '<span id="__wpKProg" style="font-size:12px;color:#64748B"></span>' +
+        '<button id="__wpKMiss" class="wp-btn gh">미출 스팟</button>' +
         '<button id="__wpKXls" class="wp-btn gh">⬇ 엑셀</button>' +
         '<button id="__wpKMstBtn" class="wp-btn gh">기사마스터</button>' +
         '<button id="__wpKRef" class="wp-btn gh">↻ 새로고침</button></div>' +
         '<div id="__wpKSum" style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:13px;color:#334155;margin-bottom:8px"></div>' +
         '<div id="__wpKMst" style="display:none;margin-bottom:8px"></div>' +
+        '<div id="__wpKMissBox" style="display:none;margin-bottom:8px"></div>' +
         '<div id="__wpKTbl"></div>';
       VIEW.innerHTML = h;
       document.getElementById('__wpKXls').onclick = function() { kXls(); };
+      document.getElementById('__wpKMiss').onclick = function() { kMissToggle(); };
       document.getElementById('__wpKMstBtn').onclick = function() { kMstToggle(); };
       document.getElementById('__wpKPrev').onclick = function() { kM--; if (kM < 0) { kM = 11; kY--; } kRender(); };
       document.getElementById('__wpKNext').onclick = function() { kM++; if (kM > 11) { kM = 0; kY++; } kRender(); };
@@ -4886,8 +4900,8 @@ document.getElementById('__wpSave').onclick = function() {
         Object.keys(v.dv).forEach(function(k) {
           var m = String(k).match(/^야간(.+)$/);
           var base = m ? m[1] : k;
-          if (!agg[base]) agg[base] = { v: [0, 0, 0, 0], wd: 0, day: false, night: false };
-          for (var i = 0; i < 4; i++) agg[base].v[i] += v.dv[k][i] || 0;
+          if (!agg[base]) agg[base] = { v: [0, 0, 0, 0, 0], wd: 0, day: false, night: false };
+          for (var i = 0; i < 5; i++) agg[base].v[i] += v.dv[k][i] || 0;
           if (m) agg[base].night = true; else agg[base].day = true;
           if (!seen[base]) { seen[base] = 1; agg[base].wd += 1; }
         });
@@ -4895,7 +4909,7 @@ document.getElementById('__wpSave').onclick = function() {
       var arr = Object.keys(agg).map(function(k) {
         var g = agg[k], a = g.v;
         var ts = a[0] + a[2];
-        return { drv: k, bel: kBelong(k), badge: g.night ? (g.day ? '주/야간' : '야간') : '', ss: a[0], sa: a[1], js: a[2], ja: a[3], ts: ts, ta: a[1] + a[3], wd: g.wd, avg: g.wd ? Math.round(ts / g.wd * 10) / 10 : 0 };
+        return { drv: k, bel: kBelong(k), badge: g.night ? (g.day ? '주/야간' : '야간') : '', ss: a[0], sa: a[1], js: a[2], ja: a[3], ts: ts, ta: a[1] + a[3], wd: g.wd, avg: g.wd ? Math.round(ts / g.wd * 10) / 10 : 0, ms: a[4] || 0, rate: ts ? Math.round((a[4] || 0) / ts * 1000) / 10 : 0 };
       });
       var sk = KSORT.k, sd = KSORT.d;
       arr.sort(function(x, y) {
@@ -4903,10 +4917,10 @@ document.getElementById('__wpSave').onclick = function() {
         if (typeof a === 'string') { return a < b ? -sd : (a > b ? sd : (y.ts - x.ts)); }
         return (a - b) * sd || y.ts - x.ts;
       });
-      var tot = { ss: 0, sa: 0, js: 0, ja: 0, ts: 0, ta: 0 };
+      var tot = { ss: 0, sa: 0, js: 0, ja: 0, ts: 0, ta: 0, ms: 0 };
       var byBel = {};
       arr.forEach(function(x) {
-        tot.ss += x.ss; tot.sa += x.sa; tot.js += x.js; tot.ja += x.ja; tot.ts += x.ts; tot.ta += x.ta;
+        tot.ss += x.ss; tot.sa += x.sa; tot.js += x.js; tot.ja += x.ja; tot.ts += x.ts; tot.ta += x.ta; tot.ms += x.ms;
         if (!byBel[x.bel]) byBel[x.bel] = { n: 0, ts: 0, ta: 0, avg: 0 };
         byBel[x.bel].n++; byBel[x.bel].ts += x.ts; byBel[x.bel].ta += x.ta; byBel[x.bel].avg += x.avg;
       });
@@ -4916,7 +4930,8 @@ document.getElementById('__wpSave').onclick = function() {
           ' · 기사 <b>' + arr.length + '명</b>' +
           ' · <b style="color:#0369A1">스낵</b> <b>' + tot.ss.toLocaleString() + '착</b> <b style="color:#0a7d47">' + kWon(tot.sa) + '</b>' +
           ' · <b style="color:#B45309">조식</b> <b>' + tot.js.toLocaleString() + '착</b> <b style="color:#0a7d47">' + kWon(tot.ja) + '</b>' +
-          ' · 총 <b>' + tot.ts.toLocaleString() + '착</b> <b style="color:#0a7d47">' + kWon(tot.ta) + '</b>';
+          ' · 총 <b>' + tot.ts.toLocaleString() + '착</b> <b style="color:#0a7d47">' + kWon(tot.ta) + '</b>' +
+          ' · 미출 <b style="color:#DC2626">' + tot.ms.toLocaleString() + '건</b> (누락율 <b style="color:#DC2626">' + (tot.ts ? Math.round(tot.ms / tot.ts * 1000) / 10 : 0) + '%</b>)';
         /* 고정 순서: 핫픽스 → 대산 → 창호 → 위풀 → 나머지 / 클릭 = 해당 소속만 필터 */
         var bels = KBELS.filter(function(b) { return byBel[b]; })
           .concat(Object.keys(byBel).filter(function(b) { return KBELS.indexOf(b) < 0; }).sort());
@@ -4954,7 +4969,7 @@ document.getElementById('__wpSave').onclick = function() {
         th('스낵 착지', 'ss') + th('스낵 금액', 'sa') +
         th('조식 착지', 'js') + th('조식 금액', 'ja') +
         th('총 착지', 'ts', 'background:#F1F5F9;') + th('총 금액', 'ta', 'background:#F1F5F9;') +
-        th('근무일', 'wd') + th('일평균 착지', 'avg') + '</tr>';
+        th('근무일', 'wd') + th('일평균 착지', 'avg') + th('미출', 'ms') + th('누락율', 'rate') + '</tr>';
       viewArr.forEach(function(x, i) {
         var hot = x.avg >= 15; /* 일평균 15착 이상 하이라이트 (과부하 후보) */
         var nm = esc(x.drv) + (x.badge ? ' <span style="background:#0B1220;color:#E2E8F0;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700;vertical-align:1px">' + x.badge + '</span>' : '');
@@ -4968,7 +4983,9 @@ document.getElementById('__wpSave').onclick = function() {
           '<td style="padding:5px 10px;text-align:right;font-weight:700;background:#FAFBFC">' + x.ts.toLocaleString() + '</td>' +
           '<td style="padding:5px 10px;text-align:right;font-weight:700;color:#0a7d47;background:#FAFBFC">' + kWon(x.ta) + '</td>' +
           '<td style="padding:5px 10px;text-align:right">' + x.wd + '</td>' +
-          '<td style="padding:5px 10px;text-align:right;font-weight:700;' + (hot ? 'color:#DC2626' : '') + '">' + x.avg + '</td></tr>';
+          '<td style="padding:5px 10px;text-align:right;font-weight:700;' + (hot ? 'color:#DC2626' : '') + '">' + x.avg + '</td>' +
+          '<td style="padding:5px 10px;text-align:right;' + (x.ms ? 'color:#DC2626;font-weight:700' : 'color:#CBD5E1') + '">' + (x.ms || '-') + '</td>' +
+          '<td style="padding:5px 10px;text-align:right;font-weight:700;' + (x.rate >= 10 ? 'color:#DC2626' : (x.rate >= 5 ? 'color:#D97706' : 'color:#64748B')) + '">' + (x.ts ? x.rate + '%' : '-') + '</td></tr>';
       });
       h += '</table></div>' +
         '<div style="font-size:11.5px;color:#94A3B8;margin-top:5px">* 열 제목 클릭 = 정렬 · 야간/주간 같은 이름은 한 행으로 합산 (뱃지로 구분) · 일평균 착지 15 이상은 빨간색 (증차/코스조정 검토 후보) · 근무일 = 해당 월에 배송 배정이 있었던 날 수</div>';
@@ -4985,14 +5002,70 @@ document.getElementById('__wpSave').onclick = function() {
     /* ---------- 엑셀 다운로드 ---------- */
     function kXls() {
       if (!KLAST.length) { alert('내보낼 데이터가 없습니다. 집계가 끝난 뒤 다시 시도하세요.'); return; }
-      var rows = [['구분', '기사', '주/야간', '스낵 착지', '스낵 금액', '조식 착지', '조식 금액', '총 착지', '총 금액', '근무일', '일평균 착지']];
+      var rows = [['구분', '기사', '주/야간', '스낵 착지', '스낵 금액', '조식 착지', '조식 금액', '총 착지', '총 금액', '근무일', '일평균 착지', '미출', '누락율(%)']];
       KLAST.forEach(function(x) {
-        rows.push([x.bel, x.drv, x.badge || '주간', x.ss, x.sa, x.js, x.ja, x.ts, x.ta, x.wd, x.avg]);
+        rows.push([x.bel, x.drv, x.badge || '주간', x.ss, x.sa, x.js, x.ja, x.ts, x.ta, x.wd, x.avg, x.ms, x.rate]);
       });
       var fname = '기사통계_' + kY + '-' + kPad(kM + 1) + '.xlsx';
       xlsxDownload(rows, [{ wch: 10 }, { wch: 14 }, { wch: 8 }, { wch: 9 }, { wch: 13 }, { wch: 9 }, { wch: 13 }, { wch: 9 }, { wch: 14 }, { wch: 7 }, { wch: 10 }], '기사통계', fname)
         .then(function() { toast('✓ ' + fname, '#0a7d47'); })
         .catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); });
+    }
+    /* ---------- 미출 스팟 (반복 미출 탐지) ---------- */
+    function kMissToggle() {
+      var box = document.getElementById('__wpKMissBox');
+      if (!box) return;
+      if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+      box.style.display = '';
+      kMissRender();
+    }
+    function kMissRender() {
+      var box = document.getElementById('__wpKMissBox');
+      if (!box) return;
+      var c = kCache();
+      var spots = {}; /* brKey → { br, n, byDrv, dates } */
+      var today = kToday();
+      kDays().forEach(function(ds) {
+        if (ds > today) return;
+        var v = c[ds];
+        if (!v || !v.ms) return;
+        v.ms.forEach(function(m) {
+          var br = m[0], dvr = m[1];
+          var k = kNn(br);
+          if (!spots[k]) spots[k] = { br: br, n: 0, byDrv: {}, dates: [] };
+          spots[k].n++;
+          spots[k].byDrv[dvr] = (spots[k].byDrv[dvr] || 0) + 1;
+          spots[k].dates.push(ds.slice(5).replace('-', '/'));
+        });
+      });
+      var arr = Object.keys(spots).map(function(k) { return spots[k]; }).sort(function(a, b) { return b.n - a.n; });
+      var totMiss = 0; arr.forEach(function(x) { totMiss += x.n; });
+      var rep = arr.filter(function(x) { return x.n >= 2; });
+      var h = '<div style="padding:10px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155">';
+      h += '<div style="font-weight:800;font-size:13px;margin-bottom:4px">미출 스팟 — 이번 달 미출 <b style="color:#DC2626">' + totMiss.toLocaleString() + '건</b> · 거래처 ' + arr.length + '곳 · <b style="color:#DC2626">2회 이상 반복 ' + rep.length + '곳</b></div>' +
+        '<div style="font-size:11.5px;color:#94A3B8;margin-bottom:8px">같은 스팟에서 미출이 반복되면 "미출 나도 인입 안 되는 거래처"로 굳어졌을 가능성 — 반복 순으로 정렬</div>';
+      if (!arr.length) {
+        h += '<div style="color:#94A3B8">집계된 미출이 없습니다. (집계가 끝나야 표시됩니다)</div></div>';
+        box.innerHTML = h; return;
+      }
+      h += '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+        '<tr style="background:#F8FAFC;color:#475569"><th style="text-align:left;padding:5px 8px;border-bottom:1px solid #E2E8F0">거래처</th>' +
+        '<th style="text-align:right;padding:5px 8px;border-bottom:1px solid #E2E8F0;width:60px">미출</th>' +
+        '<th style="text-align:left;padding:5px 8px;border-bottom:1px solid #E2E8F0;width:220px">기사</th>' +
+        '<th style="text-align:left;padding:5px 8px;border-bottom:1px solid #E2E8F0;width:230px">발생일</th></tr>';
+      arr.slice(0, 200).forEach(function(x, i) {
+        var drvs = Object.keys(x.byDrv).sort(function(a, b) { return x.byDrv[b] - x.byDrv[a]; })
+          .map(function(d2) { return kDisp(d2 === '-' ? '(미배정)' : d2) + (x.byDrv[d2] > 1 ? ' <b>×' + x.byDrv[d2] + '</b>' : ''); }).join(', ');
+        h += '<tr style="border-bottom:1px solid #F1F5F9;background:' + (x.n >= 2 ? '#FFF7F7' : (i % 2 ? '#FCFDFE' : '#fff')) + '">' +
+          '<td style="padding:4px 8px;font-weight:600">' + esc(x.br) + '</td>' +
+          '<td style="padding:4px 8px;text-align:right;font-weight:700;color:' + (x.n >= 2 ? '#DC2626' : '#64748B') + '">' + x.n + '</td>' +
+          '<td style="padding:4px 8px">' + drvs + '</td>' +
+          '<td style="padding:4px 8px;color:#64748B">' + x.dates.join(', ') + '</td></tr>';
+      });
+      h += '</table>';
+      if (arr.length > 200) h += '<div style="font-size:11.5px;color:#94A3B8;margin-top:4px">* 상위 200곳만 표시</div>';
+      h += '</div>';
+      box.innerHTML = h;
     }
     /* ---------- 기사마스터 관리 ---------- */
     function kMstToggle() {
@@ -5076,7 +5149,7 @@ document.getElementById('__wpSave').onclick = function() {
       var c = kCache();
       if (force) { days.forEach(function(ds) { if (c[ds]) { delete c[ds].dv; delete c[ds].tdv; } KMEM.stops = {}; KMEM.maps = {}; }); kSave(c); }
       function dvOk(ds) {
-        var v = c[ds]; if (!v || !v.dv) return false;
+        var v = c[ds]; if (!v || !v.dv || v.ms === undefined) return false;
         if (ds >= today) return (nowMs - (v.tdv || 0)) < 600000; /* 오늘 10분 */
         var d2 = new Date(nowMs - 2 * 86400000);
         var lim = kDs(d2.getFullYear(), d2.getMonth(), d2.getDate());
@@ -5098,7 +5171,7 @@ document.getElementById('__wpSave').onclick = function() {
         var ds = tasks[idx++];
         return kDrvDay(ds).then(function(res) {
           var cc = kCache(); cc[ds] = cc[ds] || {};
-          cc[ds].dv = res.dv; cc[ds].tdv = Date.now();
+          cc[ds].dv = res.dv; cc[ds].ms = res.ms; cc[ds].tdv = Date.now();
           /* 배송통계 캐시도 같이 채움 (탭 왕래 시 중복 조회 방지) */
           if (typeof cc[ds].sp !== 'number') { cc[ds].sp = res.sp; cc[ds].tp = Date.now(); }
           if (typeof cc[ds].as !== 'number') { cc[ds].as = res.as; cc[ds].aj = res.aj; cc[ds].nj = res.nj; cc[ds].ta = Date.now(); }
