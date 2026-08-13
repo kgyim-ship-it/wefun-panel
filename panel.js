@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.13 15:17';
+  var VERSION = '26.08.13 15:34';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -4329,69 +4329,101 @@ document.getElementById('__wpSave').onclick = function() {
   function viewStats() {
     var _n = new Date();
     var stY = _n.getFullYear(), stM = _n.getMonth(); /* 표시 중인 달 */
-    var ST_KEY = '__wpStats2'; /* v2: 배송방법=방문만 (택배 제외) — 키 변경으로 구캐시 무효화 */
+    var ST_KEY = '__wpStats3'; /* v3: 스낵24+조식24 · 방문 기준 */
     var stSeq = 0; /* 달 이동 시 이전 로딩 무효화 */
+    var STMEM = {}; /* 상세용 메모리 캐시: { ds: { drv, amtMap, ready } } — 패널 세션 한정 */
     function stPad(n) { return (n < 10 ? '0' : '') + n; }
     function stDs(y, m, d) { return y + '-' + stPad(m + 1) + '-' + stPad(d); }
     function stToday() { var t = new Date(); return stDs(t.getFullYear(), t.getMonth(), t.getDate()); }
     function stCache() { try { return JSON.parse(localStorage.getItem(ST_KEY)) || {}; } catch (e) { return {}; } }
     function stSave(c) { try { localStorage.setItem(ST_KEY, JSON.stringify(c)); } catch (e) {} }
     function stWon(v) { return '₩' + Number(v || 0).toLocaleString(); }
+    function stNn(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
 
-    /* 건수: 스낵24·활동 서비스의 해당일 배송 (서비스검색 deliveryDate 필터) */
+    /* 스낵 건수: 서비스검색 (스낵24·활동·방문) — 미래 포함 모든 날짜 */
     function stCnt(d) {
       var u = '/office/sales/service?searchYN=Y&serviceType=' + encodeURIComponent('스낵24') +
         '&serviceStatus=' + encodeURIComponent('활동') + '&deliveryType=' + encodeURIComponent('방문') + '&size=1&deliveryDate=' + d;
       return fetch(u).then(function(r) { return r.text(); }).then(function(t) {
         var m = t.match(/총\s*([\d,]+)\s*건의 서비스/);
         if (m) return parseInt(m[1].replace(/,/g, ''), 10);
-        if (t.indexOf('검색 결과가 없습니다') > -1) return 0; /* 배송 없는 날 */
+        if (t.indexOf('검색 결과가 없습니다') > -1) return 0;
         throw new Error('건수 파싱 실패');
       });
     }
-    /* 기사별 착지: 배송일정 등록 화면 (과거·당일만 데이터 있음) */
-    function stDrv(d, page, acc) {
-      page = page || 1; acc = acc || { map: {}, tot: 0 };
+    /* 거래명세 (서비스별): 방문만 · 주문취소 제외 → { sum, n, map(거래처→금액) } */
+    function stStmts(sv, d, page, acc) {
+      page = page || 1; acc = acc || { sum: 0, n: 0, map: {} };
+      var u = '/office/order/order?searchYN=Y&deliveryDateBegin=' + d + '&deliveryDateEnd=' + d +
+        '&serviceTypes=' + encodeURIComponent(sv) + '&size=1000&page=' + page;
+      return fetch(u).then(function(r) { return r.text(); }).then(function(t) {
+        var doc = new DOMParser().parseFromString(t, 'text/html');
+        var rows = [].slice.call(doc.querySelectorAll('table.orderSearchTable tbody tr'));
+        rows.forEach(function(tr) {
+          var td = tr.querySelectorAll('td');
+          if (td.length < 15) return;
+          if ((td[10] ? td[10].textContent.trim() : '') === '택배') return; /* 방문만 */
+          var cancel = false;
+          for (var i = 0; i < td.length; i++) { if (td[i].textContent.trim() === '주문취소') { cancel = true; break; } }
+          if (cancel) return;
+          var a = td[3].querySelector('a');
+          var name = (a ? a.textContent : (td[3].textContent.split('\n')[0] || '')).replace(/\s+/g, ' ').trim();
+          var m = (td[4].textContent.match(/₩\s*([\d,]+)/) || [])[1];
+          var v = m ? parseInt(m.replace(/,/g, ''), 10) : 0;
+          acc.sum += v; acc.n++;
+          var k = stNn(name);
+          acc.map[k] = (acc.map[k] || 0) + v;
+        });
+        var tm = t.match(/총\s*([\d,]+)\s*건/);
+        var total = tm ? parseInt(tm[1].replace(/,/g, ''), 10) : 0;
+        if (rows.length >= 1000 && page * 1000 < total) { return stStmts(sv, d, page + 1, acc); }
+        return acc;
+      });
+    }
+    /* 배송일정 등록 (서비스별): 기사별 착지 목록 → { list: [{drv, br}], tot } (과거·당일만 데이터 존재) */
+    function stStops(sv, d, page, acc) {
+      page = page || 1; acc = acc || { list: [], tot: 0 };
       var u = '/office/delivery-manager/v2/schedules?searchYN=Y&size=1000&page=' + page + '&startDate=' + d + '&endDate=' + d +
-        '&serviceTypes=' + encodeURIComponent('스낵24');
+        '&serviceTypes=' + encodeURIComponent(sv);
       return fetch(u).then(function(r) { return r.text(); }).then(function(t) {
         var doc = new DOMParser().parseFromString(t, 'text/html');
         var rows = [].slice.call(doc.querySelectorAll('table tbody tr')).filter(function(tr) { return tr.querySelectorAll('td').length >= 14; });
         rows.forEach(function(tr) {
           var td = tr.querySelectorAll('td');
-          var n = (td[3].innerText || '').replace(/\s+/g, ' ').trim() || '(미지정)';
-          acc.map[n] = (acc.map[n] || 0) + 1;
+          var drv = (td[3].innerText || '').replace(/\s+/g, ' ').trim() || '(미지정)';
+          var raw = (td[5].innerText || '').replace(/\s+/g, ' ').trim();
+          var i = raw.indexOf(' - ');
+          acc.list.push({ drv: drv, br: i > -1 ? raw.slice(i + 3) : raw });
           acc.tot++;
         });
         var tm = t.match(/총\s*([\d,]+)\s*건/);
         var total = tm ? parseInt(tm[1].replace(/,/g, ''), 10) : 0;
-        if (rows.length >= 1000 && page * 1000 < total) { return stDrv(d, page + 1, acc); }
+        if (rows.length >= 1000 && page * 1000 < total) { return stStops(sv, d, page + 1, acc); }
         return acc;
       });
     }
-    /* 금액: 거래명세 합계(부가세 포함) 합산 · 주문취소 제외 · 1000건 초과 시 페이지 순회 */
-    function stAmt(d, page, acc) {
-      page = page || 1; acc = acc || { sum: 0, n: 0 };
-      var u = '/office/order/order?searchYN=Y&deliveryDateBegin=' + d + '&deliveryDateEnd=' + d +
-        '&serviceTypes=' + encodeURIComponent('스낵24') + '&size=1000&page=' + page;
-      return fetch(u).then(function(r) { return r.text(); }).then(function(t) {
-        var doc = new DOMParser().parseFromString(t, 'text/html');
-        var rows = [].slice.call(doc.querySelectorAll('table.orderSearchTable tbody tr'));
-        rows.forEach(function(tr) {
-          var tds = tr.querySelectorAll('td');
-          if (tds.length < 15) return;
-          if ((tds[10] ? tds[10].textContent.trim() : '') === '택배') return; /* 방문만 */
-          var cancel = false;
-          for (var i = 0; i < tds.length; i++) { if (tds[i].textContent.trim() === '주문취소') { cancel = true; break; } }
-          if (cancel) return;
-          var m = (tds[4].textContent.match(/₩\s*([\d,]+)/) || [])[1];
-          acc.sum += m ? parseInt(m.replace(/,/g, ''), 10) : 0;
-          acc.n++;
+    /* 하루치 명세 2종 (스낵+조식) — 셀 금액 + 상세 조인용 맵 */
+    function stAmtDay(d) {
+      return stStmts('스낵24', d).then(function(s) {
+        return stStmts('조식24', d).then(function(j) {
+          var map = {};
+          Object.keys(s.map).forEach(function(k) { map[k] = (map[k] || 0) + s.map[k]; });
+          Object.keys(j.map).forEach(function(k) { map[k] = (map[k] || 0) + j.map[k]; });
+          STMEM[d] = STMEM[d] || {};
+          STMEM[d].amtMap = map;
+          return { as: s.sum, ns: s.n, aj: j.sum, nj: j.n };
         });
-        var tm = t.match(/총\s*([\d,]+)\s*건/);
-        var total = tm ? parseInt(tm[1].replace(/,/g, ''), 10) : 0;
-        if (rows.length >= 1000 && page * 1000 < total) { return stAmt(d, page + 1, acc); }
-        return acc;
+      });
+    }
+    /* 하루치 착지 2종 (스낵+조식) — 셀 착지수 + 상세 기사 목록 */
+    function stStopsDay(d) {
+      return stStops('스낵24', d).then(function(s) {
+        return stStops('조식24', d).then(function(j) {
+          var list = s.list.concat(j.list);
+          STMEM[d] = STMEM[d] || {};
+          STMEM[d].stops = list;
+          return { sp: list.length };
+        });
       });
     }
 
@@ -4399,13 +4431,23 @@ document.getElementById('__wpSave').onclick = function() {
       var day = parseInt(d.slice(8), 10);
       var col = dow === 0 ? '#DC2626' : (dow === 6 ? '#2563EB' : '#334155');
       var h = '<div style="font-size:11.5px;font-weight:700;color:' + col + '">' + day + (isToday ? ' <span style="background:#0EA5E9;color:#fff;border-radius:4px;padding:0 4px;font-size:10px">오늘</span>' : '') + '</div>';
-      if (info && (info.errc || info.erra)) {
+      if (info && (info.ec || info.ea || info.ep)) {
         h += '<div class="__wpStRetry" data-d="' + d + '" style="color:#DC2626;font-size:11px;cursor:pointer;text-decoration:underline">⚠ 재시도</div>';
-      } else {
-        if (info && typeof info.c === 'number') { h += '<div style="font-size:12px;font-weight:700;color:#0F172A">🚚 ' + info.c.toLocaleString() + '건</div>'; }
-        else { h += '<div style="font-size:11px;color:#94A3B8">…</div>'; }
-        if (info && typeof info.a === 'number') { h += '<div style="font-size:11px;color:#0a7d47;font-weight:600">' + stWon(info.a) + '</div>'; }
-        else if (d < stToday()) { h += '<div style="font-size:10.5px;color:#CBD5E1">금액 조회중…</div>'; }
+        return h;
+      }
+      var past = d < stToday();
+      var L = function(label, cnt, amt, color) {
+        var s = '<div style="font-size:10.5px;line-height:1.5;white-space:nowrap"><b style="color:' + color + '">' + label + '</b> ';
+        s += (typeof cnt === 'number') ? ('<b style="color:#0F172A">' + cnt.toLocaleString() + '</b>') : '<span style="color:#CBD5E1">…</span>';
+        if (typeof amt === 'number') s += ' <span style="color:#0a7d47;font-weight:600">' + stWon(amt) + '</span>';
+        else if (past) s += ' <span style="color:#CBD5E1">…</span>';
+        return s + '</div>';
+      };
+      if (!info) { return h + '<div style="font-size:11px;color:#94A3B8">…</div>'; }
+      h += L('스낵', info.cs, past || d === stToday() ? info.as : undefined, '#0369A1');
+      if (past || d === stToday()) {
+        h += L('조식', info.nj, info.aj, '#B45309');
+        h += '<div style="font-size:10.5px;color:#64748B">착지 ' + (typeof info.sp === 'number' ? '<b>' + info.sp.toLocaleString() + '</b>' : '<span style="color:#CBD5E1">…</span>') + '</div>';
       }
       return h;
     }
@@ -4418,7 +4460,7 @@ document.getElementById('__wpSave').onclick = function() {
         '<button id="__wpStNext" class="wp-btn gh">▶</button>' +
         '<button id="__wpStNow" class="wp-btn gh">오늘</button>' +
         '<b style="font-size:15px;margin:0 6px">' + stY + '년 ' + (stM + 1) + '월</b>' +
-        '<span style="font-size:12px;color:#64748B">스낵24 · 활동 · 방문 기준 / 금액=거래명세 합계(부가세 포함, 주문취소·택배 제외)</span>' +
+        '<span style="font-size:12px;color:#64748B">스낵24+조식24 · 활동 · 방문 / 금액=거래명세 합계(부가세 포함) / 날짜 클릭=기사별 상세</span>' +
         '<span style="flex:1"></span>' +
         '<span id="__wpStProg" style="font-size:12px;color:#64748B"></span>' +
         '<button id="__wpStRef" class="wp-btn gh">↻ 새로고침</button></div>';
@@ -4429,8 +4471,7 @@ document.getElementById('__wpSave').onclick = function() {
       for (var b = 0; b < first.getDay(); b++) { h += '<div></div>'; }
       for (var dd = 1; dd <= last.getDate(); dd++) {
         var ds = stDs(stY, stM, dd);
-        var dow = new Date(stY, stM, dd).getDay();
-        h += '<div id="__wpStC_' + ds + '" data-ds="' + ds + '" style="min-height:64px;border:1px solid #E2E8F0;border-radius:7px;padding:5px 7px;cursor:pointer;background:' + (ds === today ? '#FEF9E7' : '#fff') + '"></div>';
+        h += '<div id="__wpStC_' + ds + '" data-ds="' + ds + '" style="min-height:76px;border:1px solid #E2E8F0;border-radius:7px;padding:5px 7px;cursor:pointer;background:' + (ds === today ? '#FEF9E7' : '#fff') + '"></div>';
       }
       h += '</div>';
       h += '<div id="__wpStSum" style="margin-top:10px;padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:13px;color:#334155"></div>';
@@ -4440,16 +4481,22 @@ document.getElementById('__wpSave').onclick = function() {
       document.getElementById('__wpStNext').onclick = function() { stM++; if (stM > 11) { stM = 0; stY++; } stRender(); };
       document.getElementById('__wpStNow').onclick = function() { var t = new Date(); stY = t.getFullYear(); stM = t.getMonth(); stRender(); };
       document.getElementById('__wpStRef').onclick = function() { stLoad(true); };
-      VIEW.onclick = function(ev) { /* onclick 재할당 방식이라 달 이동/재진입 시 중복 안 쌓임 */
+      VIEW.onclick = function(ev) { /* onclick 재할당 방식이라 중복 안 쌓임 */
         var el = ev.target;
         if (el && el.className === '__wpStRetry') {
           var c = stCache(); delete c[el.getAttribute('data-d')]; stSave(c); stLoad(false);
           return;
         }
-        while (el && el !== VIEW) {
-          if (el.getAttribute && el.getAttribute('data-ds')) { stDetail(el.getAttribute('data-ds')); return; }
-          el = el.parentNode;
+        var dv = null, cell = null, n = el;
+        while (n && n !== VIEW) {
+          if (n.getAttribute) {
+            if (!dv && n.getAttribute('data-drv') !== null) dv = n.getAttribute('data-drv');
+            if (n.getAttribute('data-ds')) { cell = n.getAttribute('data-ds'); break; }
+          }
+          n = n.parentNode;
         }
+        if (dv !== null && !cell) { stDrvToggle(dv); return; } /* 상세 내 기사 행 클릭 */
+        if (cell) stDetail(cell);
       };
       stDetSel = '';
       stLoad(false);
@@ -4462,66 +4509,117 @@ document.getElementById('__wpSave').onclick = function() {
       el.innerHTML = stCellHtml(ds, info, ds === stToday(), dow);
     }
 
-    var stDetSel = ''; /* 선택된 날짜 */
+    /* ---------- 상세: 기사별 → 거래처별 ---------- */
+    var stDetSel = '';
+    var stDetOpen = {}; /* 펼쳐진 기사 */
+    function stDrvToggle(drv) {
+      stDetOpen[drv] = !stDetOpen[drv];
+      stDetDraw();
+    }
+    function stDetDraw() {
+      var det = document.getElementById('__wpStDet');
+      if (!det || !stDetSel) return;
+      var ds = stDetSel;
+      var mem = STMEM[ds] || {};
+      var c = stCache();
+      var v = c[ds] || {};
+      var dowN = ['일', '월', '화', '수', '목', '금', '토'][new Date(ds.slice(0, 4), parseInt(ds.slice(5, 7), 10) - 1, parseInt(ds.slice(8), 10)).getDay()];
+      var head = ds.slice(5, 7).replace(/^0/, '') + '월 ' + ds.slice(8).replace(/^0/, '') + '일 (' + dowN + ')';
+      var h = '<div style="padding:10px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155">';
+      var amtTot = (typeof v.as === 'number' ? v.as : 0) + (typeof v.aj === 'number' ? v.aj : 0);
+      h += '<div style="font-weight:800;font-size:13px;margin-bottom:7px">' + head + ' 기사별 상세' +
+        ' <span style="font-weight:600;color:#64748B">— 착지 <b style="color:#0F172A">' + (mem.stops ? mem.stops.length.toLocaleString() : '…') + '</b>' +
+        (mem.stops ? ' · 기사 <b style="color:#0F172A">' + Object.keys(stGroup(mem.stops)).length + '명</b>' : '') +
+        ' · 매출 <b style="color:#0a7d47">' + ((typeof v.as === 'number' || typeof v.aj === 'number') ? stWon(amtTot) : '조회중…') + '</b>' +
+        ' <span style="color:#94A3B8;font-size:11.5px">(기사를 클릭하면 거래처·금액이 펼쳐집니다)</span></span></div>';
+      if (mem.loading) { h += '<div style="color:#94A3B8">착지 정보 불러오는 중…</div></div>'; det.innerHTML = h; return; }
+      if (mem.error) { h += '<div style="color:#B91C1C">조회 실패 — 날짜를 다시 클릭해주세요.</div></div>'; det.innerHTML = h; return; }
+      if (!mem.stops || !mem.stops.length) { h += '<div style="color:#94A3B8">배송일정이 아직 등록되지 않은 날입니다 (기사 배정 전).</div></div>'; det.innerHTML = h; return; }
+      var grp = stGroup(mem.stops); /* drv → [{br, amt}] */
+      var arr = Object.keys(grp).map(function(k) {
+        var sum = 0; grp[k].forEach(function(x) { if (typeof x.amt === 'number') sum += x.amt; });
+        return { drv: k, list: grp[k], sum: sum };
+      }).sort(function(a, b) { return b.list.length - a.list.length || b.sum - a.sum; });
+      h += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+      h += '<tr style="background:#F8FAFC;color:#475569"><th style="text-align:left;padding:5px 8px;border-bottom:1px solid #E2E8F0">기사</th>' +
+        '<th style="text-align:right;padding:5px 8px;border-bottom:1px solid #E2E8F0;width:70px">착지</th>' +
+        '<th style="text-align:right;padding:5px 8px;border-bottom:1px solid #E2E8F0;width:130px">금액</th></tr>';
+      arr.forEach(function(g) {
+        var open = !!stDetOpen[g.drv];
+        h += '<tr data-drv="' + esc(g.drv) + '" style="cursor:pointer;border-bottom:1px solid #F1F5F9;background:' + (open ? '#EFF6FF' : '#fff') + '">' +
+          '<td style="padding:5px 8px;font-weight:600">' + (open ? '▾ ' : '▸ ') + esc(g.drv) + '</td>' +
+          '<td style="padding:5px 8px;text-align:right">' + g.list.length + '</td>' +
+          '<td style="padding:5px 8px;text-align:right;color:#0a7d47;font-weight:600">' + stWon(g.sum) + '</td></tr>';
+        if (open) {
+          var items = g.list.slice().sort(function(a, b) { return (b.amt || 0) - (a.amt || 0); });
+          h += '<tr><td colspan="3" style="padding:0 8px 8px 22px;background:#F8FAFC">';
+          h += '<table style="width:100%;border-collapse:collapse;font-size:11.5px">';
+          items.forEach(function(x, i) {
+            h += '<tr style="border-bottom:1px dashed #E2E8F0"><td style="padding:3px 6px;color:#334155">' + (i + 1) + '. ' + esc(x.br) + '</td>' +
+              '<td style="padding:3px 6px;text-align:right;width:120px;' + (typeof x.amt === 'number' ? 'color:#0a7d47' : 'color:#94A3B8') + '">' +
+              (typeof x.amt === 'number' ? stWon(x.amt) : '명세없음') + '</td></tr>';
+          });
+          h += '</table></td></tr>';
+        }
+      });
+      h += '</table></div>';
+      det.innerHTML = h;
+    }
+    function stGroup(stops) {
+      var mem = STMEM[stDetSel] || {};
+      var map = mem.amtMap || {};
+      var grp = {};
+      stops.forEach(function(s) {
+        if (!grp[s.drv]) grp[s.drv] = [];
+        var k = stNn(s.br);
+        grp[s.drv].push({ br: s.br, amt: (map[k] !== undefined) ? map[k] : null });
+      });
+      return grp;
+    }
     function stDetail(ds) {
       var det = document.getElementById('__wpStDet');
       if (!det) return;
-      stDetSel = ds;
-      /* 선택 표시 */
+      stDetSel = ds; stDetOpen = {};
       [].forEach.call(VIEW.querySelectorAll('[data-ds]'), function(x) {
         x.style.boxShadow = x.getAttribute('data-ds') === ds ? '0 0 0 2px #F97316' : '';
       });
-      var dowN = ['일', '월', '화', '수', '목', '금', '토'][new Date(ds.slice(0, 4), parseInt(ds.slice(5, 7), 10) - 1, parseInt(ds.slice(8), 10)).getDay()];
-      var head = ds.slice(5, 7).replace(/^0/, '') + '월 ' + ds.slice(8).replace(/^0/, '') + '일 (' + dowN + ') 기사별 착지';
-      function draw(v) {
-        var c = stCache();
-        var amt = c[ds] && typeof c[ds].a === 'number' ? stWon(c[ds].a) : (ds >= stToday() ? '-' : '조회중…');
-        var h = '<div style="padding:10px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155">';
-        h += '<div style="font-weight:800;font-size:13px;margin-bottom:6px">' + head +
-          ' <span style="font-weight:600;color:#64748B">— 총착지 <b style="color:#0F172A">' + (v ? v.tot.toLocaleString() : '…') + '</b>' +
-          (v ? ' · 기사 <b style="color:#0F172A">' + Object.keys(v.map).length + '명</b>' : '') +
-          ' · 매출 <b style="color:#0a7d47">' + amt + '</b></span></div>';
-        if (!v) {
-          h += '<div style="color:#94A3B8">착지 정보 불러오는 중…</div>';
-        } else if (!v.tot) {
-          h += '<div style="color:#94A3B8">배송일정이 아직 등록되지 않은 날입니다 (기사 배정 전).</div>';
-        } else {
-          var arr = Object.keys(v.map).map(function(k) { return [k, v.map[k]]; }).sort(function(a, b) { return b[1] - a[1]; });
-          h += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
-          arr.forEach(function(x) {
-            h += '<span style="border:1px solid #E2E8F0;border-radius:6px;padding:2px 8px;background:#F8FAFC;white-space:nowrap">' +
-              esc(x[0]) + ' <b>' + x[1] + '착</b></span>';
-          });
-          h += '</div>';
-        }
-        h += '</div>';
-        det.innerHTML = h;
-      }
-      var c = stCache();
-      var cached = c[ds] && c[ds].drv;
-      var fresh = cached && (ds < stToday() || (Date.now() - (c[ds].td || 0)) < 600000); /* 과거 영구, 당일 10분 */
-      if (fresh) { draw({ map: c[ds].drv, tot: c[ds].dtot || 0 }); return; }
-      draw(null);
-      stDrv(ds).then(function(v) {
+      var mem = STMEM[ds] = STMEM[ds] || {};
+      var need = [];
+      if (!mem.stops) need.push(stStopsDay(ds));
+      if (!mem.amtMap && ds <= stToday()) need.push(stAmtDay(ds).then(function(res) {
         var cc = stCache(); cc[ds] = cc[ds] || {};
-        cc[ds].drv = v.map; cc[ds].dtot = v.tot; cc[ds].td = Date.now(); stSave(cc);
-        if (stDetSel === ds) draw(v);
+        cc[ds].as = res.as; cc[ds].aj = res.aj; cc[ds].nj = res.nj; cc[ds].ta = Date.now(); stSave(cc);
+      }));
+      if (!need.length) { stDetDraw(); return; }
+      mem.loading = true; mem.error = false;
+      stDetDraw();
+      Promise.all(need).then(function() {
+        mem.loading = false;
+        if (stDetSel === ds) stDetDraw();
       }).catch(function() {
-        if (stDetSel === ds) { det.innerHTML = '<div style="padding:10px 12px;border:1px solid #FECACA;background:#FEF2F2;border-radius:7px;font-size:12.5px;color:#B91C1C">착지 조회 실패 — 날짜를 다시 클릭해주세요.</div>'; }
+        mem.loading = false; mem.error = true;
+        delete mem.stops;
+        if (stDetSel === ds) stDetDraw();
       });
     }
 
     function stSummary(days) {
       var el = document.getElementById('__wpStSum');
       if (!el) return;
-      var c = stCache(), tc = 0, ta = 0, na = 0, miss = 0;
+      var c = stCache(), cs = 0, as = 0, nj = 0, aj = 0, sp = 0, missC = 0;
       days.forEach(function(ds) {
         var v = c[ds];
-        if (v && typeof v.c === 'number') tc += v.c; else miss++;
-        if (v && typeof v.a === 'number') { ta += v.a; na++; }
+        if (v && typeof v.cs === 'number') cs += v.cs; else missC++;
+        if (v && typeof v.as === 'number') as += v.as;
+        if (v && typeof v.nj === 'number') nj += v.nj;
+        if (v && typeof v.aj === 'number') aj += v.aj;
+        if (v && typeof v.sp === 'number') sp += v.sp;
       });
-      el.innerHTML = '<b>이번 달 합계</b> · 배송 <b>' + tc.toLocaleString() + '건</b>' + (miss ? ' (조회중 ' + miss + '일)' : '') +
-        ' · 매출(과거 ' + na + '일) <b style="color:#0a7d47">' + stWon(ta) + '</b>';
+      el.innerHTML = '<b>이번 달 합계</b>' +
+        ' · <b style="color:#0369A1">스낵</b> <b>' + cs.toLocaleString() + '건</b>' + (missC ? ' (조회중 ' + missC + '일)' : '') + ' <b style="color:#0a7d47">' + stWon(as) + '</b>' +
+        ' · <b style="color:#B45309">조식</b> <b>' + nj.toLocaleString() + '건</b> <b style="color:#0a7d47">' + stWon(aj) + '</b>' +
+        ' · 착지 <b>' + sp.toLocaleString() + '</b>' +
+        ' · 총매출 <b style="color:#0a7d47">' + stWon(as + aj) + '</b> <span style="color:#94A3B8;font-size:11.5px">(조식·착지·매출은 지나간 날짜 누적)</span>';
     }
 
     function stLoad(force) {
@@ -4532,18 +4630,26 @@ document.getElementById('__wpSave').onclick = function() {
       var days = [];
       for (var dd = 1; dd <= last; dd++) { days.push(stDs(stY, stM, dd)); }
       var c = stCache();
-      if (force) { days.forEach(function(ds) { delete c[ds]; }); stSave(c); }
-      /* 캐시 유효성: 과거 건수 영구 / 오늘·미래 건수 10분 / 금액: 최근2일 6시간, 그 전 영구 */
-      function cntOk(ds) { var v = c[ds]; if (!v || typeof v.c !== 'number') return false; if (ds < today) return true; return (nowMs - (v.t || 0)) < 600000; }
-      function amtOk(ds) { if (ds >= today) return true; var v = c[ds]; if (!v || typeof v.a !== 'number') return false; var d2 = new Date(nowMs - 2 * 86400000); var lim = stDs(d2.getFullYear(), d2.getMonth(), d2.getDate()); if (ds < lim) return true; return (nowMs - (v.ta || 0)) < 21600000; }
+      if (force) { days.forEach(function(ds) { delete c[ds]; delete STMEM[ds]; }); stSave(c); }
+      /* 캐시 유효성: 과거 영구 / 오늘 10분 / 금액·착지: 최근2일 6시간 */
+      function fOk(ds, val, tKey) {
+        var v = c[ds]; if (!v || typeof v[val] !== 'number') return false;
+        if (ds > today) return (nowMs - (v[tKey] || 0)) < 600000;
+        if (ds === today) return (nowMs - (v[tKey] || 0)) < 600000;
+        var d2 = new Date(nowMs - 2 * 86400000);
+        var lim = stDs(d2.getFullYear(), d2.getMonth(), d2.getDate());
+        if (ds < lim) return true;
+        return (nowMs - (v[tKey] || 0)) < 21600000;
+      }
       days.forEach(function(ds) { stPaint(ds, c[ds]); });
       stSummary(days);
       var tasks = [];
-      days.forEach(function(ds) { if (!cntOk(ds)) tasks.push({ d: ds, k: 'c' }); });
-      days.forEach(function(ds) { if (!amtOk(ds)) tasks.push({ d: ds, k: 'a' }); });
+      days.forEach(function(ds) { if (!fOk(ds, 'cs', 't')) tasks.push({ d: ds, k: 'c' }); });
+      days.forEach(function(ds) { if (ds <= today && !fOk(ds, 'as', 'ta')) tasks.push({ d: ds, k: 'a' }); });
+      days.forEach(function(ds) { if (ds <= today && !fOk(ds, 'sp', 'tp')) tasks.push({ d: ds, k: 'p' }); });
       var done = 0, totalT = tasks.length;
       var prog = document.getElementById('__wpStProg');
-      function upProg() { if (prog) prog.textContent = totalT ? ('조회 ' + done + '/' + totalT) : ''; if (done >= totalT && prog) prog.textContent = ''; }
+      function upProg() { if (prog) prog.textContent = (done < totalT) ? ('조회 ' + done + '/' + totalT) : ''; }
       upProg();
       if (!tasks.length) return;
       var idx = 0;
@@ -4551,17 +4657,22 @@ document.getElementById('__wpSave').onclick = function() {
         if (seq !== stSeq) return Promise.resolve();
         if (idx >= tasks.length) return Promise.resolve();
         var t = tasks[idx++];
-        var p = t.k === 'c'
-          ? stCnt(t.d).then(function(n) { var cc = stCache(); cc[t.d] = cc[t.d] || {}; cc[t.d].c = n; cc[t.d].t = Date.now(); delete cc[t.d].errc; stSave(cc); })
-          : stAmt(t.d).then(function(a) { var cc = stCache(); cc[t.d] = cc[t.d] || {}; cc[t.d].a = a.sum; cc[t.d].ta = Date.now(); delete cc[t.d].erra; stSave(cc); });
-        return p.catch(function() { var cc = stCache(); cc[t.d] = cc[t.d] || {}; cc[t.d][t.k === 'c' ? 'errc' : 'erra'] = 1; stSave(cc); })
+        var p;
+        if (t.k === 'c') {
+          p = stCnt(t.d).then(function(n) { var cc = stCache(); cc[t.d] = cc[t.d] || {}; cc[t.d].cs = n; cc[t.d].t = Date.now(); delete cc[t.d].ec; stSave(cc); });
+        } else if (t.k === 'a') {
+          p = stAmtDay(t.d).then(function(res) { var cc = stCache(); cc[t.d] = cc[t.d] || {}; cc[t.d].as = res.as; cc[t.d].aj = res.aj; cc[t.d].nj = res.nj; cc[t.d].ta = Date.now(); delete cc[t.d].ea; stSave(cc); });
+        } else {
+          p = stStopsDay(t.d).then(function(res) { var cc = stCache(); cc[t.d] = cc[t.d] || {}; cc[t.d].sp = res.sp; cc[t.d].tp = Date.now(); delete cc[t.d].ep; stSave(cc); });
+        }
+        return p.catch(function() { var cc = stCache(); cc[t.d] = cc[t.d] || {}; cc[t.d][t.k === 'c' ? 'ec' : (t.k === 'a' ? 'ea' : 'ep')] = 1; stSave(cc); })
           .then(function() {
             if (seq !== stSeq) return;
             done++; upProg();
             var cc = stCache();
             stPaint(t.d, cc[t.d]);
             stSummary(days);
-            if (t.k === 'a' && stDetSel === t.d) stDetail(t.d); /* 상세 열려있으면 매출 갱신 */
+            if (stDetSel === t.d && (t.k === 'a' || t.k === 'p')) stDetDraw(); /* 상세 열려있으면 갱신 */
             return worker();
           });
       }
