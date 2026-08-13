@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.13 17:31';
+  var VERSION = '26.08.13 17:42';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -4725,10 +4725,35 @@ document.getElementById('__wpSave').onclick = function() {
     var kSeq = 0;
     var KMEM = { stops: {}, maps: {} }; /* 세션 내 원본 메모 */
     var KSORT = { k: 'ts', d: -1 }; /* 정렬: 총착지 내림차순 기본 */
-    var KMASTER = {"김성제":"개별지입","기양일":"사업소득자","이재용":"창호통운","석철홍":"대산물류","최정규":"개별지입","김현중":"창호통운","진용국":"창호통운","최영수B":"창호통운","최현우":"창호통운","손기동":"창호통운","강영규":"창호통운","이정송":"창호통운","허훈":"창호통운","송대욱":"창호통운","김유건":"대산물류","장윤구":"창호통운","김정현":"창호통운","정현우":"창호통운","이청룡":"개별지입","박남규":"창호통운","김건민":"창호통운","박택호":"대산물류","고재학":"창호통운","조민혁":"창호통운","김용환":"창호통운","최영수":"개별지입","이원근":"개별지입","임현철":"창호통운","김종범":"개별지입","장원":"개별지입","유재복":"개별지입","천명학":"개별지입","조현군":"창호통운","김환":"창호통운","최장일":"위풀","박성창":"위풀","김홍범":"위풀","김형곤":"위풀","박경용":"위풀","임문재":"위풀","이경섭":"위풀","이기찬":"위풀","강윤동":"위풀","조숭":"위풀","박종민":"위풀","전은탁":"위풀","김태회":"위펀","야간박재석":"대산물류","현재선":"대산물류","고동훈":"대산물류","남기수":"대산물류","야간신정근":"대산물류","야간진수완":"대산물류","이윤필":"대산물류","박완욱":"대산물류","김현기":"대산물류","야간최호식":"대산물류","야간김재영":"대산물류","야간손태민":"대산물류","야간강민석":"대산물류","야간김경중":"대산물류","이선현":"대산물류","야간이광영":"대산물류","야간손백수":"대산물류","윤경수":"대산물류","윤경수B":"대산물류","정영진":"대산물류","김태호":"대산물류","장현진":"대산물류","야간엄민용":"대산물류","야간김동한":"대산물류","백재희":"대산물류","야간강정훈":"대산물류","야간김민수":"대산물류","구지훈":"위펀","천호민":"위펀","김태영":"위펀","박귀태":"위펀","민영찬":"위펀","서세원B":"위펀","선현호":"위펀","소찬형":"위펀","이세형":"위펀","양원준":"위펀","이진우":"위펀","임성묵":"위펀","정우관":"위펀","최권용":"위펀","김영진":"위펀","조주형":"위펀","김건":"위펀","윤호수":"위펀","한상덕":"위펀","이요한":"위펀","정종훈":"위펀","이종오":"위펀","최윤섭":"위펀","방석현":"위펀","장동혁":"위펀","김천호":"위펀","이현재":"위펀","김무성":"위펀","강민석":"대산물류","최우진":"대산물류","손백수":"대산물류","최대규":"대산물류","김동혁":"대산물류","최호식":"대산물류","원유빈":"대산물류","이번우":"대산물류","신정근":"대산물류","이종범":"대산물류","차인오":"대산물류","손태민":"대산물류","조영진":"대산물류","엄민용":"대산물류","홍성관":"위펀","김민수":"대산물류","진수완":"대산물류","김재영":"대산물류","송현종":"위펀","김선태":"위펀","서해영":"위펀","장승환":"대산물류","여형석":"대산물류","홍현욱":"대산물류","박준수":"대산물류","정관홍":"대산물류","황윤영":"창호통운","권대장":"대산물류","이수현":"대산물류","홍재선":"대산물류","용환명":"대산물류","강정훈":"대산물류","차병준":"대산물류","심재욱":"창호통운","김경중":"대산물류","안정선":"대산물류","손동석":"대산물류","김동한":"대산물류","윤세호":"대산물류","권규섭":"대산물류","이광영":"대산물류","김경식":"대산물류","심상은":"대산물류","김우규":"대산물류","김남헌":"창호통운","서용원":"위펀","황철희":"위펀","서세원":"위펀","이수호":"위펀","정재훈":"위펀","정주영":"위펀","한대식":"위펀","이봉완":"위펀","고영철":"위펀","박상영":"위펀","고태현":"위펀","정민규":"위펀"};
-    function kBelong(n) { return KMASTER[n] || KMASTER[String(n).replace(/^야간/, '')] || '-'; }
+    var KMASTER = {"김성제":"개별지입","기양일":"사업소득자","이재용":"창호통운","석철홍":"대산물류","최정규":"개별지입","김현중":"창호통운","진용국":"창호통운","최영수B":"창호통운","최현우":"창호통운","손기동":"창호통운","강영규":"창호통운","이정송":"창호통운","허훈":"창호통운","송대욱":"창호통운","김유건":"대산물류","장윤구":"창호통운","김정현":"창호통운","정현우":"창호통운","이청룡":"개별지입","박남규":"창호통운","김건민":"창호통운","박택호":"대산물류","고재학":"창호통운","조민혁":"창호통운","김용환":"창호통운","최영수":"개별지입","이원근":"개별지입","임현철":"창호통운","김종범":"개별지입","장원":"개별지입","유재복":"개별지입","천명학":"개별지입","조현군":"창호통운","김환":"창호통운","최장일":"위풀","박성창":"위풀","김홍범":"위풀","김형곤":"위풀","박경용":"위풀","임문재":"위풀","이경섭":"위풀","이기찬":"위풀","강윤동":"위풀","조숭":"위풀","박종민":"위풀","전은탁":"위풀","김태회":"핫픽스","야간박재석":"대산물류","현재선":"대산물류","고동훈":"대산물류","남기수":"대산물류","야간신정근":"대산물류","야간진수완":"대산물류","이윤필":"대산물류","박완욱":"대산물류","김현기":"대산물류","야간최호식":"대산물류","야간김재영":"대산물류","야간손태민":"대산물류","야간강민석":"대산물류","야간김경중":"대산물류","이선현":"대산물류","야간이광영":"대산물류","야간손백수":"대산물류","윤경수":"대산물류","윤경수B":"대산물류","정영진":"대산물류","김태호":"대산물류","장현진":"대산물류","야간엄민용":"대산물류","야간김동한":"대산물류","백재희":"대산물류","야간강정훈":"대산물류","야간김민수":"대산물류","구지훈":"핫픽스","천호민":"핫픽스","김태영":"핫픽스","박귀태":"핫픽스","민영찬":"핫픽스","서세원B":"핫픽스","선현호":"핫픽스","소찬형":"핫픽스","이세형":"핫픽스","양원준":"핫픽스","이진우":"핫픽스","임성묵":"핫픽스","정우관":"핫픽스","최권용":"핫픽스","김영진":"핫픽스","조주형":"핫픽스","김건":"핫픽스","윤호수":"핫픽스","한상덕":"핫픽스","이요한":"핫픽스","정종훈":"핫픽스","이종오":"핫픽스","최윤섭":"핫픽스","방석현":"핫픽스","장동혁":"핫픽스","김천호":"핫픽스","이현재":"핫픽스","김무성":"핫픽스","강민석":"대산물류","최우진":"대산물류","손백수":"대산물류","최대규":"대산물류","김동혁":"대산물류","최호식":"대산물류","원유빈":"대산물류","이번우":"대산물류","신정근":"대산물류","이종범":"대산물류","차인오":"대산물류","손태민":"대산물류","조영진":"대산물류","엄민용":"대산물류","홍성관":"핫픽스","김민수":"대산물류","진수완":"대산물류","김재영":"대산물류","송현종":"핫픽스","김선태":"핫픽스","서해영":"핫픽스","장승환":"대산물류","여형석":"대산물류","홍현욱":"대산물류","박준수":"대산물류","정관홍":"대산물류","황윤영":"창호통운","권대장":"대산물류","이수현":"대산물류","홍재선":"대산물류","용환명":"대산물류","강정훈":"대산물류","차병준":"대산물류","심재욱":"창호통운","김경중":"대산물류","안정선":"대산물류","손동석":"대산물류","김동한":"대산물류","윤세호":"대산물류","권규섭":"대산물류","이광영":"대산물류","김경식":"대산물류","심상은":"대산물류","김우규":"대산물류","김남헌":"창호통운","서용원":"핫픽스","황철희":"핫픽스","서세원":"핫픽스","이수호":"핫픽스","정재훈":"핫픽스","정주영":"핫픽스","한대식":"핫픽스","이봉완":"핫픽스","고영철":"핫픽스","박상영":"핫픽스","고태현":"핫픽스","정민규":"핫픽스"};
+    var KM_CUR = KMASTER; /* 실사용 마스터 = 내장 + 서버 저장분 병합 */
+    var KLAST = []; /* 마지막 렌더 데이터 (엑셀용) */
+    var KFILT = ''; /* 소속 필터 (칩 클릭) */
+    var KBELS = ['핫픽스', '대산물류', '창호통운', '위풀', '개별지입', '사업소득자'];
+    function kBelong(n) { var b = KM_CUR[n] || KM_CUR[String(n).replace(/^야간/, '')] || '-'; return b === '위펀' ? '핫픽스' : b; }
+    function kCfgLoad() {
+      var loc = null;
+      try { loc = JSON.parse(localStorage.getItem('__wpDrvMaster')); } catch (e) {}
+      if (loc) KM_CUR = Object.assign({}, KMASTER, loc);
+      return fetch(apiUrl() + '?e=cfg_get&k=driver_master').then(function(r) { return r.json(); }).then(function(j) {
+        if (j && j.ok && j.v) {
+          var sv = JSON.parse(j.v);
+          KM_CUR = Object.assign({}, KMASTER, sv);
+          try { localStorage.setItem('__wpDrvMaster', JSON.stringify(sv)); } catch (e) {}
+        }
+      }).catch(function() {});
+    }
+    function kCfgSave(obj) {
+      var body = 'e=cfg_set&k=driver_master&v=' + encodeURIComponent(JSON.stringify(obj));
+      return fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+        .then(function(r) { return r.json(); }).then(function(j) {
+          if (!j || !j.ok) throw new Error('저장 실패');
+          KM_CUR = Object.assign({}, KMASTER, obj);
+          try { localStorage.setItem('__wpDrvMaster', JSON.stringify(obj)); } catch (e) {}
+        });
+    }
     function kDisp(n) { var m = String(n).match(/^야간(.+)$/); if (m) return esc(m[1]) + ' <span style="background:#0B1220;color:#E2E8F0;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700;vertical-align:1px">야간</span>'; return esc(n); }
-    var KBELC = { '위펀': '#DBEAFE;color:#1D4ED8', '대산물류': '#DCFCE7;color:#15803D', '창호통운': '#EDE9FE;color:#6D28D9', '위풀': '#FFEDD5;color:#C2410C', '개별지입': '#F1F5F9;color:#475569', '사업소득자': '#F1F5F9;color:#475569' };
+    var KBELC = { '핫픽스': '#DBEAFE;color:#1D4ED8', '대산물류': '#DCFCE7;color:#15803D', '창호통운': '#EDE9FE;color:#6D28D9', '위풀': '#FFEDD5;color:#C2410C', '개별지입': '#F1F5F9;color:#475569', '사업소득자': '#F1F5F9;color:#475569' };
     function kBelChip(b) { if (b === '-') return '<span style="color:#CBD5E1">-</span>'; var c = KBELC[b] || '#F1F5F9;color:#475569'; return '<span style="background:' + c + ';border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap">' + esc(b) + '</span>'; }
     function kPad(n) { return (n < 10 ? '0' : '') + n; }
     function kDs(y, m, d) { return y + '-' + kPad(m + 1) + '-' + kPad(d); }
@@ -4825,10 +4850,15 @@ document.getElementById('__wpSave').onclick = function() {
         '<span style="font-size:12px;color:#64748B">기사별 월 누적 · 스낵24/조식24 · 방문 / 금액=거래명세 합계(부가세 포함)</span>' +
         '<span style="flex:1"></span>' +
         '<span id="__wpKProg" style="font-size:12px;color:#64748B"></span>' +
+        '<button id="__wpKXls" class="wp-btn gh">⬇ 엑셀</button>' +
+        '<button id="__wpKMstBtn" class="wp-btn gh">기사마스터</button>' +
         '<button id="__wpKRef" class="wp-btn gh">↻ 새로고침</button></div>' +
         '<div id="__wpKSum" style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:13px;color:#334155;margin-bottom:8px"></div>' +
+        '<div id="__wpKMst" style="display:none;margin-bottom:8px"></div>' +
         '<div id="__wpKTbl"></div>';
       VIEW.innerHTML = h;
+      document.getElementById('__wpKXls').onclick = function() { kXls(); };
+      document.getElementById('__wpKMstBtn').onclick = function() { kMstToggle(); };
       document.getElementById('__wpKPrev').onclick = function() { kM--; if (kM < 0) { kM = 11; kY--; } kRender(); };
       document.getElementById('__wpKNext').onclick = function() { kM++; if (kM > 11) { kM = 0; kY++; } kRender(); };
       document.getElementById('__wpKNow').onclick = function() { var t = new Date(); kY = t.getFullYear(); kM = t.getMonth(); kRender(); };
@@ -4887,19 +4917,31 @@ document.getElementById('__wpSave').onclick = function() {
           ' · <b style="color:#0369A1">스낵</b> <b>' + tot.ss.toLocaleString() + '착</b> <b style="color:#0a7d47">' + kWon(tot.sa) + '</b>' +
           ' · <b style="color:#B45309">조식</b> <b>' + tot.js.toLocaleString() + '착</b> <b style="color:#0a7d47">' + kWon(tot.ja) + '</b>' +
           ' · 총 <b>' + tot.ts.toLocaleString() + '착</b> <b style="color:#0a7d47">' + kWon(tot.ta) + '</b>';
-        var bels = Object.keys(byBel).sort(function(a, b) { return byBel[b].ts - byBel[a].ts; });
+        /* 고정 순서: 핫픽스 → 대산 → 창호 → 위풀 → 나머지 / 클릭 = 해당 소속만 필터 */
+        var bels = KBELS.filter(function(b) { return byBel[b]; })
+          .concat(Object.keys(byBel).filter(function(b) { return KBELS.indexOf(b) < 0; }).sort());
         h0 += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px">';
         bels.forEach(function(bl) {
           var v = byBel[bl];
-          h0 += '<span style="border:1px solid #E2E8F0;background:#fff;border-radius:6px;padding:2px 9px;font-size:11.5px;white-space:nowrap">' +
-            kBelChip(bl) + ' 기사 <b>' + v.n + '</b> · 착지 <b>' + v.ts.toLocaleString() + '</b> · 기사당 일평균 <b>' + (v.n ? Math.round(v.avg / v.n * 10) / 10 : 0) + '착</b></span>';
+          var on = KFILT === bl;
+          h0 += '<span data-kbel="' + esc(bl) + '" style="border:1.5px solid ' + (on ? '#0EA5E9' : '#E2E8F0') + ';background:' + (on ? '#F0F9FF' : '#fff') + ';border-radius:6px;padding:2px 9px;font-size:11.5px;white-space:nowrap;cursor:pointer;user-select:none">' +
+            kBelChip(bl) + ' 기사 <b>' + v.n + '</b> · 착지 <b>' + v.ts.toLocaleString() + '</b> · 금액 <b style="color:#0a7d47">' + kWon(v.ta) + '</b> · 기사당 일평균 <b>' + (v.n ? Math.round(v.avg / v.n * 10) / 10 : 0) + '착</b>' + (on ? ' ✕' : '') + '</span>';
         });
         h0 += '</div>';
         sum.innerHTML = h0;
+        [].forEach.call(sum.querySelectorAll('[data-kbel]'), function(ch) {
+          ch.onclick = function() {
+            var b = ch.getAttribute('data-kbel');
+            KFILT = (KFILT === b) ? '' : b;
+            kTable(days);
+          };
+        });
       }
       var el = document.getElementById('__wpKTbl');
       if (!el) return;
-      if (!arr.length) { el.innerHTML = '<div style="padding:14px;color:#94A3B8;font-size:12.5px;border:1px solid #E2E8F0;border-radius:7px;background:#fff">집계된 데이터가 없습니다.</div>'; return; }
+      if (!arr.length) { el.innerHTML = '<div style="padding:14px;color:#94A3B8;font-size:12.5px;border:1px solid #E2E8F0;border-radius:7px;background:#fff">집계된 데이터가 없습니다.</div>'; KLAST = []; return; }
+      var viewArr = KFILT ? arr.filter(function(x) { return x.bel === KFILT; }) : arr;
+      KLAST = viewArr; /* 엑셀 = 현재 화면(필터 반영) */
       function th(label, key, extra) {
         var on = sk === key;
         var arrow = on ? (sd === -1 ? ' ▾' : ' ▴') : '';
@@ -4913,7 +4955,7 @@ document.getElementById('__wpSave').onclick = function() {
         th('조식 착지', 'js') + th('조식 금액', 'ja') +
         th('총 착지', 'ts', 'background:#F1F5F9;') + th('총 금액', 'ta', 'background:#F1F5F9;') +
         th('근무일', 'wd') + th('일평균 착지', 'avg') + '</tr>';
-      arr.forEach(function(x, i) {
+      viewArr.forEach(function(x, i) {
         var hot = x.avg >= 15; /* 일평균 15착 이상 하이라이트 (과부하 후보) */
         var nm = esc(x.drv) + (x.badge ? ' <span style="background:#0B1220;color:#E2E8F0;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700;vertical-align:1px">' + x.badge + '</span>' : '');
         h += '<tr style="border-bottom:1px solid #F1F5F9;background:' + (i % 2 ? '#FCFDFE' : '#fff') + '">' +
@@ -4938,6 +4980,92 @@ document.getElementById('__wpSave').onclick = function() {
           kTable(days);
         };
       });
+    }
+
+    /* ---------- 엑셀 다운로드 ---------- */
+    function kXls() {
+      if (!KLAST.length) { alert('내보낼 데이터가 없습니다. 집계가 끝난 뒤 다시 시도하세요.'); return; }
+      var rows = [['구분', '기사', '주/야간', '스낵 착지', '스낵 금액', '조식 착지', '조식 금액', '총 착지', '총 금액', '근무일', '일평균 착지']];
+      KLAST.forEach(function(x) {
+        rows.push([x.bel, x.drv, x.badge || '주간', x.ss, x.sa, x.js, x.ja, x.ts, x.ta, x.wd, x.avg]);
+      });
+      var fname = '기사통계_' + kY + '-' + kPad(kM + 1) + '.xlsx';
+      xlsxDownload(rows, [{ wch: 10 }, { wch: 14 }, { wch: 8 }, { wch: 9 }, { wch: 13 }, { wch: 9 }, { wch: 13 }, { wch: 9 }, { wch: 14 }, { wch: 7 }, { wch: 10 }], '기사통계', fname)
+        .then(function() { toast('✓ ' + fname, '#0a7d47'); })
+        .catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); });
+    }
+    /* ---------- 기사마스터 관리 ---------- */
+    function kMstToggle() {
+      var box = document.getElementById('__wpKMst');
+      if (!box) return;
+      if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+      box.style.display = '';
+      kMstRender();
+    }
+    function kMstRender() {
+      var box = document.getElementById('__wpKMst');
+      if (!box) return;
+      /* 이번 달 데이터에 등장한 기사 (병합 전 원본 이름) */
+      var seen = {};
+      var c = kCache();
+      kDays().forEach(function(ds) { var v = c[ds]; if (v && v.dv) Object.keys(v.dv).forEach(function(k) { seen[String(k).replace(/^야간/, '')] = 1; }); });
+      var names = {};
+      Object.keys(KM_CUR).forEach(function(n) { if (!/^야간/.test(n)) names[n] = 1; });
+      Object.keys(seen).forEach(function(n) { names[n] = 1; });
+      var un = [], as2 = [];
+      Object.keys(names).sort().forEach(function(n) { (kBelong(n) === '-' ? un : as2).push(n); });
+      function selHtml(n) {
+        var cur = kBelong(n);
+        var o = '<option value="">- 선택 -</option>';
+        KBELS.forEach(function(b) { o += '<option value="' + b + '"' + (cur === b ? ' selected' : '') + '>' + b + '</option>'; });
+        return '<select data-kmn="' + esc(n) + '" style="padding:3px 6px;border:1px solid #E2E8F0;border-radius:5px;font-size:12px">' + o + '</select>';
+      }
+      var h = '<div style="padding:10px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155">';
+      h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><b>기사마스터</b>' +
+        '<input id="__wpKMname" placeholder="기사 이름" style="padding:4px 8px;border:1px solid #E2E8F0;border-radius:5px;font-size:12px;width:110px">' +
+        '<select id="__wpKMbel" style="padding:4px 6px;border:1px solid #E2E8F0;border-radius:5px;font-size:12px">' + KBELS.map(function(b) { return '<option>' + b + '</option>'; }).join('') + '</select>' +
+        '<button id="__wpKMadd" class="wp-btn gh" style="padding:4px 10px">추가</button>' +
+        '<span style="flex:1"></span>' +
+        '<button id="__wpKMsave" class="wp-btn ok" style="padding:5px 14px">저장</button>' +
+        '<span style="font-size:11.5px;color:#94A3B8">저장하면 관리자 전원에게 공통 적용</span></div>';
+      if (un.length) {
+        h += '<div style="margin-bottom:6px"><b style="color:#DC2626">미지정 (' + un.length + ')</b></div>';
+        h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px;margin-bottom:10px">';
+        un.forEach(function(n) { h += '<div style="display:flex;gap:6px;align-items:center;padding:2px 4px;background:#FEF2F2;border-radius:5px"><span style="flex:1;font-weight:600">' + esc(n) + '</span>' + selHtml(n) + '</div>'; });
+        h += '</div>';
+      }
+      h += '<div style="margin-bottom:6px"><b>등록됨 (' + as2.length + ')</b></div>';
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px;max-height:320px;overflow:auto">';
+      as2.forEach(function(n) { h += '<div style="display:flex;gap:6px;align-items:center;padding:2px 4px"><span style="flex:1">' + esc(n) + '</span>' + selHtml(n) + '</div>'; });
+      h += '</div></div>';
+      box.innerHTML = h;
+      document.getElementById('__wpKMadd').onclick = function() {
+        var nm = (document.getElementById('__wpKMname').value || '').replace(/\s+/g, ' ').trim();
+        if (!nm) { alert('기사 이름을 입력하세요.'); return; }
+        KM_CUR = Object.assign({}, KM_CUR);
+        KM_CUR[nm.replace(/^야간/, '')] = document.getElementById('__wpKMbel').value;
+        kMstRender();
+        toast('추가됨 — [저장]을 눌러야 반영됩니다', '#0369A1');
+      };
+      document.getElementById('__wpKMsave').onclick = function() {
+        var self = this;
+        var obj = {};
+        Object.keys(KM_CUR).forEach(function(n) { obj[n] = KM_CUR[n]; }); /* 기존 전체 유지 */
+        [].forEach.call(box.querySelectorAll('select[data-kmn]'), function(sl) {
+          var n = sl.getAttribute('data-kmn'), v = sl.value;
+          if (v) obj[n] = v; else delete obj[n];
+        });
+        self.disabled = true; self.textContent = '저장 중…';
+        kCfgSave(obj).then(function() {
+          self.disabled = false; self.textContent = '저장';
+          toast('✓ 기사마스터 저장 완료', '#0a7d47');
+          kMstRender();
+          kTable(kDays());
+        }).catch(function(e) {
+          self.disabled = false; self.textContent = '저장';
+          alert('저장 실패: ' + ((e && e.message) || e));
+        });
+      };
     }
 
     function kLoad(force) {
@@ -4988,6 +5116,7 @@ document.getElementById('__wpSave').onclick = function() {
     }
 
     kRender();
+    kCfgLoad().then(function() { kTable(kDays()); }); /* 서버 마스터 도착하면 구분 갱신 */
   }
 
   function viewSchedBulk() {
