@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.12 17:42';
+  var VERSION = '26.08.13 10:53';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -1154,7 +1154,7 @@
       },
       body: 'orderScheduleId=' + encodeURIComponent(orderScheduleId) + '&deliveryDate=' + encodeURIComponent(date)
     }).then(function(r) {
-      if (!r.ok) throw new Error('삭제 실패 HTTP ' + r.status);
+      if (!r.ok) throw new Error(date + ' 삭제 실패 HTTP ' + r.status + (r.status === 500 ? ' (거래명세 생성 여부 확인)' : ''));
       return true;
     });
   } /* 배송주기 변경: 서비스 편집 페이지를 숨긴 iframe으로 로드→필드 세팅→next() 실행(팝업 없이 자동). 헤드리스 POST는 서버 DTO검증에 막혀 이 방식만 유효. */
@@ -3299,13 +3299,26 @@ document.getElementById('__wpSave').onclick = function() {
             chain = chain.then(function() {
               return waitScheduleReady(sid, 7);
             }).then(function(evs) {
-              var dels = [];
+              /* 첫배송일 이전 일정 정리.
+                 - 과거 날짜: 서버가 삭제를 거부한다(HTTP 500). 주문도 안 붙으니 건너뛴다.
+                 - 미래 날짜 중 삭제 실패(거래명세 연결 등): 모아서 날짜까지 알려주고 승인은 대기로 남긴다.
+                 예전엔 삭제 하나 실패하면 어떤 날짜인지도 모른 채 승인 전체가 죽었다. */
+              var t = todayStr();
+              var dels = [], failed = [];
               var hasFirst = false;
               (evs || []).forEach(function(e) {
-                if (e.deliveryDate < begin) { dels.push(deleteDelivery(sid, e.orderScheduleId, e.deliveryDate)); }
                 if (e.deliveryDate === begin) { hasFirst = true; }
+                if (e.deliveryDate >= begin) { return; }
+                if (e.deliveryDate < t) { return; }
+                dels.push(deleteDelivery(sid, e.orderScheduleId, e.deliveryDate).catch(function() { failed.push(e.deliveryDate); }));
               });
-              return Promise.all(dels).then(function() { if (!hasFirst) { return createDelivery(sid, begin); } });
+              return Promise.all(dels).then(function() {
+                if (failed.length) {
+                  failed.sort();
+                  throw new Error('첫배송일(' + begin + ') 이전 일정 삭제 실패: ' + failed.join(', ') + '\n거래명세가 이미 생성된 일정은 패널에서 지울 수 없습니다. 오피스 배송일정에서 해당 날짜를 직접 정리한 뒤 다시 승인하세요.');
+                }
+                if (!hasFirst) { return createDelivery(sid, begin); }
+              });
             });
           }
         }
