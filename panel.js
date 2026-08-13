@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.13 16:59';
+  var VERSION = '26.08.13 17:20';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -1972,7 +1972,7 @@ document.getElementById('__wpSave').onclick = function() {
         if (!res.ok) {
           self.disabled = false;
           self.textContent = o0;
-          toast(res.msg, '#c0392b');
+          if (res.alert) { alert(res.msg); } else { toast(res.msg, '#c0392b'); }
           return;
         }
         if (action === '배송주기변경') {
@@ -2309,10 +2309,17 @@ document.getElementById('__wpSave').onclick = function() {
       doSubmit(detail);
     };
   } /* 요청자 단계 사전검증: 실시간 스케줄로 이미있음/없음 판정 → 잘못된 요청은 제출 차단(관리자 미전달) */
+  /* 배송일정 생성기간 안내문 — 생성기간은 계약기본정보라 물류가 수정 못 함 */
+  function windowMsg(w, extra) {
+    return (extra ? extra + '\n\n' : '') +
+      '이 거래처의 배송일정 생성기간이 ' + w.expire + ' 까지입니다. (최초계약일 ' + w.contract + ' + ' + w.period + '개월)\n\n' +
+      '생성기간은 계약기본정보라 물류팀에서 수정할 수 없습니다.\n' +
+      '영업팀에 [배송일정 생성기간] 연장을 먼저 요청하신 후 다시 접수해주세요.';
+  }
   function preValidate(action, br, vals) {
     if (/조식/.test(String(br.name || ''))) return Promise.resolve({ ok: true });
     if (action === '배송시간문의') return Promise.resolve({ ok: true });
-    if (action !== '배송일정생성' && action !== '배송일정삭제' && action !== '배송일정변경') return Promise.resolve({
+    if (action !== '배송일정생성' && action !== '배송일정삭제' && action !== '배송일정변경' && action !== '배송주기변경') return Promise.resolve({
       ok: true
     });
     return resolveSid(br.id, br.name).then(function(ids) {
@@ -2320,7 +2327,33 @@ document.getElementById('__wpSave').onclick = function() {
         ok: false,
         msg: '이 거래처에 스낵24 서비스가 없습니다. (거래처명·서비스 상태 확인 필요)'
       };
-      return getScheduleEvents(ids[0]).then(function(evs) {
+      /* 배송주기변경: 생성기간 만료면 재생성 자체가 불가 → 접수 차단 */
+      if (action === '배송주기변경') {
+        return schedWindow(ids[0]).then(function(w) {
+          if (w && w.expire <= todayStr()) {
+            return { ok: false, alert: true, msg: windowMsg(w, '⛔ 배송주기변경 접수 불가 — 배송일정 생성기간 만료') };
+          }
+          return { ok: true };
+        });
+      }
+      /* 배송일정생성/변경: 요청 날짜가 생성기간 밖이면 접수 차단 */
+      var gateDates = [];
+      if (action === '배송일정생성') gateDates = String(vals['배송일'] || '').split(',').filter(Boolean);
+      if (action === '배송일정변경' && vals['변경배송일']) gateDates = [vals['변경배송일']];
+      var winP = gateDates.length ? schedWindow(ids[0]) : Promise.resolve(null);
+      return winP.then(function(w) {
+        if (w) {
+          var over = gateDates.filter(function(x) { return x > w.expire; });
+          if (over.length) {
+            return { ok: false, alert: true, msg: windowMsg(w, '⛔ 접수 불가 — 요청하신 배송일(' + over.join(', ') + ')이 배송일정 생성기간 이후입니다') };
+          }
+        }
+        return preValidateEvents(action, ids[0], vals);
+      });
+    });
+  }
+  function preValidateEvents(action, sid0, vals) {
+    return getScheduleEvents(sid0).then(function(evs) {
         var set = {};
         evs.forEach(function(e) {
           set[e.deliveryDate] = 1;
@@ -2361,7 +2394,6 @@ document.getElementById('__wpSave').onclick = function() {
           ok: true
         };
       });
-    });
   } /* ---------- 기간 필터 · 엑셀 공통 ---------- */
   function todayStr() {
     return now().slice(0, 10);
@@ -4692,6 +4724,12 @@ document.getElementById('__wpSave').onclick = function() {
     var ST_KEY = '__wpStats3'; /* 배송통계와 캐시 공유 (dv 필드) */
     var kSeq = 0;
     var KMEM = { stops: {}, maps: {} }; /* 세션 내 원본 메모 */
+    var KSORT = { k: 'ts', d: -1 }; /* 정렬: 총착지 내림차순 기본 */
+    var KMASTER = {"김성제":"개별지입","기양일":"사업소득자","이재용":"창호통운","석철홍":"대산물류","최정규":"개별지입","김현중":"창호통운","진용국":"창호통운","최영수B":"창호통운","최현우":"창호통운","손기동":"창호통운","강영규":"창호통운","이정송":"창호통운","허훈":"창호통운","송대욱":"창호통운","김유건":"대산물류","장윤구":"창호통운","김정현":"창호통운","정현우":"창호통운","이청룡":"개별지입","박남규":"창호통운","김건민":"창호통운","박택호":"대산물류","고재학":"창호통운","조민혁":"창호통운","김용환":"창호통운","최영수":"개별지입","이원근":"개별지입","임현철":"창호통운","김종범":"개별지입","장원":"개별지입","유재복":"개별지입","천명학":"개별지입","조현군":"창호통운","김환":"창호통운","최장일":"위풀","박성창":"위풀","김홍범":"위풀","김형곤":"위풀","박경용":"위풀","임문재":"위풀","이경섭":"위풀","이기찬":"위풀","강윤동":"위풀","조숭":"위풀","박종민":"위풀","전은탁":"위풀","김태회":"위펀","야간박재석":"대산물류","현재선":"대산물류","고동훈":"대산물류","남기수":"대산물류","야간신정근":"대산물류","야간진수완":"대산물류","이윤필":"대산물류","박완욱":"대산물류","김현기":"대산물류","야간최호식":"대산물류","야간김재영":"대산물류","야간손태민":"대산물류","야간강민석":"대산물류","야간김경중":"대산물류","이선현":"대산물류","야간이광영":"대산물류","야간손백수":"대산물류","윤경수":"대산물류","윤경수B":"대산물류","정영진":"대산물류","김태호":"대산물류","장현진":"대산물류","야간엄민용":"대산물류","야간김동한":"대산물류","백재희":"대산물류","야간강정훈":"대산물류","야간김민수":"대산물류","구지훈":"위펀","천호민":"위펀","김태영":"위펀","박귀태":"위펀","민영찬":"위펀","서세원B":"위펀","선현호":"위펀","소찬형":"위펀","이세형":"위펀","양원준":"위펀","이진우":"위펀","임성묵":"위펀","정우관":"위펀","최권용":"위펀","김영진":"위펀","조주형":"위펀","김건":"위펀","윤호수":"위펀","한상덕":"위펀","이요한":"위펀","정종훈":"위펀","이종오":"위펀","최윤섭":"위펀","방석현":"위펀","장동혁":"위펀","김천호":"위펀","이현재":"위펀","김무성":"위펀","강민석":"대산물류","최우진":"대산물류","손백수":"대산물류","최대규":"대산물류","김동혁":"대산물류","최호식":"대산물류","원유빈":"대산물류","이번우":"대산물류","신정근":"대산물류","이종범":"대산물류","차인오":"대산물류","손태민":"대산물류","조영진":"대산물류","엄민용":"대산물류","홍성관":"위펀","김민수":"대산물류","진수완":"대산물류","김재영":"대산물류","송현종":"위펀"};
+    function kBelong(n) { return KMASTER[n] || KMASTER[String(n).replace(/^야간/, '')] || '-'; }
+    function kDisp(n) { var m = String(n).match(/^야간(.+)$/); if (m) return esc(m[1]) + ' <span style="background:#0B1220;color:#E2E8F0;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700;vertical-align:1px">야간</span>'; return esc(n); }
+    var KBELC = { '위펀': '#DBEAFE;color:#1D4ED8', '대산물류': '#DCFCE7;color:#15803D', '창호통운': '#EDE9FE;color:#6D28D9', '위풀': '#FFEDD5;color:#C2410C', '개별지입': '#F1F5F9;color:#475569', '사업소득자': '#F1F5F9;color:#475569' };
+    function kBelChip(b) { if (b === '-') return '<span style="color:#CBD5E1">-</span>'; var c = KBELC[b] || '#F1F5F9;color:#475569'; return '<span style="background:' + c + ';border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap">' + esc(b) + '</span>'; }
     function kPad(n) { return (n < 10 ? '0' : '') + n; }
     function kDs(y, m, d) { return y + '-' + kPad(m + 1) + '-' + kPad(d); }
     function kToday() { var t = new Date(); return kDs(t.getFullYear(), t.getMonth(), t.getDate()); }
@@ -4815,49 +4853,86 @@ document.getElementById('__wpSave').onclick = function() {
         if (!v || !v.dv) { missing++; return; }
         aggDays++;
         Object.keys(v.dv).forEach(function(k) {
-          if (!agg[k]) agg[k] = [0, 0, 0, 0];
+          if (!agg[k]) agg[k] = [0, 0, 0, 0, 0]; /* ss, sa, js, ja, 근무일 */
           for (var i = 0; i < 4; i++) agg[k][i] += v.dv[k][i] || 0;
+          agg[k][4] += 1;
         });
       });
       var arr = Object.keys(agg).map(function(k) {
         var a = agg[k];
-        return { drv: k, ss: a[0], sa: a[1], js: a[2], ja: a[3], ts: a[0] + a[2], ta: a[1] + a[3] };
-      }).sort(function(a, b) { return b.ts - a.ts || b.ta - a.ta; });
+        var ts = a[0] + a[2];
+        return { drv: k, bel: kBelong(k), ss: a[0], sa: a[1], js: a[2], ja: a[3], ts: ts, ta: a[1] + a[3], wd: a[4], avg: a[4] ? Math.round(ts / a[4] * 10) / 10 : 0 };
+      });
+      var sk = KSORT.k, sd = KSORT.d;
+      arr.sort(function(x, y) {
+        var a = x[sk], b = y[sk];
+        if (typeof a === 'string') { return a < b ? -sd : (a > b ? sd : (y.ts - x.ts)); }
+        return (a - b) * sd || y.ts - x.ts;
+      });
       var tot = { ss: 0, sa: 0, js: 0, ja: 0, ts: 0, ta: 0 };
-      arr.forEach(function(x) { tot.ss += x.ss; tot.sa += x.sa; tot.js += x.js; tot.ja += x.ja; tot.ts += x.ts; tot.ta += x.ta; });
+      var byBel = {};
+      arr.forEach(function(x) {
+        tot.ss += x.ss; tot.sa += x.sa; tot.js += x.js; tot.ja += x.ja; tot.ts += x.ts; tot.ta += x.ta;
+        if (!byBel[x.bel]) byBel[x.bel] = { n: 0, ts: 0, ta: 0, avg: 0 };
+        byBel[x.bel].n++; byBel[x.bel].ts += x.ts; byBel[x.bel].ta += x.ta; byBel[x.bel].avg += x.avg;
+      });
       var sum = document.getElementById('__wpKSum');
       if (sum) {
-        sum.innerHTML = '<b>' + (kM + 1) + '월 합계</b> (' + aggDays + '일 집계' + (missing ? ' · 조회중 ' + missing + '일' : '') + ')' +
+        var h0 = '<b>' + (kM + 1) + '월 합계</b> (' + aggDays + '일 집계' + (missing ? ' · 조회중 ' + missing + '일' : '') + ')' +
           ' · 기사 <b>' + arr.length + '명</b>' +
           ' · <b style="color:#0369A1">스낵</b> <b>' + tot.ss.toLocaleString() + '착</b> <b style="color:#0a7d47">' + kWon(tot.sa) + '</b>' +
           ' · <b style="color:#B45309">조식</b> <b>' + tot.js.toLocaleString() + '착</b> <b style="color:#0a7d47">' + kWon(tot.ja) + '</b>' +
           ' · 총 <b>' + tot.ts.toLocaleString() + '착</b> <b style="color:#0a7d47">' + kWon(tot.ta) + '</b>';
+        var bels = Object.keys(byBel).sort(function(a, b) { return byBel[b].ts - byBel[a].ts; });
+        h0 += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px">';
+        bels.forEach(function(bl) {
+          var v = byBel[bl];
+          h0 += '<span style="border:1px solid #E2E8F0;background:#fff;border-radius:6px;padding:2px 9px;font-size:11.5px;white-space:nowrap">' +
+            kBelChip(bl) + ' 기사 <b>' + v.n + '</b> · 착지 <b>' + v.ts.toLocaleString() + '</b> · 기사당 일평균 <b>' + (v.n ? Math.round(v.avg / v.n * 10) / 10 : 0) + '착</b></span>';
+        });
+        h0 += '</div>';
+        sum.innerHTML = h0;
       }
       var el = document.getElementById('__wpKTbl');
       if (!el) return;
       if (!arr.length) { el.innerHTML = '<div style="padding:14px;color:#94A3B8;font-size:12.5px;border:1px solid #E2E8F0;border-radius:7px;background:#fff">집계된 데이터가 없습니다.</div>'; return; }
-      var h = '<div style="border:1px solid #E2E8F0;border-radius:7px;overflow:hidden;background:#fff">' +
+      function th(label, key, extra) {
+        var on = sk === key;
+        var arrow = on ? (sd === -1 ? ' ▾' : ' ▴') : '';
+        return '<th data-sk="' + key + '" style="text-align:' + (key === 'bel' || key === 'drv' ? 'left' : 'right') + ';padding:6px 10px;border-bottom:1px solid #E2E8F0;cursor:pointer;user-select:none;white-space:nowrap;' + (extra || '') + (on ? 'color:#0F172A;background:#EFF6FF' : '') + '">' + label + arrow + '</th>';
+      }
+      var h = '<div style="border:1px solid #E2E8F0;border-radius:7px;overflow:auto;background:#fff">' +
         '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
         '<tr style="background:#F8FAFC;color:#475569">' +
-        '<th style="text-align:left;padding:6px 10px;border-bottom:1px solid #E2E8F0">기사</th>' +
-        '<th style="text-align:right;padding:6px 10px;border-bottom:1px solid #E2E8F0">스낵 착지</th>' +
-        '<th style="text-align:right;padding:6px 10px;border-bottom:1px solid #E2E8F0">스낵 금액</th>' +
-        '<th style="text-align:right;padding:6px 10px;border-bottom:1px solid #E2E8F0">조식 착지</th>' +
-        '<th style="text-align:right;padding:6px 10px;border-bottom:1px solid #E2E8F0">조식 금액</th>' +
-        '<th style="text-align:right;padding:6px 10px;border-bottom:1px solid #E2E8F0;background:#F1F5F9">총 착지</th>' +
-        '<th style="text-align:right;padding:6px 10px;border-bottom:1px solid #E2E8F0;background:#F1F5F9">총 금액</th></tr>';
+        th('구분', 'bel') + th('기사', 'drv') +
+        th('스낵 착지', 'ss') + th('스낵 금액', 'sa') +
+        th('조식 착지', 'js') + th('조식 금액', 'ja') +
+        th('총 착지', 'ts', 'background:#F1F5F9;') + th('총 금액', 'ta', 'background:#F1F5F9;') +
+        th('근무일', 'wd') + th('일평균 착지', 'avg') + '</tr>';
       arr.forEach(function(x, i) {
+        var hot = x.avg >= 15; /* 일평균 15착 이상 하이라이트 (과부하 후보) */
         h += '<tr style="border-bottom:1px solid #F1F5F9;background:' + (i % 2 ? '#FCFDFE' : '#fff') + '">' +
-          '<td style="padding:5px 10px;font-weight:600">' + (i + 1) + '. ' + esc(x.drv) + '</td>' +
+          '<td style="padding:5px 10px">' + kBelChip(x.bel) + '</td>' +
+          '<td style="padding:5px 10px;font-weight:600;white-space:nowrap">' + (i + 1) + '. ' + kDisp(x.drv) + '</td>' +
           '<td style="padding:5px 10px;text-align:right">' + (x.ss ? x.ss.toLocaleString() : '-') + '</td>' +
           '<td style="padding:5px 10px;text-align:right;color:#0a7d47">' + (x.sa ? kWon(x.sa) : '-') + '</td>' +
           '<td style="padding:5px 10px;text-align:right">' + (x.js ? x.js.toLocaleString() : '-') + '</td>' +
           '<td style="padding:5px 10px;text-align:right;color:#0a7d47">' + (x.ja ? kWon(x.ja) : '-') + '</td>' +
           '<td style="padding:5px 10px;text-align:right;font-weight:700;background:#FAFBFC">' + x.ts.toLocaleString() + '</td>' +
-          '<td style="padding:5px 10px;text-align:right;font-weight:700;color:#0a7d47;background:#FAFBFC">' + kWon(x.ta) + '</td></tr>';
+          '<td style="padding:5px 10px;text-align:right;font-weight:700;color:#0a7d47;background:#FAFBFC">' + kWon(x.ta) + '</td>' +
+          '<td style="padding:5px 10px;text-align:right">' + x.wd + '</td>' +
+          '<td style="padding:5px 10px;text-align:right;font-weight:700;' + (hot ? 'color:#DC2626' : '') + '">' + x.avg + '</td></tr>';
       });
-      h += '</table></div>';
+      h += '</table></div>' +
+        '<div style="font-size:11.5px;color:#94A3B8;margin-top:5px">* 열 제목 클릭 = 정렬 · 일평균 착지 15 이상은 빨간색 (증차/코스조정 검토 후보) · 근무일 = 해당 월에 배송 배정이 있었던 날 수</div>';
       el.innerHTML = h;
+      [].forEach.call(el.querySelectorAll('th[data-sk]'), function(t) {
+        t.onclick = function() {
+          var k = t.getAttribute('data-sk');
+          if (KSORT.k === k) { KSORT.d = -KSORT.d; } else { KSORT.k = k; KSORT.d = (k === 'bel' || k === 'drv') ? 1 : -1; }
+          kTable(days);
+        };
+      });
     }
 
     function kLoad(force) {
