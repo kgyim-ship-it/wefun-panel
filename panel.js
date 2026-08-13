@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.13 10:53';
+  var VERSION = '26.08.13 11:12';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -1122,7 +1122,8 @@
     return fetch('/office/order/schedule/service/update/' + serviceId, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest'   /* 오피스 화면($.ajax)과 동일하게 — 없으면 서버가 다른 분기를 타 500이 날 수 있다 */
       },
       body: 'orderScheduleId=0&deliveryDate=' + encodeURIComponent(date)
     }).then(function(r) {
@@ -1137,7 +1138,8 @@
     return fetch('/office/order/schedule/service/update/' + serviceId, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest'
       },
       body: 'orderScheduleId=' + encodeURIComponent(orderScheduleId) + '&deliveryDate=' + encodeURIComponent(newDate)
     }).then(function(r) {
@@ -1150,7 +1152,8 @@
     return fetch('/office/order/schedule/service/delete/' + serviceId, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest'
       },
       body: 'orderScheduleId=' + encodeURIComponent(orderScheduleId) + '&deliveryDate=' + encodeURIComponent(date)
     }).then(function(r) {
