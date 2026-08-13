@@ -120,7 +120,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzhF9-acnAedsgED5MSWnnkpK3S78heT1hy9Ra16Bvt1BA7rz2TpmZbQzMrsw1Ls-KZ/exec'; /* 공유 큐 웹앱 (고정) */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.13 11:12';
+  var VERSION = '26.08.13 12:56';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -375,7 +375,7 @@
          끝났을 수 있으므로 '실패'로 단정하면 안 된다 → badResponse 로 표시만 하고 호출부가 확인. */
       try { j = JSON.parse(t); } catch (pe) { throw new Error('서버 응답이 JSON이 아닙니다(구글 일시장애)'); }
       if (!j || j.ok === false) { var ae = new Error((j && j.error) || '응답 오류'); ae.appError = true; throw ae; }
-      if (!READS[params.e]) { cacheBust(); }   /* 쓰기 성공 → 목록 캐시 즉시 폐기 (옛 목록 보이는 것 방지) */
+      if (!READS[params.e]) { cacheBust(params.id || params.ids || ''); }   /* 쓰기 성공 → 캐시를 헌 것으로 표시 + 해당 행 제거 */
       return j;
     }).catch(function(e) {
       if (!_retry && RETRY_OK[params.e]) {
@@ -405,14 +405,30 @@
      쓰기가 성공하면 api()가 cacheBust()로 통째로 버리므로 옛 목록이 남지 않는다.
      LOADSEQ: 늦게 도착한 응답이 최신 화면을 덮어쓰는 것 방지. */
   var LCACHE = {}, LOADSEQ = 0;
-  function cacheBust() { LCACHE = {}; _pendCache = { n: 0, t: 0 }; }
+  /* 쓰기 후 캐시를 통째로 버리면 승인할 때마다 다음 화면 전환에서 '불러오는 중…'이 떴다.
+     → 버리지 않고 '헌 것' 표시만 한다. 헌 캐시라도 일단 그려서 대기 화면을 없애고 뒤에서 새로 받아 교체한다.
+     처리된 건의 id 를 알면 캐시에서 그 행을 미리 빼서, 새로고침 전 잠깐의 낡은 표시도 줄인다. */
+  function cacheBust(ids) {
+    var rm = String(ids || '').split(',').map(function(x) { return x.trim(); }).filter(Boolean);
+    for (var k in LCACHE) {
+      LCACHE[k].stale = true;
+      var arr = LCACHE[k].items;
+      if (rm.length && arr) {
+        for (var i = arr.length - 1; i >= 0; i--) {
+          if (rm.indexOf(String(arr[i].id)) > -1) { arr.splice(i, 1); }
+        }
+      }
+    }
+    _pendCache = { n: 0, t: 0 };
+  }
   function listReqSWR(elId, f, cb) {
     var my = ++LOADSEQ;
     var key = elId + '|' + JSON.stringify(f);
     var el = document.getElementById(elId);
     var c = LCACHE[key];
     var shown = false;
-    if (c && (Date.now() - c.t) < 120000) {
+    if (c) {
+      /* 헌 캐시라도 일단 그린다 — '불러오는 중…'은 캐시가 아예 없을 때(첫 진입)만 */
       try { cb(c.items); shown = true; } catch (e) {}
     } else if (el) {
       el.innerHTML = '<div style="color:#94a3b8;padding:10px">불러오는 중…</div>';
@@ -3306,19 +3322,30 @@ document.getElementById('__wpSave').onclick = function() {
                  - 과거 날짜: 서버가 삭제를 거부한다(HTTP 500). 주문도 안 붙으니 건너뛴다.
                  - 미래 날짜 중 삭제 실패(거래명세 연결 등): 모아서 날짜까지 알려주고 승인은 대기로 남긴다.
                  예전엔 삭제 하나 실패하면 어떤 날짜인지도 모른 채 승인 전체가 죽었다. */
+              /* 방금 driveCycle 로 생성된 행은 서버 후처리가 도는 동안 삭제가 500으로 튕긴다
+                 (같은 행을 몇 분 뒤 손으로 지우면 정상 삭제됨 = 타이밍 문제).
+                 → 2초 기다렸다 시작하고, 건별로 실패 시 2초 간격 재시도 3회. 순차 실행. */
               var t = todayStr();
-              var dels = [], failed = [];
+              var targets = [], failed = [];
               var hasFirst = false;
               (evs || []).forEach(function(e) {
                 if (e.deliveryDate === begin) { hasFirst = true; }
                 if (e.deliveryDate >= begin) { return; }
                 if (e.deliveryDate < t) { return; }
-                dels.push(deleteDelivery(sid, e.orderScheduleId, e.deliveryDate).catch(function() { failed.push(e.deliveryDate); }));
+                targets.push(e);
               });
-              return Promise.all(dels).then(function() {
+              function delRetry(e, tries) {
+                return deleteDelivery(sid, e.orderScheduleId, e.deliveryDate).catch(function(err) {
+                  if (tries <= 0) { failed.push(e.deliveryDate); return; }
+                  return new Promise(function(rs) { setTimeout(rs, 2000); }).then(function() { return delRetry(e, tries - 1); });
+                });
+              }
+              var ch = new Promise(function(rs) { setTimeout(rs, targets.length ? 2000 : 0); });
+              targets.forEach(function(e) { ch = ch.then(function() { return delRetry(e, 3); }); });
+              return ch.then(function() {
                 if (failed.length) {
                   failed.sort();
-                  throw new Error('첫배송일(' + begin + ') 이전 일정 삭제 실패: ' + failed.join(', ') + '\n거래명세가 이미 생성된 일정은 패널에서 지울 수 없습니다. 오피스 배송일정에서 해당 날짜를 직접 정리한 뒤 다시 승인하세요.');
+                  throw new Error('첫배송일(' + begin + ') 이전 일정 삭제 실패: ' + failed.join(', ') + '\n재시도까지 실패했습니다. 오피스 배송일정에서 해당 날짜를 직접 삭제한 뒤, 패널에서 다시 승인하세요.\n(다시 승인해도 주기 재생성으로 같은 날짜가 다시 생기니, 승인 → 실패 시 그때 지우는 순서가 맞습니다)');
                 }
                 if (!hasFirst) { return createDelivery(sid, begin); }
               });
