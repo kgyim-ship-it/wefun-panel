@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.14 18:21';
+  var VERSION = '26.08.14 18:29';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5382,7 +5382,10 @@ document.getElementById('__wpSave').onclick = function() {
         if (!inRegion.length) { g.stops.forEach(function(s2) { s2.flag = '미배정(권역없음:' + g.region + ')'; DUNAS.push(s2); }); return; }
         var cands = inRegion.filter(function(d) { return d.load + g.amt <= DCAP; });
         var flag = '';
-        if (!cands.length) { cands = inRegion.slice().sort(function(a, b) { return a.load - b.load; }).slice(0, 1); flag = '용량초과'; }
+        if (!cands.length) { /* 권역 기사 전원 300만 도달(고정 포함) → 일반 착지는 미배정 */
+          g.stops.forEach(function(s2) { s2.flag = '미배정(권역만차:' + g.region + ')'; DUNAS.push(s2); });
+          return;
+        }
         var best = null, bs = 1e18;
         cands.forEach(function(d) {
           var c = centroid(d);
