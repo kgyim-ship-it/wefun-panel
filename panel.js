@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.13 19:01';
+  var VERSION = '26.08.14 17:10';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -837,6 +837,7 @@
       ['sched_bulk', '배송일정 일괄'],
       ['stats', '배송통계'],
       ['kstats', '기사통계'],
+      ['dispatch', '배차'],
       ['board_update', '업데이트 이력'],
       ['board_feature', '기능개선']
     ]
@@ -872,6 +873,7 @@
     else if (t === 'sched_bulk') viewSchedBulk();
     else if (t === 'stats') viewStats();
     else if (t === 'kstats') viewKStats();
+    else if (t === 'dispatch') viewDispatch();
     else if (t === 'newcode') viewNewCode();
     else if (t === 'board_update') viewBoard('update');
     else if (t === 'board_feature') viewBoard('feature');
@@ -5190,6 +5192,304 @@ document.getElementById('__wpSave').onclick = function() {
 
     kRender();
     kCfgLoad().then(function() { kTable(kDays()); }); /* 서버 마스터 도착하면 구분 갱신 */
+  }
+
+  /* ---------- 배차 (관리자) — 배송동선 라우팅 ---------- */
+  function viewDispatch() {
+    var DEXC = ['주간15', '주간19', '주간20', '주간21', '주간22', '주간100']; /* 위펀본사 코스 제외 */
+    var DDRV = [["주간01","강민석","대산물류","강남/서초"],["주간02","최우진","대산물류","강남/서초"],["주간03","손백수","대산물류","강남/서초"],["주간04","최대규","대산물류","광주/용인/수원/화성"],["주간05","김동혁","대산물류","안양/과천/의왕/군포"],["주간06","최호식","대산물류","인천"],["주간07","원유빈","대산물류","성동/중랑/성북/노원/남양주"],["주간08","이번우","대산물류","마포/고양/파주"],["주간09","신정근","대산물류","하남/강동/송파"],["주간10","이종범","대산물류","영등포/양천"],["주간11","차인오","대산물류","강남/서초"],["주간12","손태민","대산물류","성남"],["주간13","조영진","대산물류","중구/종로"],["주간14","엄민용","대산물류","강남/서초"],["주간16","김민수","대산물류","성동/광진/송파"],["주간17","진수완","대산물류","영등포/강서"],["주간18","김재영","대산물류","강남/서초"],["주간23","장승환","대산물류","중구/종로"],["주간24","여형석","대산물류","강남/서초"],["주간25","홍현욱","대산물류","성남/송파"],["주간26","박준수","대산물류","강남/서초"],["주간27","정관홍","대산물류","강남/서초"],["주간28","황윤영","창호통운","성남"],["주간29","권대장","대산물류","금천"],["주간30","이수현","대산물류","마포/서대문"],["주간31","홍재선","대산물류","용산/중구/종로"],["주간32","용환명","대산물류","강남/서초"],["주간33","강정훈","대산물류","강남/서초"],["주간34","차병준","대산물류","금천/구로/동작/관악"],["주간35","심재욱","창호통운","강남/서초"],["주간36","김경중","대산물류","강남/서초"],["주간37","안정선","대산물류","용산/중구/종로"],["주간38","손동석","대산물류","부천/강서/영등포"],["주간39","김동한","대산물류","동작/관악/구로"],["주간40","윤세호","대산물류","광주/용인/수원/화성"],["주간41","권규섭","대산물류","마포/서대문/고양/은평/파주"],["주간42","이광영","대산물류","강남/서초"],["주간43","김경식","대산물류","마포/영등포"],["주간44","심상은","대산물류","성남"],["주간45","김우규","대산물류","강남/서초"],["주간46","김남헌","창호통운","강남/서초"]]; /* [코스, 기사, 소속, 권역] */
+    var DCAP = 3000000; /* 코스당 금액 상한 */
+    var DLOOK = 14; /* 고정 자동감지 lookback 일수 */
+    var DTGT = null, DRES = null, DFIX_AUTO = null, DFIX_OVR = {};
+    function dnn(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
+    function dBase(a) { var i = a.indexOf(')'); return i > -1 ? a.slice(0, i + 1) : a; }
+    function dRegion(addr) {
+      var p = String(addr).split(' ');
+      if (p[0] === '서울') { var g = p[1] || ''; return g === '중구' ? '중구' : g.replace(/구$/, ''); }
+      if (p[0] === '인천') return '인천';
+      if (p[0] === '경기') return (p[1] || '').replace(/시$/, '');
+      return p[0];
+    }
+    function dDist(a, b) { if (!a || !b) return 999; var dx = (a.x - b.x) * 88, dy = (a.y - b.y) * 111; return Math.sqrt(dx * dx + dy * dy); }
+    function dKey(br) { var i = br.indexOf(' - '); return dnn(i > -1 ? br.slice(i + 3) : br); }
+
+    VIEW.innerHTML = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155;line-height:1.7;margin-bottom:10px">' +
+      '<b>배송동선 엑셀 → 타 운수사 코스 자동 배차</b><br>' +
+      '위펀오피스 [판매/정산 > 우린 발주양식 > 배송동선] 엑셀을 올리면: 주간 코스(위펀본사 ' + DEXC.join('·') + ' 제외)를 ' +
+      '권역 + 고정담당 + 코스당 300만원 이하 + 같은 건물 같은 기사 규칙으로 배차하고 동선 순서까지 정렬합니다.</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
+      '<label style="font-size:12.5px;color:#334155">배송일 <input type="date" id="__wpDpDate" style="padding:4px 6px;border:1px solid #E2E8F0;border-radius:5px"></label>' +
+      '<button id="__wpDpRun" class="wp-btn pri">배차 실행 (오피스에서 자동 다운로드)</button>' +
+      '<span style="font-size:11.5px;color:#94A3B8">파일로 하려면 →</span><input type="file" id="__wpDpF" accept=".xlsx,.xls" style="font-size:11.5px">' +
+      '<button id="__wpDpXls" class="wp-btn ok" disabled>⬇ 라우팅 엑셀</button>' +
+      '<button id="__wpDpFix" class="wp-btn gh" disabled>고정 스팟 관리</button>' +
+      '<span id="__wpDpProg" style="font-size:12px;color:#64748B"></span></div>' +
+      '<div id="__wpDpFixBox" style="display:none;margin-bottom:8px"></div>' +
+      '<div id="__wpDpOut"></div>';
+    var LOG = document.getElementById('__wpDpProg');
+    (function() { var d = new Date(); d.setDate(d.getDate() + 1); document.getElementById('__wpDpDate').value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); })();
+    function dlog(m) { if (LOG) LOG.textContent = m; }
+
+    /* 서버 고정 오버라이드 로드 */
+    fetch(apiUrl() + '?e=cfg_get&k=fix_master').then(function(r) { return r.json(); }).then(function(j) {
+      if (j && j.ok && j.v) { try { DFIX_OVR = JSON.parse(j.v) || {}; } catch (e) {} }
+    }).catch(function() {});
+
+    /* 고정 자동감지: 최근 N일 배송일정에서 스팟별 최다 기사 (하루 1회 localStorage 캐시) */
+    function dFixAuto() {
+      if (DFIX_AUTO) return Promise.resolve(DFIX_AUTO);
+      var today = now().slice(0, 10);
+      try {
+        var c = JSON.parse(localStorage.getItem('__wpFixAuto'));
+        if (c && c.d === today && c.m) { DFIX_AUTO = c.m; return Promise.resolve(DFIX_AUTO); }
+      } catch (e) {}
+      var days = [];
+      for (var i = 1; i <= DLOOK; i++) { var d = new Date(); d.setDate(d.getDate() - i); days.push(d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2)); }
+      var freq = {}; /* key → { drv: n } */
+      var idx = 0;
+      function one() {
+        if (idx >= days.length * 2) {
+          var m = {};
+          Object.keys(freq).forEach(function(k) {
+            var best = '', bn = 0;
+            Object.keys(freq[k]).forEach(function(dv) { if (freq[k][dv] > bn) { bn = freq[k][dv]; best = dv; } });
+            m[k] = best;
+          });
+          DFIX_AUTO = m;
+          try { localStorage.setItem('__wpFixAuto', JSON.stringify({ d: today, m: m })); } catch (e) {}
+          return Promise.resolve(m);
+        }
+        var day = days[Math.floor(idx / 2)];
+        var sv = idx % 2 === 0 ? '스낵24' : '조식24';
+        idx++;
+        dlog('고정담당 분석 중… ' + Math.ceil(idx / 2) + '/' + DLOOK + '일');
+        return fetch('/office/delivery-manager/v2/schedules?searchYN=Y&size=1000&page=1&startDate=' + day + '&endDate=' + day + '&serviceTypes=' + encodeURIComponent(sv))
+          .then(function(r) { return r.text(); }).then(function(t) {
+            var doc = new DOMParser().parseFromString(t, 'text/html');
+            [].slice.call(doc.querySelectorAll('table tbody tr')).forEach(function(tr) {
+              var td = tr.querySelectorAll('td');
+              if (td.length < 14) return;
+              var drv = (td[3].innerText || '').replace(/\s+/g, ' ').trim();
+              var raw = (td[5].innerText || '').replace(/\s+/g, ' ').trim();
+              var i2 = raw.indexOf(' - ');
+              var k = dnn(i2 > -1 ? raw.slice(i2 + 3) : raw);
+              if (!drv || !k) return;
+              if (!freq[k]) freq[k] = {};
+              freq[k][drv] = (freq[k][drv] || 0) + 1;
+            });
+          }).catch(function() {}).then(one);
+      }
+      return one();
+    }
+
+    /* 지오코딩 (워커 경유, D1 캐시) */
+    function dGeo(addrs) {
+      var out = {}, idx = 0;
+      function chunk() {
+        if (idx >= addrs.length) return Promise.resolve(out);
+        var part = addrs.slice(idx, idx + 20);
+        idx += 20;
+        dlog('좌표 변환 중… ' + Math.min(idx, addrs.length) + '/' + addrs.length);
+        return fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=geo&addrs=' + encodeURIComponent(JSON.stringify(part)) })
+          .then(function(r) { return r.json(); }).then(function(j) {
+            if (j && j.ok) { Object.keys(j.geo || {}).forEach(function(k) { out[k] = j.geo[k]; }); if (!j.key) throw new Error('워커에 KAKAO_REST_KEY 미설정'); }
+            return chunk();
+          });
+      }
+      return chunk();
+    }
+
+    document.getElementById('__wpDpRun').onclick = function() {
+      var f = document.getElementById('__wpDpF').files[0];
+      var day = document.getElementById('__wpDpDate').value;
+      if (!f && !/^\d{4}-\d{2}-\d{2}$/.test(day)) { alert('배송일을 선택해주세요.'); return; }
+      var self = this; self.disabled = true;
+      var bufP = f ? f.arrayBuffer() : (function() {
+        dlog('배송동선 다운로드 중… (' + day + ')');
+        var fd = 'deliveryDate=' + encodeURIComponent(day) + '&logisType=';
+        return fetch('/office/order/woolin/delivery/excel', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
+          .then(function(r) { if (!r.ok) throw new Error('배송동선 다운로드 실패 HTTP ' + r.status); return r.arrayBuffer(); })
+          .then(function(b) { var u8 = new Uint8Array(b.slice(0, 2)); if (u8[0] !== 0x50 || u8[1] !== 0x4B) throw new Error('배송동선 응답이 엑셀이 아닙니다 (배송일 확인)'); return b; });
+      })();
+      ensureXLSX().then(function() { return bufP; }).then(function(buf) {
+        var wb2 = XLSX.read(buf, { type: 'array' });
+        var sn = wb2.SheetNames.filter(function(n) { return n.indexOf('커피') < 0; })[0];
+        var rows2 = XLSX.utils.sheet_to_json(wb2.Sheets[sn], { header: 1, defval: '' }).slice(1);
+        DTGT = rows2.filter(function(r) { var c = String(r[0]).trim(); return c.indexOf('주간') === 0 && DEXC.indexOf(c) < 0; })
+          .map(function(r) { return { br: String(r[1]).trim(), addr: String(r[2]).trim(), memo: String(r[3] || ''), stmt: String(r[4]), amt: Number(r[5]) || 0, fixed: /고정|카드키|이관/.test(String(r[3] || '')) }; });
+        if (!DTGT.length) throw new Error('라우팅 대상(주간 코스)이 없습니다. 파일을 확인하세요.');
+        dlog('대상 ' + DTGT.length + '착지');
+        return dFixAuto();
+      }).then(function(fixAuto) {
+        var uniq = {};
+        DTGT.forEach(function(t) { uniq[dBase(t.addr)] = 1; });
+        return dGeo(Object.keys(uniq)).then(function(geo) { return { geo: geo, fixAuto: fixAuto }; });
+      }).then(function(ctx) {
+        dRun(ctx.geo, ctx.fixAuto);
+        self.disabled = false;
+      }).catch(function(e) {
+        self.disabled = false;
+        dlog('');
+        alert('배차 실패: ' + ((e && e.message) || e));
+      });
+    };
+
+    function dRun(geo, fixAuto) {
+      var drivers = DDRV.map(function(r) { return { course: r[0], name: r[1], belong: r[2], regions: r[3].split('/'), load: 0, stops: [] }; });
+      var byName = {}; drivers.forEach(function(d) { byName[d.name] = d; });
+      /* 그룹핑: 기업 + 건물 */
+      var groups = {};
+      DTGT.forEach(function(t) {
+        var comp = t.br.split(' - ')[0].trim();
+        var ba = dBase(t.addr);
+        var gk = dnn(comp) + '|' + dnn(ba);
+        if (!groups[gk]) groups[gk] = { stops: [], amt: 0, region: dRegion(t.addr), xy: geo[ba], fix: '' };
+        groups[gk].stops.push(t);
+        groups[gk].amt += t.amt;
+        if (t.fixed && !groups[gk].fix) {
+          var k = dKey(t.br);
+          groups[gk].fix = DFIX_OVR[k] || fixAuto[k] || '';
+          if (t.fixed) t._autoDrv = fixAuto[k] || ''; t._key = k;
+        }
+      });
+      var glist = Object.keys(groups).map(function(k) { return groups[k]; });
+      function centroid(d) { if (!d.stops.length) return null; var x = 0, y = 0, n = 0; d.stops.forEach(function(s) { if (s.xy) { x += s.xy.x; y += s.xy.y; n++; } }); return n ? { x: x / n, y: y / n } : null; }
+      /* 1차: 고정 */
+      glist.forEach(function(g) {
+        if (!g.fix) return;
+        var d = byName[g.fix];
+        if (!d) { g.fix = ''; return; }
+        g.stops.forEach(function(s) { s.xy = g.xy; d.stops.push(s); });
+        d.load += g.amt; g.done = true;
+      });
+      /* 2차: 일반 (금액 큰 순, 권역 + 거리 + 부하) */
+      glist.filter(function(g) { return !g.done; }).sort(function(a, b) { return b.amt - a.amt; }).forEach(function(g) {
+        var cands = drivers.filter(function(d) { return d.regions.indexOf(g.region) > -1 && d.load + g.amt <= DCAP; });
+        var flag = '';
+        if (!cands.length) { cands = drivers.filter(function(d) { return d.load + g.amt <= DCAP; }); flag = '권역외'; }
+        if (!cands.length) { cands = drivers.slice().sort(function(a, b) { return a.load - b.load; }).slice(0, 1); flag = '용량초과'; }
+        var best = null, bs = 1e18;
+        cands.forEach(function(d) {
+          var c = centroid(d);
+          var dd = c ? dDist(c, g.xy) : 3;
+          var score = dd + (d.load / DCAP) * 6;
+          if (score < bs) { bs = score; best = d; }
+        });
+        g.stops.forEach(function(s) { s.xy = g.xy; s.flag = flag; best.stops.push(s); });
+        best.load += g.amt;
+      });
+      /* 동선 순서: 최북단 → 최근접 이웃 */
+      drivers.forEach(function(d) {
+        if (!d.stops.length) return;
+        var rest = d.stops.slice().sort(function(a, b) { return (b.xy ? b.xy.y : 0) - (a.xy ? a.xy.y : 0); });
+        var path = [rest.shift()];
+        while (rest.length) {
+          var cur = path[path.length - 1], bi = 0, bd = 1e18;
+          rest.forEach(function(s, i) { var dd = dDist(cur.xy, s.xy); if (dd < bd) { bd = dd; bi = i; } });
+          path.push(rest.splice(bi, 1)[0]);
+        }
+        d.path = path;
+      });
+      DRES = drivers;
+      dlog('');
+      dRender();
+      document.getElementById('__wpDpXls').disabled = false;
+      document.getElementById('__wpDpFix').disabled = false;
+    }
+
+    function dRender() {
+      var out = document.getElementById('__wpDpOut');
+      var used = DRES.filter(function(d) { return d.path && d.path.length; });
+      var tot = 0, stops = 0, over = 0, outR = 0;
+      used.forEach(function(d) { tot += d.load; stops += d.path.length; if (d.load > DCAP) over++; outR += d.path.filter(function(s) { return s.flag === '권역외'; }).length; });
+      var h = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:13px;color:#334155;margin-bottom:8px">' +
+        '<b>배차 완료</b> · 코스 <b>' + used.length + '</b> · 착지 <b>' + stops + '</b> · 총액 <b style="color:#0a7d47">₩' + tot.toLocaleString() + '</b>' +
+        ' · 300만 초과 <b style="color:' + (over ? '#DC2626' : '#0a7d47') + '">' + over + '</b> (고정 포함 시 허용)' +
+        ' · 권역외 <b>' + outR + '</b></div>';
+      h += '<div style="border:1px solid #E2E8F0;border-radius:7px;overflow:auto;background:#fff"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+        '<tr style="background:#F8FAFC;color:#475569"><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">코스</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">기사</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">소속</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">착지</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">금액</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">고정</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">권역</th></tr>';
+      used.sort(function(a, b) { return a.course.localeCompare(b.course); }).forEach(function(d, i) {
+        h += '<tr style="border-bottom:1px solid #F1F5F9;background:' + (i % 2 ? '#FCFDFE' : '#fff') + '">' +
+          '<td style="padding:4px 10px;font-weight:700">' + esc(d.course) + '</td>' +
+          '<td style="padding:4px 10px;font-weight:600">' + esc(d.name) + '</td>' +
+          '<td style="padding:4px 10px">' + esc(d.belong) + '</td>' +
+          '<td style="padding:4px 10px;text-align:right">' + d.path.length + '</td>' +
+          '<td style="padding:4px 10px;text-align:right;' + (d.load > DCAP ? 'color:#DC2626;font-weight:700' : 'color:#0a7d47') + '">₩' + d.load.toLocaleString() + '</td>' +
+          '<td style="padding:4px 10px;text-align:right">' + d.path.filter(function(s) { return s.fixed; }).length + '</td>' +
+          '<td style="padding:4px 10px;color:#64748B">' + esc(d.regions.join('/')) + '</td></tr>';
+      });
+      h += '</table></div>';
+      out.innerHTML = h;
+    }
+
+    document.getElementById('__wpDpXls').onclick = function() {
+      if (!DRES) return;
+      ensureXLSX().then(function() {
+        var rows = [['명세번호', '우린배송', '드라이버', '소속', '고객명', '주소', '비고 1', '예상 용적량(금액VAT)', '담당 드라이버', '표시']];
+        DRES.filter(function(d) { return d.path && d.path.length; }).sort(function(a, b) { return a.course.localeCompare(b.course); }).forEach(function(d) {
+          d.path.forEach(function(s) {
+            rows.push([s.stmt, d.course, d.name, d.belong, s.br, s.addr, s.memo, s.amt, d.name, [s.fixed ? '고정' : '', s.flag || ''].filter(Boolean).join('/')]);
+          });
+        });
+        var sum = [['코스', '기사', '소속', '착지', '금액합(VAT)', '고정착지', '권역']];
+        DRES.filter(function(d) { return d.path && d.path.length; }).sort(function(a, b) { return a.course.localeCompare(b.course); }).forEach(function(d) {
+          sum.push([d.course, d.name, d.belong, d.path.length, d.load, d.path.filter(function(s) { return s.fixed; }).length, d.regions.join('/')]);
+        });
+        var wb3 = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb3, XLSX.utils.aoa_to_sheet(rows), '라우팅');
+        XLSX.utils.book_append_sheet(wb3, XLSX.utils.aoa_to_sheet(sum), '코스요약');
+        XLSX.writeFile(wb3, '배송동선_라우팅_' + now().slice(0, 10) + '.xlsx');
+        toast('✓ 라우팅 엑셀 다운로드', '#0a7d47');
+      }).catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); });
+    };
+
+    /* 고정 스팟 관리 */
+    document.getElementById('__wpDpFix').onclick = function() {
+      var box = document.getElementById('__wpDpFixBox');
+      if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+      box.style.display = '';
+      dFixUI();
+    };
+    function dFixUI() {
+      var box = document.getElementById('__wpDpFixBox');
+      if (!box || !DTGT) return;
+      var seen = {}, list = [];
+      DTGT.filter(function(t) { return t.fixed; }).forEach(function(t) {
+        var k = dKey(t.br);
+        if (seen[k]) return; seen[k] = 1;
+        list.push({ k: k, br: t.br, auto: (DFIX_AUTO && DFIX_AUTO[k]) || '', ovr: DFIX_OVR[k] || '' });
+      });
+      list.sort(function(a, b) { return (a.ovr || a.auto ? 1 : 0) - (b.ovr || b.auto ? 1 : 0); });
+      var names = DDRV.map(function(r) { return r[1]; });
+      var h = '<div style="padding:10px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155">' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><b>고정 스팟 담당 (' + list.length + ')</b>' +
+        '<span style="font-size:11.5px;color:#94A3B8">(자동) = 최근 ' + DLOOK + '일 최다 배송 기사 · 드롭다운 지정 시 항상 우선</span>' +
+        '<span style="flex:1"></span><button id="__wpDpFixSave" class="wp-btn ok" style="padding:5px 14px">저장</button></div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:4px;max-height:340px;overflow:auto">';
+      list.forEach(function(x) {
+        var o = '<option value="">(자동' + (x.auto ? ': ' + esc(x.auto) : ' 감지실패') + ')</option>';
+        names.forEach(function(n) { o += '<option value="' + esc(n) + '"' + (x.ovr === n ? ' selected' : '') + '>' + esc(n) + '</option>'; });
+        h += '<div style="display:flex;gap:6px;align-items:center;padding:2px 4px;' + (!x.auto && !x.ovr ? 'background:#FEF2F2;border-radius:5px' : '') + '">' +
+          '<span style="flex:1;font-size:11.5px">' + esc(x.br.slice(0, 44)) + '</span>' +
+          '<select data-fixk="' + esc(x.k) + '" style="padding:2px 5px;border:1px solid #E2E8F0;border-radius:5px;font-size:11.5px;max-width:150px">' + o + '</select></div>';
+      });
+      h += '</div></div>';
+      box.innerHTML = h;
+      document.getElementById('__wpDpFixSave').onclick = function() {
+        var self = this;
+        [].forEach.call(box.querySelectorAll('select[data-fixk]'), function(sl) {
+          var k = sl.getAttribute('data-fixk');
+          if (sl.value) DFIX_OVR[k] = sl.value; else delete DFIX_OVR[k];
+        });
+        self.disabled = true; self.textContent = '저장 중…';
+        fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=cfg_set&k=fix_master&v=' + encodeURIComponent(JSON.stringify(DFIX_OVR)) })
+          .then(function(r) { return r.json(); }).then(function(j) {
+            if (!j || !j.ok) throw new Error('저장 실패');
+            self.disabled = false; self.textContent = '저장';
+            toast('✓ 고정 스팟 저장 — 다음 배차부터 적용', '#0a7d47');
+          }).catch(function(e) { self.disabled = false; self.textContent = '저장'; alert('저장 실패: ' + ((e && e.message) || e)); });
+      };
+    }
   }
 
   function viewSchedBulk() {
