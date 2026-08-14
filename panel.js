@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.14 17:21';
+  var VERSION = '26.08.14 18:15';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5339,20 +5339,25 @@ document.getElementById('__wpSave').onclick = function() {
     function dRun(geo, fixAuto) {
       var drivers = DDRV.map(function(r) { return { course: r[0], name: r[1], belong: r[2], regions: r[3].split('/'), load: 0, stops: [] }; });
       var byName = {}; drivers.forEach(function(d) { byName[d.name] = d; });
-      /* 그룹핑: 기업 + 건물 */
+      /* 그룹핑: 같은 주소(건물) = 무조건 같은 기사 */
       var groups = {};
       DTGT.forEach(function(t) {
-        var comp = t.br.split(' - ')[0].trim();
         var ba = dBase(t.addr);
-        var gk = dnn(comp) + '|' + dnn(ba);
-        if (!groups[gk]) groups[gk] = { stops: [], amt: 0, region: dRegion(t.addr), xy: geo[ba], fix: '' };
+        var gk = dnn(ba);
+        if (!groups[gk]) groups[gk] = { stops: [], amt: 0, region: dRegion(t.addr), xy: geo[ba], fixVotes: {} };
         groups[gk].stops.push(t);
         groups[gk].amt += t.amt;
-        if (t.fixed && !groups[gk].fix) {
+        if (t.fixed) {
           var k = dKey(t.br);
-          groups[gk].fix = DFIX_OVR[k] || fixAuto[k] || '';
-          if (t.fixed) t._autoDrv = fixAuto[k] || ''; t._key = k;
+          var fd = DFIX_OVR[k] || fixAuto[k] || '';
+          if (fd) groups[gk].fixVotes[fd] = (groups[gk].fixVotes[fd] || 0) + 1;
         }
+      });
+      Object.keys(groups).forEach(function(gk) {
+        var g = groups[gk];
+        var best = '', bn = 0;
+        Object.keys(g.fixVotes).forEach(function(fd) { if (g.fixVotes[fd] > bn) { bn = g.fixVotes[fd]; best = fd; } });
+        g.fix = best; /* 같은 건물에 고정담당 여럿이면 다수결 */
       });
       var glist = Object.keys(groups).map(function(k) { return groups[k]; });
       function centroid(d) { if (!d.stops.length) return null; var x = 0, y = 0, n = 0; d.stops.forEach(function(s) { if (s.xy) { x += s.xy.x; y += s.xy.y; n++; } }); return n ? { x: x / n, y: y / n } : null; }
@@ -5364,12 +5369,14 @@ document.getElementById('__wpSave').onclick = function() {
         g.stops.forEach(function(s) { s.xy = g.xy; d.stops.push(s); });
         d.load += g.amt; g.done = true;
       });
-      /* 2차: 일반 (금액 큰 순, 권역 + 거리 + 부하) */
+      /* 2차: 일반 (금액 큰 순) — 권역 절대 유지 */
+      var DUNAS = [];
       glist.filter(function(g) { return !g.done; }).sort(function(a, b) { return b.amt - a.amt; }).forEach(function(g) {
-        var cands = drivers.filter(function(d) { return d.regions.indexOf(g.region) > -1 && d.load + g.amt <= DCAP; });
+        var inRegion = drivers.filter(function(d) { return d.regions.indexOf(g.region) > -1; });
+        if (!inRegion.length) { g.stops.forEach(function(s2) { s2.flag = '미배정(권역없음:' + g.region + ')'; DUNAS.push(s2); }); return; }
+        var cands = inRegion.filter(function(d) { return d.load + g.amt <= DCAP; });
         var flag = '';
-        if (!cands.length) { cands = drivers.filter(function(d) { return d.load + g.amt <= DCAP; }); flag = '권역외'; }
-        if (!cands.length) { cands = drivers.slice().sort(function(a, b) { return a.load - b.load; }).slice(0, 1); flag = '용량초과'; }
+        if (!cands.length) { cands = inRegion.slice().sort(function(a, b) { return a.load - b.load; }).slice(0, 1); flag = '용량초과'; }
         var best = null, bs = 1e18;
         cands.forEach(function(d) {
           var c = centroid(d);
@@ -5393,6 +5400,7 @@ document.getElementById('__wpSave').onclick = function() {
         d.path = path;
       });
       DRES = drivers;
+      DRES._unassigned = DUNAS;
       dlog('');
       dRender();
       document.getElementById('__wpDpXls').disabled = false;
@@ -5402,12 +5410,13 @@ document.getElementById('__wpSave').onclick = function() {
     function dRender() {
       var out = document.getElementById('__wpDpOut');
       var used = DRES.filter(function(d) { return d.path && d.path.length; });
-      var tot = 0, stops = 0, over = 0, outR = 0;
-      used.forEach(function(d) { tot += d.load; stops += d.path.length; if (d.load > DCAP) over++; outR += d.path.filter(function(s) { return s.flag === '권역외'; }).length; });
+      var tot = 0, stops = 0, over = 0;
+      used.forEach(function(d) { tot += d.load; stops += d.path.length; if (d.load > DCAP) over++; });
+      var unas = (DRES._unassigned || []).length;
       var h = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:13px;color:#334155;margin-bottom:8px">' +
         '<b>배차 완료</b> · 코스 <b>' + used.length + '</b> · 착지 <b>' + stops + '</b> · 총액 <b style="color:#0a7d47">₩' + tot.toLocaleString() + '</b>' +
-        ' · 300만 초과 <b style="color:' + (over ? '#DC2626' : '#0a7d47') + '">' + over + '</b> (고정 포함 시 허용)' +
-        ' · 권역외 <b>' + outR + '</b></div>';
+        ' · 300만 초과 <b style="color:' + (over ? '#DC2626' : '#0a7d47') + '">' + over + '</b> (고정·권역유지 시 허용)' +
+        ' · <b style="color:' + (unas ? '#DC2626' : '#0a7d47') + '">미배정 ' + unas + '</b>' + (unas ? ' <span style="font-size:11.5px;color:#DC2626">(권역 담당 기사 없음 — 엑셀 미배정 시트 확인)</span>' : '') + '</div>';
       h += '<div style="border:1px solid #E2E8F0;border-radius:7px;overflow:auto;background:#fff"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
         '<tr style="background:#F8FAFC;color:#475569"><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">코스</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">기사</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">소속</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">착지</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">금액</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">고정</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">권역</th></tr>';
       used.sort(function(a, b) { return a.course.localeCompare(b.course); }).forEach(function(d, i) {
@@ -5436,6 +5445,9 @@ document.getElementById('__wpSave').onclick = function() {
         var sum = [['코스', '기사', '소속', '착지', '금액합(VAT)', '고정착지', '권역']];
         DRES.filter(function(d) { return d.path && d.path.length; }).sort(function(a, b) { return a.course.localeCompare(b.course); }).forEach(function(d) {
           sum.push([d.course, d.name, d.belong, d.path.length, d.load, d.path.filter(function(s) { return s.fixed; }).length, d.regions.join('/')]);
+        });
+        (DRES._unassigned || []).forEach(function(s) {
+          rows.push([s.stmt, '미배정', '', '', s.br, s.addr, s.memo, s.amt, '', s.flag || '미배정']);
         });
         var wb3 = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb3, XLSX.utils.aoa_to_sheet(rows), '라우팅');
