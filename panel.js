@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.14 18:54';
+  var VERSION = '26.08.14 21:00';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5199,6 +5199,7 @@ document.getElementById('__wpSave').onclick = function() {
     var DEXC = ['주간15', '주간19', '주간20', '주간21', '주간22', '주간100']; /* 위펀본사 코스 제외 */
     var DDRV = [["주간01","강민석","대산물류","강남/서초"],["주간02","최우진","대산물류","강남/서초"],["주간03","손백수","대산물류","강남/서초"],["주간04","최대규","대산물류","광주/용인/수원/화성"],["주간05","김동혁","대산물류","안양/과천/의왕/군포"],["주간06","최호식","대산물류","인천"],["주간07","원유빈","대산물류","성동/중랑/성북/노원/남양주"],["주간08","이번우","대산물류","마포/고양/파주"],["주간09","신정근","대산물류","하남/강동/송파"],["주간10","이종범","대산물류","영등포/양천"],["주간11","차인오","대산물류","강남/서초"],["주간12","손태민","대산물류","성남"],["주간13","조영진","대산물류","중구/종로"],["주간14","엄민용","대산물류","강남/서초"],["주간16","김민수","대산물류","성동/광진/송파"],["주간17","진수완","대산물류","영등포/강서"],["주간18","김재영","대산물류","강남/서초"],["주간23","장승환","대산물류","중구/종로"],["주간24","여형석","대산물류","강남/서초"],["주간25","홍현욱","대산물류","성남/송파"],["주간26","박준수","대산물류","강남/서초"],["주간27","정관홍","대산물류","강남/서초"],["주간28","황윤영","창호통운","성남"],["주간29","권대장","대산물류","금천"],["주간30","이수현","대산물류","마포/서대문"],["주간31","홍재선","대산물류","용산/중구/종로"],["주간32","용환명","대산물류","강남/서초"],["주간33","강정훈","대산물류","강남/서초"],["주간34","차병준","대산물류","금천/구로/동작/관악"],["주간35","심재욱","창호통운","강남/서초"],["주간36","김경중","대산물류","강남/서초"],["주간37","안정선","대산물류","용산/중구/종로"],["주간38","손동석","대산물류","부천/강서/영등포"],["주간39","김동한","대산물류","동작/관악/구로"],["주간40","윤세호","대산물류","광주/용인/수원/화성/평택"],["주간41","권규섭","대산물류","마포/서대문/고양/은평/파주"],["주간42","이광영","대산물류","강남/서초"],["주간43","김경식","대산물류","마포/영등포"],["주간44","심상은","대산물류","성남"],["주간45","김우규","대산물류","강남/서초"],["주간46","김남헌","창호통운","강남/서초"]]; /* [코스, 기사, 소속, 권역] */
     var DCAP = 3000000; /* 코스당 금액 상한 */
+    var DCENTER = { x: 127.34088020267, y: 37.3138971988571 }; /* 출발지: 경기 광주시 도척면 진우리 1009-1 */
     var DLOOK = 14; /* 고정 자동감지 lookback 일수 */
     var DTGT = null, DRES = null, DFIX_AUTO = null, DFIX_OVR = {}, DRT_OVR = {};
     function dnn(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
@@ -5438,26 +5439,86 @@ document.getElementById('__wpSave').onclick = function() {
           });
         });
       });
-      /* 동선 순서: 최북단 → 최근접 이웃 */
+      /* 동선 순서: 센터(광주 진우리) 출발 → 가까운 순 최근접 이웃 + 누적 직선거리(km) */
       drivers.forEach(function(d) {
         if (!d.stops.length) return;
-        var rest = d.stops.slice().sort(function(a, b) { return (b.xy ? b.xy.y : 0) - (a.xy ? a.xy.y : 0); });
-        var path = [rest.shift()];
+        var rest = d.stops.slice();
+        var path = [];
+        var cur = { xy: DCENTER };
+        var cum = 0;
         while (rest.length) {
-          var cur = path[path.length - 1], bi = 0, bd = 1e18;
+          var bi = 0, bd = 1e18;
           rest.forEach(function(s, i) { var dd = dDist(cur.xy, s.xy); if (dd < bd) { bd = dd; bi = i; } });
-          path.push(rest.splice(bi, 1)[0]);
+          var nx = rest.splice(bi, 1)[0];
+          cum += (bd >= 999 ? 0 : bd);
+          nx._km = Math.round(cum * 10) / 10;
+          path.push(nx);
+          cur = nx;
         }
         d.path = path;
+        d.km = cum ? Math.round(cum * 10) / 10 : 0;
       });
       DRES = drivers;
       DRES._unassigned = DUNAS;
-      dlog('');
       dRender();
       document.getElementById('__wpDpXls').disabled = false;
       document.getElementById('__wpDpFix').disabled = false;
+      dRoadKm(); /* 실주행거리 (카카오모빌리티) — 백그라운드로 채움 */
     }
 
+    function dRoadKm() {
+      /* 구간 목록: [x1,y1,x2,y2] — 센터→1착, 1착→2착 … */
+      var legs = [], refs = [];
+      DRES.filter(function(d) { return d.path && d.path.length; }).forEach(function(d) {
+        var prev = DCENTER;
+        d.path.forEach(function(s) {
+          if (s.xy && prev) { legs.push([prev.x, prev.y, s.xy.x, s.xy.y]); refs.push(s); }
+          else { refs.push(null); legs.push(null); }
+          if (s.xy) prev = s.xy;
+        });
+      });
+      var real = legs.filter(function(l) { return l; });
+      if (!real.length) return;
+      var idx = 0, res = [], anyKey = true;
+      function chunk() {
+        if (idx >= real.length || !anyKey) { apply(); return; }
+        var part = real.slice(idx, idx + 15);
+        idx += 15;
+        dlog('실주행거리 계산 중… ' + Math.min(idx, real.length) + '/' + real.length);
+        fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=route&legs=' + encodeURIComponent(JSON.stringify(part)) })
+          .then(function(r) { return r.json(); }).then(function(j) {
+            if (!j || !j.ok) { anyKey = false; apply(); return; }
+            if (!j.key) { anyKey = false; dlog('실주행 키 미설정 — 직선거리 유지'); apply(); return; }
+            res = res.concat(j.m || []);
+            chunk();
+          }).catch(function() { anyKey = false; apply(); });
+      }
+      function apply() {
+        if (!res.length) { dlog(''); return; }
+        /* 코스별 누적 재계산 (실패 구간 -1 은 직선×1.3 으로 보간) */
+        var ri = 0, li = 0;
+        DRES.filter(function(d) { return d.path && d.path.length; }).forEach(function(d) {
+          var cum = 0, prev = DCENTER;
+          d.path.forEach(function(s) {
+            if (legs[li]) {
+              var m = (ri < res.length) ? res[ri] : -1;
+              ri++;
+              if (m >= 0) cum += m / 1000;
+              else if (s.xy && prev) cum += dDist(prev, s.xy) * 1.3;
+            }
+            li++;
+            if (s.xy) prev = s.xy;
+            s._km = Math.round(cum * 10) / 10;
+          });
+          d.km = Math.round(cum * 10) / 10;
+        });
+        DRES._road = true;
+        dlog('');
+        dRender();
+        toast('✓ 실주행거리 반영 완료', '#0a7d47');
+      }
+      chunk();
+    }
     function dRender() {
       var out = document.getElementById('__wpDpOut');
       var used = DRES.filter(function(d) { return d.path && d.path.length; });
@@ -5469,7 +5530,7 @@ document.getElementById('__wpSave').onclick = function() {
         ' · 300만 초과 <b style="color:' + (over ? '#DC2626' : '#0a7d47') + '">' + over + '</b> (고정·권역유지 시 허용)' +
         ' · <b style="color:' + (unas ? '#DC2626' : '#0a7d47') + '">미배정 ' + unas + '</b>' + (unas ? ' <span style="font-size:11.5px;color:#DC2626">(권역 담당 기사 없음 — 엑셀 미배정 시트 확인)</span>' : '') + '</div>';
       h += '<div style="border:1px solid #E2E8F0;border-radius:7px;overflow:auto;background:#fff"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
-        '<tr style="background:#F8FAFC;color:#475569"><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">코스</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">기사</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">소속</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">착지</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">금액</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">고정</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">권역</th></tr>';
+        '<tr style="background:#F8FAFC;color:#475569"><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">코스</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">기사</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">소속</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">착지</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">금액</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">고정</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">거리km</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">권역</th></tr>';
       used.sort(function(a, b) { return a.course.localeCompare(b.course); }).forEach(function(d, i) {
         h += '<tr style="border-bottom:1px solid #F1F5F9;background:' + (i % 2 ? '#FCFDFE' : '#fff') + '">' +
           '<td style="padding:4px 10px;font-weight:700">' + esc(d.course) + '</td>' +
@@ -5478,6 +5539,7 @@ document.getElementById('__wpSave').onclick = function() {
           '<td style="padding:4px 10px;text-align:right">' + d.path.length + '</td>' +
           '<td style="padding:4px 10px;text-align:right;' + (d.load > DCAP ? 'color:#DC2626;font-weight:700' : 'color:#0a7d47') + '">₩' + d.load.toLocaleString() + '</td>' +
           '<td style="padding:4px 10px;text-align:right">' + d.path.filter(function(s) { return s.fixed; }).length + '</td>' +
+          '<td style="padding:4px 10px;text-align:right">' + (d.km || '-') + '</td>' +
           '<td style="padding:4px 10px;color:#64748B">' + esc(d.regions.join('/')) + '</td></tr>';
       });
       h += '</table></div>';
@@ -5487,18 +5549,18 @@ document.getElementById('__wpSave').onclick = function() {
     document.getElementById('__wpDpXls').onclick = function() {
       if (!DRES) { alert('배차를 먼저 실행하세요.\n(배송일 선택 → 🚚 배차 실행 → 완료 후 엑셀 다운로드)'); return; }
       ensureXLSX().then(function() {
-        var rows = [['명세번호', '우린배송', '드라이버', '소속', '고객명', '주소', '비고 1', '예상 용적량(금액VAT)', '담당 드라이버', '표시']];
+        var rows = [['명세번호', '우린배송', '드라이버', '소속', '고객명', '주소', '비고 1', '예상 용적량(금액VAT)', '담당 드라이버', (DRES._road ? '누적km(실주행)' : '누적km(직선)'), '표시']];
         DRES.filter(function(d) { return d.path && d.path.length; }).sort(function(a, b) { return a.course.localeCompare(b.course); }).forEach(function(d) {
           d.path.forEach(function(s) {
-            rows.push([s.stmt, d.course, d.name, d.belong, s.br, s.addr, s.memo, s.amt, d.name, [s.fixed ? '고정' : '', s.flag || ''].filter(Boolean).join('/')]);
+            rows.push([s.stmt, d.course, d.name, d.belong, s.br, s.addr, s.memo, s.amt, d.name, (typeof s._km === 'number' ? s._km : ''), [s.fixed ? '고정' : '', s.flag || ''].filter(Boolean).join('/')]);
           });
         });
-        var sum = [['코스', '기사', '소속', '착지', '금액합(VAT)', '고정착지', '권역']];
+        var sum = [['코스', '기사', '소속', '착지', '금액합(VAT)', '고정착지', (DRES._road ? '총거리km(실주행)' : '총거리km(직선)'), '권역']];
         DRES.filter(function(d) { return d.path && d.path.length; }).sort(function(a, b) { return a.course.localeCompare(b.course); }).forEach(function(d) {
-          sum.push([d.course, d.name, d.belong, d.path.length, d.load, d.path.filter(function(s) { return s.fixed; }).length, d.regions.join('/')]);
+          sum.push([d.course, d.name, d.belong, d.path.length, d.load, d.path.filter(function(s) { return s.fixed; }).length, d.km || '', d.regions.join('/')]);
         });
         (DRES._unassigned || []).forEach(function(s) {
-          rows.push([s.stmt, '미배정', '', '', s.br, s.addr, s.memo, s.amt, '', s.flag || '미배정']);
+          rows.push([s.stmt, '미배정', '', '', s.br, s.addr, s.memo, s.amt, '', '', s.flag || '미배정']);
         });
         var wb3 = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb3, XLSX.utils.aoa_to_sheet(rows), '라우팅');
