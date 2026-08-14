@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.14 18:29';
+  var VERSION = '26.08.14 18:54';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5367,34 +5367,76 @@ document.getElementById('__wpSave').onclick = function() {
       });
       var glist = Object.keys(groups).map(function(k) { return groups[k]; });
       function centroid(d) { if (!d.stops.length) return null; var x = 0, y = 0, n = 0; d.stops.forEach(function(s) { if (s.xy) { x += s.xy.x; y += s.xy.y; n++; } }); return n ? { x: x / n, y: y / n } : null; }
-      /* 1차: 고정 */
+      /* 1차: 고정 — 고정 스팟만 무조건 배정. 같은 건물 일반 스팟은 용량 될 때만 동반 */
+      var spill = []; /* 용량 때문에 분리된 일반 서브그룹 (회사 단위) */
       glist.forEach(function(g) {
         if (!g.fix) return;
         var d = byName[g.fix];
         if (!d) { g.fix = ''; return; }
-        g.stops.forEach(function(s) { s.xy = g.xy; d.stops.push(s); });
-        d.load += g.amt; g.done = true;
+        var fixStops = g.stops.filter(function(s) { return s.fixed; });
+        var rest = g.stops.filter(function(s) { return !s.fixed; });
+        fixStops.forEach(function(s) { s.xy = g.xy; d.stops.push(s); d.load += s.amt; });
+        /* 일반 동반: 회사 단위로 묶어 용량 검사 */
+        var subs = {};
+        rest.forEach(function(s) { var ck = dnn(s.br.split(' - ')[0]); if (!subs[ck]) subs[ck] = { stops: [], amt: 0 }; subs[ck].stops.push(s); subs[ck].amt += s.amt; });
+        Object.keys(subs).forEach(function(ck) {
+          var sub = subs[ck];
+          if (d.load + sub.amt <= DCAP) {
+            sub.stops.forEach(function(s) { s.xy = g.xy; s.flag = '건물동반'; d.stops.push(s); });
+            d.load += sub.amt;
+          } else {
+            /* 고정 과적 → 일반은 분리해서 일반 배정 (주소분리 표시) */
+            spill.push({ stops: sub.stops, amt: sub.amt, region: g.region, xy: g.xy, spill: true });
+          }
+        });
+        g.done = true;
       });
       /* 2차: 일반 (금액 큰 순) — 권역 절대 유지 */
       var DUNAS = [];
-      glist.filter(function(g) { return !g.done; }).sort(function(a, b) { return b.amt - a.amt; }).forEach(function(g) {
+      var pool = glist.filter(function(g) { return !g.done; }).concat(spill);
+      /* 조각 배정기: 권역 내 + 300만 이하 필수. preferred(같은 건물 먼저 받은 기사) 우선 */
+      function assignPiece(stops2, amt2, g, preferred, extraFlag) {
         var inRegion = drivers.filter(function(d) { return d.regions.indexOf(g.region) > -1; });
-        if (!inRegion.length) { g.stops.forEach(function(s2) { s2.flag = '미배정(권역없음:' + g.region + ')'; DUNAS.push(s2); }); return; }
-        var cands = inRegion.filter(function(d) { return d.load + g.amt <= DCAP; });
-        var flag = '';
-        if (!cands.length) { /* 권역 기사 전원 300만 도달(고정 포함) → 일반 착지는 미배정 */
-          g.stops.forEach(function(s2) { s2.flag = '미배정(권역만차:' + g.region + ')'; DUNAS.push(s2); });
-          return;
+        if (!inRegion.length) { stops2.forEach(function(s2) { s2.flag = '미배정(권역없음:' + g.region + ')'; DUNAS.push(s2); }); return null; }
+        var cands = inRegion.filter(function(d) { return d.load + amt2 <= DCAP; });
+        if (!cands.length) return false; /* 이 크기로는 못 들어감 → 더 쪼개기 */
+        var best = null;
+        if (preferred && preferred.regions.indexOf(g.region) > -1 && preferred.load + amt2 <= DCAP) { best = preferred; }
+        else {
+          var bs = 1e18;
+          cands.forEach(function(d) {
+            var c = centroid(d);
+            var dd = c ? dDist(c, g.xy) : 3;
+            var score = dd + (d.load / DCAP) * 6;
+            if (score < bs) { bs = score; best = d; }
+          });
         }
-        var best = null, bs = 1e18;
-        cands.forEach(function(d) {
-          var c = centroid(d);
-          var dd = c ? dDist(c, g.xy) : 3;
-          var score = dd + (d.load / DCAP) * 6;
-          if (score < bs) { bs = score; best = d; }
+        stops2.forEach(function(s2) { s2.xy = g.xy; s2.flag = extraFlag || ''; best.stops.push(s2); });
+        best.load += amt2;
+        return best;
+      }
+      pool.sort(function(a, b) { return b.amt - a.amt; }).forEach(function(g) {
+        var base = g.spill ? '주소분리' : '';
+        /* ① 건물 통째로 시도 (같은 주소 같은 기사 우선) */
+        var r1 = assignPiece(g.stops, g.amt, g, null, base);
+        if (r1 !== false) return; /* 배정됐거나 권역없음 처리됨 */
+        /* ② 300만 상한 우선 — 회사 단위로 분할 */
+        var subs = {};
+        g.stops.forEach(function(s2) { var ck = dnn(s2.br.split(' - ')[0]); if (!subs[ck]) subs[ck] = { stops: [], amt: 0 }; subs[ck].stops.push(s2); subs[ck].amt += s2.amt; });
+        var subArr = Object.keys(subs).map(function(k) { return subs[k]; }).sort(function(x, y) { return y.amt - x.amt; });
+        var bldDrv = null, split = subArr.length > 1;
+        subArr.forEach(function(sub) {
+          var fl = (base ? base + '/' : '') + (split ? '주소분리(300만)' : '');
+          var r2 = assignPiece(sub.stops, sub.amt, g, bldDrv, fl || '주소분리(300만)');
+          if (r2 && r2 !== false) { if (!bldDrv) bldDrv = r2; return; }
+          if (r2 === null) return; /* 권역없음 처리됨 */
+          /* ③ 회사 묶음도 안 들어가면 착지 단위 분할 */
+          sub.stops.sort(function(x, y) { return y.amt - x.amt; }).forEach(function(s2) {
+            var r3 = assignPiece([s2], s2.amt, g, bldDrv, (base ? base + '/' : '') + '주소분리(300만)');
+            if (r3 && r3 !== false) { if (!bldDrv) bldDrv = r3; return; }
+            if (r3 === false) { s2.flag = '미배정(권역만차:' + g.region + ')'; DUNAS.push(s2); }
+          });
         });
-        g.stops.forEach(function(s) { s.xy = g.xy; s.flag = flag; best.stops.push(s); });
-        best.load += g.amt;
       });
       /* 동선 순서: 최북단 → 최근접 이웃 */
       drivers.forEach(function(d) {
