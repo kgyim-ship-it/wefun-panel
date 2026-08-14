@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.14 17:10';
+  var VERSION = '26.08.14 17:17';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5217,13 +5217,15 @@ document.getElementById('__wpSave').onclick = function() {
       '<b>배송동선 엑셀 → 타 운수사 코스 자동 배차</b><br>' +
       '위펀오피스 [판매/정산 > 우린 발주양식 > 배송동선] 엑셀을 올리면: 주간 코스(위펀본사 ' + DEXC.join('·') + ' 제외)를 ' +
       '권역 + 고정담당 + 코스당 300만원 이하 + 같은 건물 같은 기사 규칙으로 배차하고 동선 순서까지 정렬합니다.</div>' +
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
-      '<label style="font-size:12.5px;color:#334155">배송일 <input type="date" id="__wpDpDate" style="padding:4px 6px;border:1px solid #E2E8F0;border-radius:5px"></label>' +
-      '<button id="__wpDpRun" class="wp-btn pri">배차 실행 (오피스에서 자동 다운로드)</button>' +
-      '<span style="font-size:11.5px;color:#94A3B8">파일로 하려면 →</span><input type="file" id="__wpDpF" accept=".xlsx,.xls" style="font-size:11.5px">' +
-      '<button id="__wpDpXls" class="wp-btn ok" disabled>⬇ 라우팅 엑셀</button>' +
-      '<button id="__wpDpFix" class="wp-btn gh" disabled>고정 스팟 관리</button>' +
-      '<span id="__wpDpProg" style="font-size:12px;color:#64748B"></span></div>' +
+      '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px;padding:12px 14px;background:#fff;border:1px solid #E2E8F0;border-radius:9px">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#0F172A">배송일 ' +
+      '<input type="date" id="__wpDpDate" style="padding:9px 12px;border:1.5px solid #CBD5E1;border-radius:8px;font-size:15px;font-weight:600;color:#0F172A;height:42px;cursor:pointer"></label>' +
+      '<button id="__wpDpRun" class="wp-btn pri" style="padding:11px 22px;font-size:14px">🚚 배차 실행</button>' +
+      '<button id="__wpDpXls" class="wp-btn ok" disabled style="padding:11px 18px;font-size:13.5px">⬇ 라우팅 엑셀</button>' +
+      '<button id="__wpDpFix" class="wp-btn gh" style="padding:11px 18px;font-size:13.5px">고정 스팟 관리</button>' +
+      '<span id="__wpDpProg" style="font-size:13px;color:#0369A1;font-weight:600"></span>' +
+      '<span style="flex:1"></span>' +
+      '<span style="font-size:11.5px;color:#94A3B8">파일로 직접 실행 →</span><input type="file" id="__wpDpF" accept=".xlsx,.xls" style="font-size:11px;max-width:190px"></div>' +
       '<div id="__wpDpFixBox" style="display:none;margin-bottom:8px"></div>' +
       '<div id="__wpDpOut"></div>';
     var LOG = document.getElementById('__wpDpProg');
@@ -5452,7 +5454,28 @@ document.getElementById('__wpSave').onclick = function() {
     };
     function dFixUI() {
       var box = document.getElementById('__wpDpFixBox');
-      if (!box || !DTGT) return;
+      if (!box) return;
+      if (!DTGT) {
+        var keys = Object.keys(DFIX_OVR);
+        var h0 = '<div style="padding:12px 14px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;font-size:12.5px;color:#334155">' +
+          '<b>고정 스팟 담당 (저장된 지정 ' + keys.length + '건)</b>' +
+          '<div style="font-size:11.5px;color:#94A3B8;margin:4px 0 8px">배차를 한 번 실행하면 그날 고정 스팟 전체 목록이 떠서 지정/수정할 수 있습니다. 아래는 이미 저장된 지정만 표시.</div>';
+        if (keys.length) {
+          h0 += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:4px;max-height:260px;overflow:auto">';
+          keys.sort().forEach(function(k) { h0 += '<div style="display:flex;gap:6px;align-items:center;padding:2px 4px"><span style="flex:1;font-size:11.5px">' + esc(k) + '</span><b>' + esc(DFIX_OVR[k]) + '</b> <span class="__wpDpFixDel" data-k="' + esc(k) + '" style="color:#DC2626;cursor:pointer;font-size:11px;text-decoration:underline">삭제</span></div>'; });
+          h0 += '</div>';
+        } else { h0 += '<div style="color:#94A3B8">저장된 지정이 아직 없습니다.</div>'; }
+        h0 += '</div>';
+        box.innerHTML = h0;
+        [].forEach.call(box.querySelectorAll('.__wpDpFixDel'), function(el) {
+          el.onclick = function() {
+            delete DFIX_OVR[el.getAttribute('data-k')];
+            fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=cfg_set&k=fix_master&v=' + encodeURIComponent(JSON.stringify(DFIX_OVR)) })
+              .then(function(r) { return r.json(); }).then(function() { toast('삭제됨', '#0a7d47'); dFixUI(); });
+          };
+        });
+        return;
+      }
       var seen = {}, list = [];
       DTGT.filter(function(t) { return t.fixed; }).forEach(function(t) {
         var k = dKey(t.br);
