@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.14 17:17';
+  var VERSION = '26.08.14 17:21';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5221,7 +5221,7 @@ document.getElementById('__wpSave').onclick = function() {
       '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#0F172A">배송일 ' +
       '<input type="date" id="__wpDpDate" style="padding:9px 12px;border:1.5px solid #CBD5E1;border-radius:8px;font-size:15px;font-weight:600;color:#0F172A;height:42px;cursor:pointer"></label>' +
       '<button id="__wpDpRun" class="wp-btn pri" style="padding:11px 22px;font-size:14px">🚚 배차 실행</button>' +
-      '<button id="__wpDpXls" class="wp-btn ok" disabled style="padding:11px 18px;font-size:13.5px">⬇ 라우팅 엑셀</button>' +
+      '<button id="__wpDpXls" class="wp-btn ok" style="padding:11px 18px;font-size:13.5px">⬇ 라우팅 엑셀</button>' +
       '<button id="__wpDpFix" class="wp-btn gh" style="padding:11px 18px;font-size:13.5px">고정 스팟 관리</button>' +
       '<span id="__wpDpProg" style="font-size:13px;color:#0369A1;font-weight:600"></span>' +
       '<span style="flex:1"></span>' +
@@ -5425,7 +5425,7 @@ document.getElementById('__wpSave').onclick = function() {
     }
 
     document.getElementById('__wpDpXls').onclick = function() {
-      if (!DRES) return;
+      if (!DRES) { alert('배차를 먼저 실행하세요.\n(배송일 선택 → 🚚 배차 실행 → 완료 후 엑셀 다운로드)'); return; }
       ensureXLSX().then(function() {
         var rows = [['명세번호', '우린배송', '드라이버', '소속', '고객명', '주소', '비고 1', '예상 용적량(금액VAT)', '담당 드라이버', '표시']];
         DRES.filter(function(d) { return d.path && d.path.length; }).sort(function(a, b) { return a.course.localeCompare(b.course); }).forEach(function(d) {
