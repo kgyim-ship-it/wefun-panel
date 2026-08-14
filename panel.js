@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.14 18:15';
+  var VERSION = '26.08.14 18:21';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5197,10 +5197,10 @@ document.getElementById('__wpSave').onclick = function() {
   /* ---------- 배차 (관리자) — 배송동선 라우팅 ---------- */
   function viewDispatch() {
     var DEXC = ['주간15', '주간19', '주간20', '주간21', '주간22', '주간100']; /* 위펀본사 코스 제외 */
-    var DDRV = [["주간01","강민석","대산물류","강남/서초"],["주간02","최우진","대산물류","강남/서초"],["주간03","손백수","대산물류","강남/서초"],["주간04","최대규","대산물류","광주/용인/수원/화성"],["주간05","김동혁","대산물류","안양/과천/의왕/군포"],["주간06","최호식","대산물류","인천"],["주간07","원유빈","대산물류","성동/중랑/성북/노원/남양주"],["주간08","이번우","대산물류","마포/고양/파주"],["주간09","신정근","대산물류","하남/강동/송파"],["주간10","이종범","대산물류","영등포/양천"],["주간11","차인오","대산물류","강남/서초"],["주간12","손태민","대산물류","성남"],["주간13","조영진","대산물류","중구/종로"],["주간14","엄민용","대산물류","강남/서초"],["주간16","김민수","대산물류","성동/광진/송파"],["주간17","진수완","대산물류","영등포/강서"],["주간18","김재영","대산물류","강남/서초"],["주간23","장승환","대산물류","중구/종로"],["주간24","여형석","대산물류","강남/서초"],["주간25","홍현욱","대산물류","성남/송파"],["주간26","박준수","대산물류","강남/서초"],["주간27","정관홍","대산물류","강남/서초"],["주간28","황윤영","창호통운","성남"],["주간29","권대장","대산물류","금천"],["주간30","이수현","대산물류","마포/서대문"],["주간31","홍재선","대산물류","용산/중구/종로"],["주간32","용환명","대산물류","강남/서초"],["주간33","강정훈","대산물류","강남/서초"],["주간34","차병준","대산물류","금천/구로/동작/관악"],["주간35","심재욱","창호통운","강남/서초"],["주간36","김경중","대산물류","강남/서초"],["주간37","안정선","대산물류","용산/중구/종로"],["주간38","손동석","대산물류","부천/강서/영등포"],["주간39","김동한","대산물류","동작/관악/구로"],["주간40","윤세호","대산물류","광주/용인/수원/화성"],["주간41","권규섭","대산물류","마포/서대문/고양/은평/파주"],["주간42","이광영","대산물류","강남/서초"],["주간43","김경식","대산물류","마포/영등포"],["주간44","심상은","대산물류","성남"],["주간45","김우규","대산물류","강남/서초"],["주간46","김남헌","창호통운","강남/서초"]]; /* [코스, 기사, 소속, 권역] */
+    var DDRV = [["주간01","강민석","대산물류","강남/서초"],["주간02","최우진","대산물류","강남/서초"],["주간03","손백수","대산물류","강남/서초"],["주간04","최대규","대산물류","광주/용인/수원/화성"],["주간05","김동혁","대산물류","안양/과천/의왕/군포"],["주간06","최호식","대산물류","인천"],["주간07","원유빈","대산물류","성동/중랑/성북/노원/남양주"],["주간08","이번우","대산물류","마포/고양/파주"],["주간09","신정근","대산물류","하남/강동/송파"],["주간10","이종범","대산물류","영등포/양천"],["주간11","차인오","대산물류","강남/서초"],["주간12","손태민","대산물류","성남"],["주간13","조영진","대산물류","중구/종로"],["주간14","엄민용","대산물류","강남/서초"],["주간16","김민수","대산물류","성동/광진/송파"],["주간17","진수완","대산물류","영등포/강서"],["주간18","김재영","대산물류","강남/서초"],["주간23","장승환","대산물류","중구/종로"],["주간24","여형석","대산물류","강남/서초"],["주간25","홍현욱","대산물류","성남/송파"],["주간26","박준수","대산물류","강남/서초"],["주간27","정관홍","대산물류","강남/서초"],["주간28","황윤영","창호통운","성남"],["주간29","권대장","대산물류","금천"],["주간30","이수현","대산물류","마포/서대문"],["주간31","홍재선","대산물류","용산/중구/종로"],["주간32","용환명","대산물류","강남/서초"],["주간33","강정훈","대산물류","강남/서초"],["주간34","차병준","대산물류","금천/구로/동작/관악"],["주간35","심재욱","창호통운","강남/서초"],["주간36","김경중","대산물류","강남/서초"],["주간37","안정선","대산물류","용산/중구/종로"],["주간38","손동석","대산물류","부천/강서/영등포"],["주간39","김동한","대산물류","동작/관악/구로"],["주간40","윤세호","대산물류","광주/용인/수원/화성/평택"],["주간41","권규섭","대산물류","마포/서대문/고양/은평/파주"],["주간42","이광영","대산물류","강남/서초"],["주간43","김경식","대산물류","마포/영등포"],["주간44","심상은","대산물류","성남"],["주간45","김우규","대산물류","강남/서초"],["주간46","김남헌","창호통운","강남/서초"]]; /* [코스, 기사, 소속, 권역] */
     var DCAP = 3000000; /* 코스당 금액 상한 */
     var DLOOK = 14; /* 고정 자동감지 lookback 일수 */
-    var DTGT = null, DRES = null, DFIX_AUTO = null, DFIX_OVR = {};
+    var DTGT = null, DRES = null, DFIX_AUTO = null, DFIX_OVR = {}, DRT_OVR = {};
     function dnn(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
     function dBase(a) { var i = a.indexOf(')'); return i > -1 ? a.slice(0, i + 1) : a; }
     function dRegion(addr) {
@@ -5223,19 +5223,25 @@ document.getElementById('__wpSave').onclick = function() {
       '<button id="__wpDpRun" class="wp-btn pri" style="padding:11px 22px;font-size:14px">🚚 배차 실행</button>' +
       '<button id="__wpDpXls" class="wp-btn ok" style="padding:11px 18px;font-size:13.5px">⬇ 라우팅 엑셀</button>' +
       '<button id="__wpDpFix" class="wp-btn gh" style="padding:11px 18px;font-size:13.5px">고정 스팟 관리</button>' +
+      '<button id="__wpDpRt" class="wp-btn gh" style="padding:11px 18px;font-size:13.5px">권역 관리</button>' +
       '<span id="__wpDpProg" style="font-size:13px;color:#0369A1;font-weight:600"></span>' +
       '<span style="flex:1"></span>' +
       '<span style="font-size:11.5px;color:#94A3B8">파일로 직접 실행 →</span><input type="file" id="__wpDpF" accept=".xlsx,.xls" style="font-size:11px;max-width:190px"></div>' +
       '<div id="__wpDpFixBox" style="display:none;margin-bottom:8px"></div>' +
+      '<div id="__wpDpRtBox" style="display:none;margin-bottom:8px"></div>' +
       '<div id="__wpDpOut"></div>';
     var LOG = document.getElementById('__wpDpProg');
     (function() { var d = new Date(); d.setDate(d.getDate() + 1); document.getElementById('__wpDpDate').value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); })();
     function dlog(m) { if (LOG) LOG.textContent = m; }
 
-    /* 서버 고정 오버라이드 로드 */
+    /* 서버 고정/권역 오버라이드 로드 */
     fetch(apiUrl() + '?e=cfg_get&k=fix_master').then(function(r) { return r.json(); }).then(function(j) {
       if (j && j.ok && j.v) { try { DFIX_OVR = JSON.parse(j.v) || {}; } catch (e) {} }
     }).catch(function() {});
+    fetch(apiUrl() + '?e=cfg_get&k=route_master').then(function(r) { return r.json(); }).then(function(j) {
+      if (j && j.ok && j.v) { try { DRT_OVR = JSON.parse(j.v) || {}; } catch (e) {} }
+    }).catch(function() {});
+    function dRegions(name, def) { return String(DRT_OVR[name] || def).split('/').map(function(x) { return x.trim(); }).filter(Boolean); }
 
     /* 고정 자동감지: 최근 N일 배송일정에서 스팟별 최다 기사 (하루 1회 localStorage 캐시) */
     function dFixAuto() {
@@ -5337,7 +5343,7 @@ document.getElementById('__wpSave').onclick = function() {
     };
 
     function dRun(geo, fixAuto) {
-      var drivers = DDRV.map(function(r) { return { course: r[0], name: r[1], belong: r[2], regions: r[3].split('/'), load: 0, stops: [] }; });
+      var drivers = DDRV.map(function(r) { return { course: r[0], name: r[1], belong: r[2], regions: dRegions(r[1], r[3]), load: 0, stops: [] }; });
       var byName = {}; drivers.forEach(function(d) { byName[d.name] = d; });
       /* 그룹핑: 같은 주소(건물) = 무조건 같은 기사 */
       var groups = {};
@@ -5457,6 +5463,52 @@ document.getElementById('__wpSave').onclick = function() {
       }).catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); });
     };
 
+    /* 권역 관리 */
+    document.getElementById('__wpDpRt').onclick = function() {
+      var box = document.getElementById('__wpDpRtBox');
+      if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+      box.style.display = '';
+      dRtUI();
+    };
+    function dRtUI() {
+      var box = document.getElementById('__wpDpRtBox');
+      if (!box) return;
+      var h = '<div style="padding:12px 14px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;font-size:12.5px;color:#334155">' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><b>기사 권역 관리</b>' +
+        '<span style="font-size:11.5px;color:#94A3B8">슬래시(/)로 구분해 수정 · 서울=구 이름(강남·중구), 경기=시 이름(성남·평택), 인천=인천</span>' +
+        '<span style="flex:1"></span><button id="__wpDpRtSave" class="wp-btn ok" style="padding:5px 14px">저장</button></div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:4px;max-height:340px;overflow:auto">';
+      DDRV.forEach(function(r) {
+        var cur = DRT_OVR[r[1]] || r[3];
+        var changed = !!DRT_OVR[r[1]] && DRT_OVR[r[1]] !== r[3];
+        h += '<div style="display:flex;gap:6px;align-items:center;padding:2px 4px">' +
+          '<span style="width:56px;font-weight:700;font-size:11.5px">' + esc(r[0]) + '</span>' +
+          '<span style="width:56px;font-weight:600;font-size:11.5px">' + esc(r[1]) + '</span>' +
+          '<input data-rtn="' + esc(r[1]) + '" value="' + esc(cur) + '" style="flex:1;padding:4px 8px;border:1px solid ' + (changed ? '#0EA5E9' : '#E2E8F0') + ';border-radius:5px;font-size:11.5px"></div>';
+      });
+      h += '</div></div>';
+      box.innerHTML = h;
+      document.getElementById('__wpDpRtSave').onclick = function() {
+        var self = this;
+        var ovr = {};
+        [].forEach.call(box.querySelectorAll('input[data-rtn]'), function(inp) {
+          var name = inp.getAttribute('data-rtn');
+          var def = '';
+          DDRV.forEach(function(r) { if (r[1] === name) def = r[3]; });
+          var v = inp.value.replace(/\s+/g, '').split('/').filter(Boolean).join('/');
+          if (v && v !== def) ovr[name] = v;
+        });
+        self.disabled = true; self.textContent = '저장 중…';
+        fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=cfg_set&k=route_master&v=' + encodeURIComponent(JSON.stringify(ovr)) })
+          .then(function(r) { return r.json(); }).then(function(j) {
+            if (!j || !j.ok) throw new Error('저장 실패');
+            DRT_OVR = ovr;
+            self.disabled = false; self.textContent = '저장';
+            toast('✓ 권역 저장 — 다음 배차부터 적용', '#0a7d47');
+            dRtUI();
+          }).catch(function(e) { self.disabled = false; self.textContent = '저장'; alert('저장 실패: ' + ((e && e.message) || e)); });
+      };
+    }
     /* 고정 스팟 관리 */
     document.getElementById('__wpDpFix').onclick = function() {
       var box = document.getElementById('__wpDpFixBox');
