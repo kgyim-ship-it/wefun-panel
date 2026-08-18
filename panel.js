@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.14 21:00';
+  var VERSION = '26.08.18 11:20';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5201,7 +5201,7 @@ document.getElementById('__wpSave').onclick = function() {
     var DCAP = 3000000; /* 코스당 금액 상한 */
     var DCENTER = { x: 127.34088020267, y: 37.3138971988571 }; /* 출발지: 경기 광주시 도척면 진우리 1009-1 */
     var DLOOK = 14; /* 고정 자동감지 lookback 일수 */
-    var DTGT = null, DRES = null, DFIX_AUTO = null, DFIX_OVR = {}, DRT_OVR = {};
+    var DTGT = null, DRES = null, DFIX_AUTO = null, DFIX_OVR = {}, DRT_OVR = {}, DLRN = null;
     function dnn(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
     function dBase(a) { var i = a.indexOf(')'); return i > -1 ? a.slice(0, i + 1) : a; }
     function dRegion(addr) {
@@ -5225,11 +5225,13 @@ document.getElementById('__wpSave').onclick = function() {
       '<button id="__wpDpXls" class="wp-btn ok" style="padding:11px 18px;font-size:13.5px">⬇ 라우팅 엑셀</button>' +
       '<button id="__wpDpFix" class="wp-btn gh" style="padding:11px 18px;font-size:13.5px">고정 스팟 관리</button>' +
       '<button id="__wpDpRt" class="wp-btn gh" style="padding:11px 18px;font-size:13.5px">권역 관리</button>' +
+      '<button id="__wpDpLrn" class="wp-btn gh" style="padding:11px 18px;font-size:13.5px">📥 수정본 러닝</button>' +
       '<span id="__wpDpProg" style="font-size:13px;color:#0369A1;font-weight:600"></span>' +
       '<span style="flex:1"></span>' +
       '<span style="font-size:11.5px;color:#94A3B8">파일로 직접 실행 →</span><input type="file" id="__wpDpF" accept=".xlsx,.xls" style="font-size:11px;max-width:190px"></div>' +
       '<div id="__wpDpFixBox" style="display:none;margin-bottom:8px"></div>' +
       '<div id="__wpDpRtBox" style="display:none;margin-bottom:8px"></div>' +
+      '<div id="__wpDpLrnBox" style="display:none;margin-bottom:8px"></div>' +
       '<div id="__wpDpOut"></div>';
     var LOG = document.getElementById('__wpDpProg');
     (function() { var d = new Date(); d.setDate(d.getDate() + 1); document.getElementById('__wpDpDate').value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); })();
@@ -5243,6 +5245,33 @@ document.getElementById('__wpSave').onclick = function() {
       if (j && j.ok && j.v) { try { DRT_OVR = JSON.parse(j.v) || {}; } catch (e) {} }
     }).catch(function() {});
     function dRegions(name, def) { return String(DRT_OVR[name] || def).split('/').map(function(x) { return x.trim(); }).filter(Boolean); }
+
+    /* 수정본 러닝 로그 (서버 누적, 60일 보관) */
+    function dLrnLoad() {
+      if (DLRN) return Promise.resolve(DLRN);
+      return fetch(apiUrl() + '?e=cfg_get&k=learn_log').then(function(r) { return r.json(); }).then(function(j) {
+        DLRN = [];
+        if (j && j.ok && j.v) { try { DLRN = JSON.parse(j.v) || []; } catch (e) {} }
+        return DLRN;
+      }).catch(function() { DLRN = DLRN || []; return DLRN; });
+    }
+    dLrnLoad();
+    /* 러닝 집계: 거래처(k)별 최다 수정 기사 + 횟수 */
+    function dLrnAgg() {
+      var by = {};
+      (DLRN || []).forEach(function(e) {
+        if (!e || !e.k || !e.to) return;
+        if (!by[e.k]) by[e.k] = { br: e.br, to: {}, last: '', f: 0 };
+        by[e.k].to[e.to] = (by[e.k].to[e.to] || 0) + 1;
+        if (e.f) by[e.k].f = 1;
+        if ((e.d || '') > by[e.k].last) { by[e.k].last = e.d; if (e.br) by[e.k].br = e.br; }
+      });
+      return Object.keys(by).map(function(k) {
+        var v = by[k], best = '', bn = 0;
+        Object.keys(v.to).forEach(function(t) { if (v.to[t] > bn) { bn = v.to[t]; best = t; } });
+        return { k: k, br: v.br || k, to: best, n: bn, last: v.last, f: v.f, cur: DFIX_OVR[k] || '' };
+      }).sort(function(a, b) { return b.n - a.n || (a.last < b.last ? 1 : -1); });
+    }
 
     /* 고정 자동감지: 최근 N일 배송일정에서 스팟별 최다 기사 (하루 1회 localStorage 캐시) */
     function dFixAuto() {
@@ -5330,6 +5359,8 @@ document.getElementById('__wpSave').onclick = function() {
         dlog('대상 ' + DTGT.length + '착지');
         return dFixAuto();
       }).then(function(fixAuto) {
+        return dLrnLoad().then(function() { return fixAuto; });
+      }).then(function(fixAuto) {
         var uniq = {};
         DTGT.forEach(function(t) { uniq[dBase(t.addr)] = 1; });
         return dGeo(Object.keys(uniq)).then(function(geo) { return { geo: geo, fixAuto: fixAuto }; });
@@ -5346,18 +5377,23 @@ document.getElementById('__wpSave').onclick = function() {
     function dRun(geo, fixAuto) {
       var drivers = DDRV.map(function(r) { return { course: r[0], name: r[1], belong: r[2], regions: dRegions(r[1], r[3]), load: 0, stops: [] }; });
       var byName = {}; drivers.forEach(function(d) { byName[d.name] = d; });
+      /* 수정본 러닝 반영: 같은 수정 2회 이상 → 일반 스팟은 우선배정(LPREF), 고정 스팟은 자동감지보다 우선(LFIX) */
+      var LPREF = {}, LFIX = {};
+      dLrnAgg().forEach(function(x) { if (x.n >= 2 && x.to && byName[x.to]) { if (x.f) LFIX[x.k] = x.to; else LPREF[x.k] = x.to; } });
       /* 그룹핑: 같은 주소(건물) = 무조건 같은 기사 */
       var groups = {};
       DTGT.forEach(function(t) {
         var ba = dBase(t.addr);
         var gk = dnn(ba);
-        if (!groups[gk]) groups[gk] = { stops: [], amt: 0, region: dRegion(t.addr), xy: geo[ba], fixVotes: {} };
+        if (!groups[gk]) groups[gk] = { stops: [], amt: 0, region: dRegion(t.addr), xy: geo[ba], fixVotes: {}, prefVotes: {} };
         groups[gk].stops.push(t);
         groups[gk].amt += t.amt;
+        var k = dKey(t.br);
         if (t.fixed) {
-          var k = dKey(t.br);
-          var fd = DFIX_OVR[k] || fixAuto[k] || '';
+          var fd = DFIX_OVR[k] || LFIX[k] || fixAuto[k] || '';
           if (fd) groups[gk].fixVotes[fd] = (groups[gk].fixVotes[fd] || 0) + 1;
+        } else if (LPREF[k]) {
+          groups[gk].prefVotes[LPREF[k]] = (groups[gk].prefVotes[LPREF[k]] || 0) + 1;
         }
       });
       Object.keys(groups).forEach(function(gk) {
@@ -5365,6 +5401,9 @@ document.getElementById('__wpSave').onclick = function() {
         var best = '', bn = 0;
         Object.keys(g.fixVotes).forEach(function(fd) { if (g.fixVotes[fd] > bn) { bn = g.fixVotes[fd]; best = fd; } });
         g.fix = best; /* 같은 건물에 고정담당 여럿이면 다수결 */
+        var bp = '', bpn = 0;
+        Object.keys(g.prefVotes).forEach(function(fd) { if (g.prefVotes[fd] > bpn) { bpn = g.prefVotes[fd]; bp = fd; } });
+        g.pref = bp; /* 러닝 우선배정 후보 (다수결) */
       });
       var glist = Object.keys(groups).map(function(k) { return groups[k]; });
       function centroid(d) { if (!d.stops.length) return null; var x = 0, y = 0, n = 0; d.stops.forEach(function(s) { if (s.xy) { x += s.xy.x; y += s.xy.y; n++; } }); return n ? { x: x / n, y: y / n } : null; }
@@ -5387,7 +5426,7 @@ document.getElementById('__wpSave').onclick = function() {
             d.load += sub.amt;
           } else {
             /* 고정 과적 → 일반은 분리해서 일반 배정 (주소분리 표시) */
-            spill.push({ stops: sub.stops, amt: sub.amt, region: g.region, xy: g.xy, spill: true });
+            spill.push({ stops: sub.stops, amt: sub.amt, region: g.region, xy: g.xy, pref: g.pref, spill: true });
           }
         });
         g.done = true;
@@ -5401,8 +5440,9 @@ document.getElementById('__wpSave').onclick = function() {
         if (!inRegion.length) { stops2.forEach(function(s2) { s2.flag = '미배정(권역없음:' + g.region + ')'; DUNAS.push(s2); }); return null; }
         var cands = inRegion.filter(function(d) { return d.load + amt2 <= DCAP; });
         if (!cands.length) return false; /* 이 크기로는 못 들어감 → 더 쪼개기 */
-        var best = null;
+        var best = null, via = '';
         if (preferred && preferred.regions.indexOf(g.region) > -1 && preferred.load + amt2 <= DCAP) { best = preferred; }
+        else if (g.pref && byName[g.pref] && byName[g.pref].regions.indexOf(g.region) > -1 && byName[g.pref].load + amt2 <= DCAP) { best = byName[g.pref]; via = '러닝'; }
         else {
           var bs = 1e18;
           cands.forEach(function(d) {
@@ -5412,7 +5452,7 @@ document.getElementById('__wpSave').onclick = function() {
             if (score < bs) { bs = score; best = d; }
           });
         }
-        stops2.forEach(function(s2) { s2.xy = g.xy; s2.flag = extraFlag || ''; best.stops.push(s2); });
+        stops2.forEach(function(s2) { s2.xy = g.xy; s2.flag = [extraFlag || '', via].filter(Boolean).join('/'); best.stops.push(s2); });
         best.load += amt2;
         return best;
       }
@@ -5460,6 +5500,19 @@ document.getElementById('__wpSave').onclick = function() {
       });
       DRES = drivers;
       DRES._unassigned = DUNAS;
+      /* 수정본 러닝용 자동배차 스냅샷 (명세번호→기사, 브라우저 보관 14개) */
+      try {
+        var snapDay = (document.getElementById('__wpDpDate') || {}).value;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(snapDay || '')) snapDay = now().slice(0, 10);
+        var sm = {};
+        drivers.forEach(function(d) { d.stops.forEach(function(s) { sm[String(s.stmt)] = { v: d.name, b: s.br, f: s.fixed ? 1 : 0 }; }); });
+        DUNAS.forEach(function(s) { sm[String(s.stmt)] = { v: '', b: s.br, f: s.fixed ? 1 : 0 }; });
+        var snaps = {}; try { snaps = JSON.parse(localStorage.getItem('__wpAutoSnap')) || {}; } catch (e4) {}
+        snaps[snapDay] = { m: sm };
+        var sks = Object.keys(snaps).sort();
+        while (sks.length > 14) delete snaps[sks.shift()];
+        localStorage.setItem('__wpAutoSnap', JSON.stringify(snaps));
+      } catch (e5) {}
       dRender();
       document.getElementById('__wpDpXls').disabled = false;
       document.getElementById('__wpDpFix').disabled = false;
@@ -5683,6 +5736,141 @@ document.getElementById('__wpSave').onclick = function() {
             toast('✓ 고정 스팟 저장 — 다음 배차부터 적용', '#0a7d47');
           }).catch(function(e) { self.disabled = false; self.textContent = '저장'; alert('저장 실패: ' + ((e && e.message) || e)); });
       };
+    }
+
+    /* ── 수정본 러닝: 배차담당 확정본 업로드 → 자동배차와 diff → 반복 수정 학습 ── */
+    document.getElementById('__wpDpLrn').onclick = function() {
+      var box = document.getElementById('__wpDpLrnBox');
+      if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+      box.style.display = '';
+      box.innerHTML = '<div style="padding:12px;color:#94A3B8;font-size:12px">불러오는 중…</div>';
+      dLrnLoad().then(function() { dLrnUI(''); });
+    };
+    function dLrnUI(rep) {
+      var box = document.getElementById('__wpDpLrnBox');
+      if (!box || box.style.display === 'none') return;
+      var day = (document.getElementById('__wpDpDate') || {}).value || '';
+      var h = '<div style="padding:12px 14px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;font-size:12.5px;color:#334155">' +
+        '<b>수정본 러닝</b><div style="font-size:11.5px;color:#94A3B8;margin:3px 0 8px;line-height:1.6">' +
+        '배차 실행 후 배차담당이 <b>수정한 최종 라우팅 엑셀</b>을 올리면 자동배차와 비교해 바뀐 부분을 학습합니다.<br>' +
+        '같은 거래처가 같은 기사로 <b>2회 이상</b> 수정되면 → 일반 스팟은 다음 배차부터 <b>자동 우선배정</b>(권역·300만 상한 안에서), 고정 스팟은 아래 [고정 등록] 버튼으로 확정. 기록은 서버에 60일 보관.</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
+        '<label style="font-size:12px;font-weight:600">배송일 <input type="date" id="__wpLrnD" value="' + esc(day) + '" style="padding:5px 8px;border:1px solid #CBD5E1;border-radius:6px"></label>' +
+        '<input type="file" id="__wpLrnF" accept=".xlsx,.xls" style="font-size:11.5px;max-width:220px">' +
+        '<button id="__wpLrnGo" class="wp-btn pri" style="padding:7px 16px">비교·학습 실행</button></div>' +
+        '<div id="__wpLrnRep">' + (rep || '') + '</div>';
+      var agg = dLrnAgg();
+      if (agg.length) {
+        h += '<div style="margin-top:8px"><b style="font-size:12px">학습 현황 (' + agg.length + '건)</b>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:4px;max-height:300px;overflow:auto;margin-top:5px">';
+        agg.forEach(function(x) {
+          var st;
+          if (x.n >= 2) {
+            if (x.f) st = (x.cur === x.to) ? '<b style="color:#0a7d47;font-size:11px;white-space:nowrap">✓ 고정 등록됨</b>' : '<button class="__wpLrnFix wp-btn ok" data-k="' + esc(x.k) + '" data-to="' + esc(x.to) + '" style="padding:2px 10px;font-size:11px;white-space:nowrap">고정 등록</button>';
+            else st = '<b style="color:#0369A1;font-size:11px;white-space:nowrap">자동 적용 중</b>';
+          } else st = '<span style="color:#94A3B8;font-size:11px;white-space:nowrap">관찰 중 (1회)</span>';
+          h += '<div style="display:flex;gap:6px;align-items:center;padding:2px 4px;border-bottom:1px solid #F8FAFC">' +
+            '<span style="flex:1;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(String(x.br)) + '</span>' +
+            '<span style="font-size:11px;color:#64748B;white-space:nowrap">→ <b style="color:#0F172A">' + esc(x.to) + '</b> ×' + x.n + '</span>' + st + '</div>';
+        });
+        h += '</div><div style="font-size:11px;color:#94A3B8;margin-top:4px">* 자동 적용 = 권역·300만 상한을 지키는 선에서 그 기사에게 우선 배정 (엑셀 표시열에 "러닝") · 고정 스팟(D열 고정/카드키/이관)은 [고정 등록]을 눌러야 반영</div></div>';
+      } else {
+        h += '<div style="margin-top:6px;color:#94A3B8;font-size:11.5px">아직 학습된 수정이 없습니다. 자동배차를 돌린 날짜의 수정본을 올려보세요.</div>';
+      }
+      h += '</div>';
+      box.innerHTML = h;
+      document.getElementById('__wpLrnGo').onclick = function() {
+        var f = document.getElementById('__wpLrnF').files[0];
+        var d2 = document.getElementById('__wpLrnD').value;
+        if (!f) { alert('수정본 엑셀 파일을 선택해주세요.'); return; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d2)) { alert('배송일을 선택해주세요. (자동배차를 돌렸던 날짜)'); return; }
+        var self = this; self.disabled = true; self.textContent = '비교 중…';
+        dLrnCompare(f, d2).then(function(html) {
+          self.disabled = false; self.textContent = '비교·학습 실행';
+          dLrnUI(html);
+        }).catch(function(e) {
+          self.disabled = false; self.textContent = '비교·학습 실행';
+          alert('러닝 실패: ' + ((e && e.message) || e));
+        });
+      };
+      [].forEach.call(box.querySelectorAll('.__wpLrnFix'), function(bt) {
+        bt.onclick = function() {
+          var k = bt.getAttribute('data-k'), to = bt.getAttribute('data-to');
+          DFIX_OVR[k] = to;
+          bt.disabled = true;
+          fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=cfg_set&k=fix_master&v=' + encodeURIComponent(JSON.stringify(DFIX_OVR)) })
+            .then(function(r) { return r.json(); }).then(function(j) {
+              if (!j || !j.ok) throw new Error('저장 실패');
+              toast('✓ 고정 등록 — 다음 배차부터 적용', '#0a7d47');
+              dLrnUI(document.getElementById('__wpLrnRep') ? document.getElementById('__wpLrnRep').innerHTML : '');
+            }).catch(function(e) { bt.disabled = false; alert('저장 실패: ' + ((e && e.message) || e)); });
+        };
+      });
+    }
+    function dLrnCompare(f, day) {
+      return ensureXLSX().then(function() { return f.arrayBuffer(); }).then(function(buf) {
+        var wb = XLSX.read(buf, { type: 'array' });
+        var sn = wb.SheetNames.indexOf('라우팅') > -1 ? '라우팅' : wb.SheetNames[0];
+        var arr = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' });
+        /* 헤더 탐색 (앞 8행): 명세번호/고객명 + 드라이버 열 */
+        var hi = -1, cs = -1, cd = -1, cd2 = -1, cb = -1;
+        for (var i = 0; i < Math.min(8, arr.length); i++) {
+          var low = arr[i].map(function(x) { return String(x).replace(/\s+/g, ''); });
+          var hasDrv = low.indexOf('담당드라이버') > -1 || low.indexOf('드라이버') > -1 || low.indexOf('기사') > -1;
+          if (hasDrv && (low.indexOf('명세번호') > -1 || low.indexOf('고객명') > -1 || low.indexOf('거래처') > -1)) {
+            hi = i; cs = low.indexOf('명세번호');
+            cd = low.indexOf('담당드라이버'); cd2 = low.indexOf('드라이버');
+            if (cd < 0) { cd = cd2 > -1 ? cd2 : low.indexOf('기사'); cd2 = -1; }
+            cb = low.indexOf('고객명'); if (cb < 0) cb = low.indexOf('거래처');
+            break;
+          }
+        }
+        if (hi < 0 || cd < 0) throw new Error('엑셀에서 [명세번호/고객명] + [담당 드라이버] 열을 찾지 못했습니다.\n이 패널에서 받은 라우팅 엑셀을 수정한 파일인지 확인하세요.');
+        var snaps = {}; try { snaps = JSON.parse(localStorage.getItem('__wpAutoSnap')) || {}; } catch (e) {}
+        var snap = snaps[day];
+        if (!snap) throw new Error(day + ' 자동배차 기록이 이 브라우저에 없습니다.\n그 날짜로 [배차 실행]을 돌렸던 브라우저에서 올려야 합니다.\n저장된 날짜: ' + (Object.keys(snaps).sort().join(', ') || '없음'));
+        function normDrv(v) { v = String(v).trim(); return v === '미배정' ? '' : v; }
+        var fin = {}, finBr = {};
+        arr.slice(hi + 1).forEach(function(r) {
+          var rec = { v: normDrv(r[cd]), v2: cd2 > -1 ? normDrv(r[cd2]) : '', b: cb > -1 ? String(r[cb]).trim() : '' };
+          if (cs > -1 && String(r[cs]).trim()) fin[String(r[cs]).trim()] = rec;
+          if (rec.b) finBr[dnn(rec.b)] = rec;
+        });
+        var match = 0, miss = 0, diffs = [];
+        Object.keys(snap.m).forEach(function(st) {
+          var a = snap.m[st];
+          var f2 = fin[st] || finBr[dnn(a.b || '')];
+          if (!f2) { miss++; return; }
+          var av = a.v || '';
+          var fv = f2.v || '';
+          /* 담당드라이버 열은 안 고치고 드라이버 열만 고친 경우 대비 */
+          if (fv === av && f2.v2 && f2.v2 !== av) fv = f2.v2;
+          if (fv === av) { match++; return; }
+          diffs.push({ br: a.b || f2.b, from: av || '미배정', to: fv || '미배정', f: a.f ? 1 : 0, k: dKey(a.b || f2.b) });
+        });
+        /* 저장: 같은 날짜 기존 기록은 통째로 교체, 60일 초과 정리 */
+        var cut = new Date(); cut.setDate(cut.getDate() - 60);
+        var cutS = cut.getFullYear() + '-' + ('0' + (cut.getMonth() + 1)).slice(-2) + '-' + ('0' + cut.getDate()).slice(-2);
+        DLRN = (DLRN || []).filter(function(e) { return e && e.d >= cutS && e.d !== day; });
+        diffs.forEach(function(x) { if (x.to !== '미배정') DLRN.push({ d: day, k: x.k, br: x.br, from: x.from, to: x.to, f: x.f }); });
+        return fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=cfg_set&k=learn_log&v=' + encodeURIComponent(JSON.stringify(DLRN)) })
+          .then(function(r) { return r.json(); }).then(function(j) {
+            if (!j || !j.ok) throw new Error('학습 저장 실패 (워커 버전 확인 — cfg 엔드포인트 필요)');
+            var tot = match + diffs.length;
+            var rate = tot ? Math.round(match / tot * 1000) / 10 : 0;
+            var h = '<div style="padding:8px 10px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:7px;font-size:12px;color:#166534;margin-bottom:6px">' +
+              '<b>' + esc(day) + ' 비교 완료</b> · 일치 <b>' + match + '</b> / 수정 <b>' + diffs.length + '</b> (일치율 ' + rate + '%)' + (miss ? ' · 수정본에서 못 찾은 행 ' + miss : '') + '</div>';
+            if (diffs.length) {
+              h += '<div style="border:1px solid #E2E8F0;border-radius:7px;overflow:auto;max-height:220px;background:#fff;margin-bottom:6px"><table style="width:100%;border-collapse:collapse;font-size:11.5px">' +
+                '<tr style="background:#F8FAFC;color:#475569"><th style="text-align:left;padding:4px 8px">거래처</th><th style="text-align:left;padding:4px 8px">자동배차</th><th style="text-align:left;padding:4px 8px">수정 →</th><th style="padding:4px 8px">고정</th></tr>';
+              diffs.forEach(function(x) {
+                h += '<tr style="border-top:1px solid #F1F5F9"><td style="padding:3px 8px">' + esc(String(x.br).slice(0, 40)) + '</td><td style="padding:3px 8px;color:#94A3B8">' + esc(x.from) + '</td><td style="padding:3px 8px;font-weight:700;color:#0369A1">' + esc(x.to) + '</td><td style="padding:3px 8px;text-align:center">' + (x.f ? '고정' : '') + '</td></tr>';
+              });
+              h += '</table></div>';
+            }
+            return h;
+          });
+      });
     }
   }
 
