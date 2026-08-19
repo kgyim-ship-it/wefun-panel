@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.19 17:30';
+  var VERSION = '26.08.19 17:42';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -6594,7 +6594,7 @@ document.getElementById('__wpSave').onclick = function() {
         var m = f.name.match(/_?(\d{2,3}[가-힣]\d{4})_(\d{6})/);
         var veh = m ? m[1] : '', date = '';
         if (m) date = '20' + m[2].slice(0, 2) + '-' + m[2].slice(2, 4) + '-' + m[2].slice(4, 6);
-        TK_ROWS.push({ veh: veh, date: date, place: '', url: URL.createObjectURL(f), name: f.name });
+        TK_ROWS.push({ veh: veh, date: date, place: '', url: URL.createObjectURL(f), name: f.name, file: f, pv: '' });
       });
       this.value = '';
       tkRender();
@@ -6618,9 +6618,11 @@ document.getElementById('__wpSave').onclick = function() {
           '<input data-tk="place" data-i="' + i + '" value="' + esc(t.place) + '" placeholder="위반장소 (예: 삼성동 위워크 빌딩)" style="flex:1;min-width:220px;padding:6px 8px;border:1.5px solid #93C5FD;border-radius:6px;font-size:12.5px">' +
           '<button class="wp-btn pri __wpTkGo" data-i="' + i + '" style="padding:7px 14px">근처 배송 조회</button>' +
           '<span class="__wpTkDel" data-i="' + i + '" style="color:#DC2626;cursor:pointer;font-size:11.5px;text-decoration:underline">삭제</span></div>' +
+          (t.file ? '<div id="__wpTkPv' + i + '" style="margin-top:7px;max-height:430px;overflow:auto;border-radius:6px"><span style="font-size:11px;color:#94A3B8">고지서 미리보기 로딩 중…</span></div>' : '') +
           '<div id="__wpTkRes' + i + '" style="margin-top:8px"></div></div>';
       });
       box.innerHTML = h;
+      TK_ROWS.forEach(function(t, i) { if (t.file) tkPreview(i); });
       [].forEach.call(box.querySelectorAll('input[data-tk]'), function(inp) {
         inp.oninput = function() { TK_ROWS[Number(inp.getAttribute('data-i'))][inp.getAttribute('data-tk')] = inp.value; };
       });
@@ -6656,12 +6658,13 @@ document.getElementById('__wpSave').onclick = function() {
         return out;
       });
     }
-    function tkGeo(addrs) {
+    function tkGeo(addrs, onProg) {
       var out = {}, idx = 0;
       function chunk() {
         if (idx >= addrs.length) return Promise.resolve(out);
         var part = addrs.slice(idx, idx + 20);
         idx += 20;
+        if (onProg) onProg(Math.min(idx, addrs.length), addrs.length);
         return fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=geo&addrs=' + encodeURIComponent(JSON.stringify(part)) })
           .then(function(r) { return r.json(); }).then(function(j) {
             if (j && j.ok) Object.keys(j.geo || {}).forEach(function(k) { out[k] = j.geo[k]; });
@@ -6670,8 +6673,36 @@ document.getElementById('__wpSave').onclick = function() {
       }
       return chunk();
     }
+    /* PDF 1페이지 미리보기 (pdf.js) — 장소 보면서 바로 입력 */
+    function ensurePDFJS() {
+      if (window.pdfjsLib) return Promise.resolve();
+      return loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js').then(function() {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      });
+    }
+    function tkPreview(i) {
+      var t = TK_ROWS[i];
+      var el = document.getElementById('__wpTkPv' + i);
+      if (!el || !t.file) return;
+      if (t.pv) { el.innerHTML = '<img src="' + t.pv + '" style="max-width:100%;border:1px solid #E2E8F0;border-radius:6px;display:block">'; return; }
+      ensurePDFJS().then(function() { return t.file.arrayBuffer(); }).then(function(buf) {
+        return pdfjsLib.getDocument({ data: buf }).promise;
+      }).then(function(doc) { return doc.getPage(1); }).then(function(page) {
+        var vp = page.getViewport({ scale: 1 });
+        var vp2 = page.getViewport({ scale: Math.min(2, 860 / vp.width) });
+        var cv = document.createElement('canvas');
+        cv.width = vp2.width; cv.height = vp2.height;
+        return page.render({ canvasContext: cv.getContext('2d'), viewport: vp2 }).promise.then(function() {
+          t.pv = cv.toDataURL('image/jpeg', 0.85);
+          tkPreview(i);
+        });
+      }).catch(function() {
+        var el2 = document.getElementById('__wpTkPv' + i);
+        if (el2) el2.innerHTML = '<span style="font-size:11px;color:#94A3B8">미리보기 실패 — 📄 파일명을 눌러 여세요</span>';
+      });
+    }
 
-    function tkFind(i, btn) {
+    function tkFind(i, btn, full) {
       var t = TK_ROWS[i];
       var res = document.getElementById('__wpTkRes' + i);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(t.date)) { alert('위반일을 선택해주세요.'); return; }
@@ -6679,14 +6710,23 @@ document.getElementById('__wpSave').onclick = function() {
       btn.disabled = true; btn.textContent = '조회 중…';
       res.innerHTML = '<div style="font-size:12px;color:#0369A1">배송동선 조회 중…</div>';
       tkDay(t.date).then(function(rows) {
-        res.innerHTML = '<div style="font-size:12px;color:#0369A1">좌표 매칭 중… (' + rows.length + '착지)</div>';
+        var place = t.place.trim();
+        var toks = place.split(/\s+/).filter(function(x) { return x.length >= 2; });
+        /* 동네/건물 토큰이 이름·주소에 걸리는 착지만 우선 좌표 조회 — 전체(1000+) 지오코딩으로 몇 분씩 멈추는 것 방지 */
+        var pool = full ? rows : rows.filter(function(r2) { return toks.some(function(tk) { return r2.br.indexOf(tk) > -1 || r2.addr.indexOf(tk) > -1; }); });
+        var narrowed = !full && pool.length >= 1;
+        if (!pool.length) pool = rows;
         var uniq = {};
-        rows.forEach(function(r2) { uniq[tBase(r2.addr)] = 1; });
-        return tkGeo([t.place.trim()]).then(function(g1) {
-          var pxy = g1[t.place.trim()];
-          return tkGeo(Object.keys(uniq)).then(function(geo) {
-            var toks = t.place.trim().split(/\s+/).filter(function(x) { return x.length >= 2; });
-            var list = rows.map(function(r2) {
+        pool.forEach(function(r2) { uniq[tBase(r2.addr)] = 1; });
+        var keys = Object.keys(uniq);
+        var capped = false;
+        if (keys.length > 400) { keys = keys.slice(0, 400); capped = true; }
+        return tkGeo([place]).then(function(g1) {
+          var pxy = g1[place];
+          return tkGeo(keys, function(dn, tt) {
+            res.innerHTML = '<div style="font-size:12px;color:#0369A1">좌표 매칭 중… ' + dn + '/' + tt + (narrowed ? ' (장소 토큰으로 ' + pool.length + '착지 축소)' : ' (전체 조회 — 처음이면 몇 분 걸릴 수 있음)') + '</div>';
+          }).then(function(geo) {
+            var list = pool.map(function(r2) {
               var xy = geo[tBase(r2.addr)];
               var d = pxy ? tDist(pxy, xy) : 9999;
               var hit = toks.some(function(tk) { return r2.br.indexOf(tk) > -1 || r2.addr.indexOf(tk) > -1; });
@@ -6697,7 +6737,7 @@ document.getElementById('__wpSave').onclick = function() {
               res.innerHTML = '<div style="font-size:12px;color:#DC2626">위반장소 좌표를 못 찾았고 이름 일치도 없습니다. 장소를 더 구체적으로 (동 이름 + 건물명) 입력해보세요.</div>';
               return;
             }
-            var h = '<div style="font-size:12px;color:#334155;margin-bottom:4px"><b>근처 배송 후보</b> — 소명에 쓸 거래처를 선택하세요' + (pxy ? '' : ' <span style="color:#B45309">(장소 좌표 실패 — 이름 일치 기준)</span>') + '</div>';
+            var h = '<div style="font-size:12px;color:#334155;margin-bottom:4px"><b>근처 배송 후보</b> — 소명에 쓸 거래처를 선택하세요' + (pxy ? '' : ' <span style="color:#B45309">(장소 좌표 실패 — 이름 일치 기준)</span>') + (capped ? ' <span style="color:#B45309">(대상이 많아 400곳까지만 좌표 비교)</span>' : '') + '</div>';
             list.forEach(function(x, k) {
               h += '<label style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;cursor:pointer;background:' + (k % 2 ? '#FCFDFE' : '#fff') + '">' +
                 '<input type="radio" name="__wpTkC' + i + '" data-k="' + k + '">' +
@@ -6706,8 +6746,11 @@ document.getElementById('__wpSave').onclick = function() {
                 '<span style="font-size:11.5px;color:' + (x.d <= 0.5 ? '#0a7d47' : '#94A3B8') + ';white-space:nowrap">' + (x.d < 9000 ? x.d.toFixed(1) + 'km' : '-') + '</span>' +
                 '<span style="font-size:11.5px;color:#64748B;white-space:nowrap">' + esc(x.r.drv) + '</span></label>';
             });
+            if (narrowed) h += '<div style="margin-top:4px"><span class="__wpTkFull" style="font-size:11.5px;color:#1f4e78;cursor:pointer;text-decoration:underline">원하는 거래처가 없나요? 전체 착지에서 거리로 재검색 (처음이면 몇 분 소요)</span></div>';
             h += '<div id="__wpTkOut' + i + '" style="margin-top:8px"></div>';
             res.innerHTML = h;
+            var fl = res.querySelector('.__wpTkFull');
+            if (fl) fl.onclick = function() { tkFind(i, btn, true); };
             [].forEach.call(res.querySelectorAll('input[name="__wpTkC' + i + '"]'), function(rd) {
               rd.onchange = function() { tkPick(i, list[Number(rd.getAttribute('data-k'))].r); };
             });
