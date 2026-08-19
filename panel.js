@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.19 10:25';
+  var VERSION = '26.08.19 10:37';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5151,59 +5151,215 @@ document.getElementById('__wpSave').onclick = function() {
       box.style.display = '';
       kRptRender();
     }
+    function kAbbr(v) {
+      v = Number(v) || 0;
+      if (v >= 100000000) return (Math.round(v / 10000000) / 10) + '억';
+      if (v >= 10000) return Math.round(v / 10000).toLocaleString() + '만';
+      return v.toLocaleString();
+    }
+    /* SVG 스택 바차트: 스낵(파랑) + 조식(주황), 합계 직접표기, 마우스오버 = 브라우저 title 툴팁 */
+    function kChartStack(labels, s1, s2, names, fmt) {
+      var n = labels.length;
+      var W = Math.max(300, 16 + n * 46), H = 185, padL = 8, padB = 20, padT = 24;
+      var maxV = 1;
+      for (var i = 0; i < n; i++) maxV = Math.max(maxV, (s1[i] || 0) + (s2[i] || 0));
+      var plotH = H - padT - padB;
+      function y(v) { return padT + plotH * (1 - v / maxV); }
+      var slot = (W - padL * 2) / n, bw = Math.min(28, slot * 0.58);
+      function topR(x, yy, w, h) {
+        var r = Math.min(3, h);
+        return '<path d="M' + x + ',' + (yy + h) + ' L' + x + ',' + (yy + r) + ' Q' + x + ',' + yy + ' ' + (x + r) + ',' + yy + ' L' + (x + w - r) + ',' + yy + ' Q' + (x + w) + ',' + yy + ' ' + (x + w) + ',' + (yy + r) + ' L' + (x + w) + ',' + (yy + h) + ' Z"';
+      }
+      var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;max-height:210px;display:block;margin:0 auto">';
+      [0.5, 1].forEach(function(g) {
+        svg += '<line x1="' + padL + '" x2="' + (W - padL) + '" y1="' + y(maxV * g) + '" y2="' + y(maxV * g) + '" stroke="#E1E0D9" stroke-width="1"/>' +
+          '<text x="' + padL + '" y="' + (y(maxV * g) - 3) + '" font-size="8.5" fill="#898781">' + fmt(maxV * g) + '</text>';
+      });
+      var base = padT + plotH;
+      svg += '<line x1="' + padL + '" x2="' + (W - padL) + '" y1="' + base + '" y2="' + base + '" stroke="#C3C2B7" stroke-width="1"/>';
+      for (i = 0; i < n; i++) {
+        var x = padL + slot * i + (slot - bw) / 2;
+        var v1 = s1[i] || 0, v2 = s2[i] || 0, tot = v1 + v2;
+        var cx = x + bw / 2;
+        if (!tot) {
+          svg += '<text x="' + cx + '" y="' + (base - 5) + '" font-size="9" fill="#CBD5E1" text-anchor="middle">—</text>';
+        } else {
+          var h1 = plotH * v1 / maxV, h2 = plotH * v2 / maxV;
+          var gap = (v1 && v2) ? 2 : 0;
+          var tt = '<title>' + esc(labels[i]) + ' — ' + esc(names[0]) + ' ' + fmt(v1) + ' · ' + esc(names[1]) + ' ' + fmt(v2) + ' · 합계 ' + fmt(tot) + '</title>';
+          svg += '<g>' + tt;
+          if (v1 && !v2) svg += topR(x, base - h1, bw, h1) + ' fill="#2A78D6"/>';
+          else if (v1) svg += '<rect x="' + x + '" y="' + (base - h1) + '" width="' + bw + '" height="' + h1 + '" fill="#2A78D6"/>';
+          if (v2) svg += topR(x, base - h1 - gap - h2, bw, h2) + ' fill="#EB6834"/>';
+          svg += '<text x="' + cx + '" y="' + (base - h1 - gap - h2 - 4) + '" font-size="9" font-weight="700" fill="#52514E" text-anchor="middle">' + fmt(tot) + '</text></g>';
+        }
+        svg += '<text x="' + cx + '" y="' + (H - 6) + '" font-size="9.5" fill="#898781" text-anchor="middle">' + esc(labels[i]) + '</text>';
+      }
+      return svg + '</svg>';
+    }
+    /* SVG 라인차트 (단일 시리즈) — 결측 월은 선 끊김 */
+    function kChartLine(labels, vals, color, fmt) {
+      var n = labels.length;
+      var W = Math.max(300, 16 + n * 46), H = 165, padL = 8, padB = 20, padT = 22;
+      var maxV = 1;
+      for (var i = 0; i < n; i++) if (vals[i] != null) maxV = Math.max(maxV, vals[i]);
+      maxV = maxV * 1.25;
+      var plotH = H - padT - padB, base = padT + plotH;
+      function y(v) { return padT + plotH * (1 - v / maxV); }
+      var slot = (W - padL * 2) / n;
+      var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;max-height:210px;display:block;margin:0 auto">';
+      svg += '<line x1="' + padL + '" x2="' + (W - padL) + '" y1="' + y(maxV * 0.8) + '" y2="' + y(maxV * 0.8) + '" stroke="#E1E0D9" stroke-width="1"/>' +
+        '<text x="' + padL + '" y="' + (y(maxV * 0.8) - 3) + '" font-size="8.5" fill="#898781">' + fmt(maxV * 0.8) + '</text>' +
+        '<line x1="' + padL + '" x2="' + (W - padL) + '" y1="' + base + '" y2="' + base + '" stroke="#C3C2B7" stroke-width="1"/>';
+      var path = '', pen = false;
+      for (i = 0; i < n; i++) {
+        var cx = padL + slot * i + slot / 2;
+        if (vals[i] == null) { pen = false; }
+        else {
+          path += (pen ? ' L' : ' M') + cx + ',' + y(vals[i]);
+          pen = true;
+        }
+        svg += '<text x="' + cx + '" y="' + (H - 6) + '" font-size="9.5" fill="#898781" text-anchor="middle">' + esc(labels[i]) + '</text>';
+      }
+      if (path) svg += '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round"/>';
+      for (i = 0; i < n; i++) {
+        if (vals[i] == null) continue;
+        var cx2 = padL + slot * i + slot / 2, cy = y(vals[i]);
+        svg += '<g><title>' + esc(labels[i]) + ' — ' + fmt(vals[i]) + '</title>' +
+          '<circle cx="' + cx2 + '" cy="' + cy + '" r="4" fill="' + color + '" stroke="#fff" stroke-width="2"/>' +
+          '<text x="' + cx2 + '" y="' + (cy - 8) + '" font-size="9" font-weight="700" fill="#52514E" text-anchor="middle">' + fmt(vals[i]) + '</text></g>';
+      }
+      return svg + '</svg>';
+    }
+    /* 연간 미집계 일자 수집 */
+    function kFillYear(btn) {
+      var c = kCache(), today = kToday();
+      var nowD = new Date();
+      var lastM = (kY === nowD.getFullYear()) ? nowD.getMonth() : 11;
+      var tasks = [];
+      for (var mi = 0; mi <= lastM; mi++) {
+        var lastDay = new Date(kY, mi + 1, 0).getDate();
+        for (var dd = 1; dd <= lastDay; dd++) {
+          var ds = kDs(kY, mi, dd);
+          if (ds > today) continue;
+          var v = c[ds];
+          if (!v || !v.dv || v.ms === undefined) tasks.push(ds);
+        }
+      }
+      if (!tasks.length) { toast('✓ ' + kY + '년 데이터가 이미 전부 집계돼 있습니다', '#0a7d47'); return; }
+      if (!confirm(kY + '년 미집계 ' + tasks.length + '일을 오피스에서 수집합니다.\n(하루당 조회 4회 — 수 분 걸릴 수 있고, 진행분은 중간에 닫아도 저장됩니다)\n진행할까요?')) return;
+      btn.disabled = true;
+      var seq = ++kSeq;
+      var done = 0, fails = 0, idx = 0;
+      function w2() {
+        if (idx >= tasks.length || seq !== kSeq) return Promise.resolve();
+        var ds = tasks[idx++];
+        return kDrvDay(ds).then(function(res) {
+          var cc = kCache(); cc[ds] = cc[ds] || {};
+          cc[ds].dv = res.dv; cc[ds].ms = res.ms; cc[ds].tdv = Date.now();
+          if (typeof cc[ds].sp !== 'number') { cc[ds].sp = res.sp; cc[ds].tp = Date.now(); }
+          if (typeof cc[ds].as !== 'number') { cc[ds].as = res.as; cc[ds].aj = res.aj; cc[ds].nj = res.nj; cc[ds].ta = Date.now(); }
+          kSave(cc);
+        }).catch(function() { fails++; }).then(function() {
+          done++;
+          if (btn) btn.textContent = '수집 중… ' + done + '/' + tasks.length + (fails ? ' (실패 ' + fails + ')' : '');
+          return w2();
+        });
+      }
+      Promise.all([w2(), w2()]).then(function() {
+        if (btn) { btn.disabled = false; btn.textContent = '연간 데이터 채우기'; }
+        toast('연간 수집 완료 · 성공 ' + (done - fails) + '일' + (fails ? ' / 실패 ' + fails + '일 (다시 누르면 재시도)' : ''), fails ? '#B45309' : '#0a7d47');
+        var bx = document.getElementById('__wpKRptBox');
+        if (bx && bx.style.display !== 'none') kRptRender();
+      });
+    }
     function kRptRender() {
       var box = document.getElementById('__wpKRptBox');
       if (!box) return;
-      var cur = kAggM(kY, kM);
-      var pM = kM - 1, pY = kY;
-      if (pM < 0) { pM = 11; pY--; }
-      var prv = kAggM(pY, pM);
+      var nowD = new Date();
+      var lastM = (kY === nowD.getFullYear()) ? nowD.getMonth() : 11;
+      var months = [];
+      for (var mi = 0; mi <= lastM; mi++) months.push(kAggM(kY, mi));
+      var selM = Math.min(kM, lastM);
+      var cur = months[selM];
+      var prv = selM > 0 ? months[selM - 1] : kAggM(kY - 1, 11);
       var hasPrv = prv.days > 0;
-      if (!cur.days) { box.innerHTML = '<div style="padding:14px;color:#94A3B8;border:1px solid #E2E8F0;border-radius:9px;background:#fff;font-size:12.5px">이 달 집계 데이터가 아직 없습니다. 집계가 끝난 뒤 다시 열어주세요.</div>'; return; }
+      var gapM = months.filter(function(a) { return !a.days; }).length;
+      /* 연 누계 */
+      var ytd = { ts: 0, ta: 0, ms: 0, days: 0, mN: 0 };
+      months.forEach(function(a) { if (a.days) { ytd.ts += a.ts; ytd.ta += a.ta; ytd.ms += a.ms; ytd.days += a.days; ytd.mN++; } });
+      ytd.rate = ytd.ts ? Math.round(ytd.ms / ytd.ts * 1000) / 10 : 0;
+      if (!ytd.mN) { box.innerHTML = '<div style="padding:14px;color:#94A3B8;border:1px solid #E2E8F0;border-radius:9px;background:#fff;font-size:12.5px">' + kY + '년 집계 데이터가 없습니다. 아래에서 연간 데이터를 채우거나, 기사통계에서 월을 조회하세요. <button id="__wpKFillE" class="wp-btn pri" style="padding:5px 14px;margin-left:8px">연간 데이터 채우기</button></div>'; var be = document.getElementById('__wpKFillE'); if (be) be.onclick = function() { kFillYear(be); }; return; }
       function card(label, val, sub, delta) {
-        return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:11px 14px">' +
-          '<div style="font-size:11.5px;color:#64748B;margin-bottom:3px">' + label + '</div>' +
-          '<div style="font-size:19px;font-weight:800;color:#0F172A;line-height:1.2">' + val + '</div>' +
-          (sub ? '<div style="font-size:11px;color:#94A3B8;margin-top:2px">' + sub + '</div>' : '') +
-          (delta ? '<div style="margin-top:3px">' + delta + '</div>' : '') + '</div>';
+        return '<div style="flex:1;min-width:145px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:10px 13px">' +
+          '<div style="font-size:11px;color:#64748B;margin-bottom:2px">' + label + '</div>' +
+          '<div style="font-size:18px;font-weight:800;color:#0F172A;line-height:1.2">' + val + '</div>' +
+          (sub ? '<div style="font-size:10.5px;color:#94A3B8;margin-top:2px">' + sub + '</div>' : '') +
+          (delta ? '<div style="margin-top:2px">' + delta + '</div>' : '') + '</div>';
+      }
+      var lbls = months.map(function(a, i) { return (i + 1) + '월'; });
+      var mSS = months.map(function(a) { return a.days ? a.ss : 0; });
+      var mJS = months.map(function(a) { return a.days ? a.js : 0; });
+      var mSA = months.map(function(a) { return a.days ? a.sa : 0; });
+      var mJA = months.map(function(a) { return a.days ? a.ja : 0; });
+      var mRate = months.map(function(a) { return a.days ? a.rate : null; });
+      var legend = '<span style="font-size:10.5px;color:#52514E;display:inline-flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:2.5px;background:#2A78D6;display:inline-block"></span>스낵24</span>' +
+        '<span style="font-size:10.5px;color:#52514E;display:inline-flex;align-items:center;gap:4px;margin-left:9px"><span style="width:9px;height:9px;border-radius:2.5px;background:#EB6834;display:inline-block"></span>조식24</span>';
+      function chartCard(title, legendH, svg, note) {
+        return '<div style="flex:1;min-width:300px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:10px 12px">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px"><b style="font-size:12.5px">' + title + '</b><span style="flex:1"></span>' + (legendH || '') + '</div>' +
+          svg + (note ? '<div style="font-size:10px;color:#94A3B8;margin-top:2px">' + note + '</div>' : '') + '</div>';
       }
       var h = '<div style="padding:14px 16px;background:#F8FAFC;border:1.5px solid #CBD5E1;border-radius:11px">' +
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
-        '<b style="font-size:16px">📊 ' + kY + '년 ' + (kM + 1) + '월 물류 월간 리포트</b>' +
-        '<span style="font-size:11.5px;color:#94A3B8">집계 ' + cur.days + '일 · 스낵24/조식24 방문 기준 · 금액 VAT 포함' + (hasPrv ? ' · 전월 ' + prv.days + '일 대비' : ' · 전월 데이터 없음(전월을 한 번 조회하면 비교됩니다)') + '</span>' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">' +
+        '<b style="font-size:16px">📊 ' + kY + '년 물류 대시보드</b>' +
+        '<span style="font-size:11.5px;color:#94A3B8">스낵24/조식24 방문 · 금액 VAT 포함 · 집계 ' + ytd.mN + '개월/' + months.length + '개월' + (gapM ? ' · <b style="color:#B45309">미집계 ' + gapM + '개월</b>' : '') + '</span>' +
         '<span style="flex:1"></span>' +
+        (gapM ? '<button id="__wpKFill" class="wp-btn pri" style="padding:6px 14px">연간 데이터 채우기</button>' : '') +
         '<button id="__wpKRptXls" class="wp-btn ok" style="padding:6px 14px">⬇ 리포트 엑셀</button>' +
         '<button id="__wpKRptCls" class="wp-btn gh" style="padding:6px 12px">닫기</button></div>' +
+        /* KPI 카드: 연 누계 + 선택월 */
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
-        card('총 착지', cur.ts.toLocaleString() + '착', '스낵 ' + cur.ss.toLocaleString() + ' · 조식 ' + cur.js.toLocaleString(), kDelta(cur.ts, hasPrv ? prv.ts : null, true)) +
-        card('총 배송금액', kWon(cur.ta), '스낵 ' + kWon(cur.sa) + ' · 조식 ' + kWon(cur.ja), kDelta(cur.ta, hasPrv ? prv.ta : null, true)) +
-        card('일평균 착지', Math.round(cur.ts / cur.days).toLocaleString() + '착/일', '', kDelta(Math.round(cur.ts / cur.days), hasPrv ? Math.round(prv.ts / prv.days) : null, true)) +
-        card('활동 기사', cur.nDrv + '명', '기사당 일평균 ' + cur.drvAvg + '착', kDelta(cur.nDrv, hasPrv ? prv.nDrv : null, true)) +
-        card('미출', cur.ms.toLocaleString() + '건', '누락율 ' + cur.rate + '%', kDelta(cur.rate, hasPrv ? prv.rate : null, false)) +
+        card(kY + '년 누계 착지', ytd.ts.toLocaleString() + '착', '월평균 ' + Math.round(ytd.ts / ytd.mN).toLocaleString() + '착 · ' + ytd.days + '일', '') +
+        card(kY + '년 누계 금액', kWon(ytd.ta), '월평균 ' + kWon(Math.round(ytd.ta / ytd.mN)), '') +
+        card((selM + 1) + '월 착지', cur.ts.toLocaleString() + '착', '일평균 ' + (cur.days ? Math.round(cur.ts / cur.days).toLocaleString() : 0) + '착 · 기사 ' + cur.nDrv + '명', kDelta(cur.ts, hasPrv ? prv.ts : null, true)) +
+        card((selM + 1) + '월 금액', kWon(cur.ta), '', kDelta(cur.ta, hasPrv ? prv.ta : null, true)) +
+        card('누락율', (cur.days ? cur.rate : 0) + '%', (selM + 1) + '월 미출 ' + cur.ms.toLocaleString() + '건 · 연평균 ' + ytd.rate + '%', kDelta(cur.rate, hasPrv ? prv.rate : null, false)) +
+        '</div>' +
+        /* 차트: 월별 착지 / 월별 금액 */
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+        chartCard('월별 착지', legend, kChartStack(lbls, mSS, mJS, ['스낵', '조식'], function(v) { return Math.round(v).toLocaleString(); }), gapM ? '— 표시 월 = 미집계 (연간 데이터 채우기로 수집)' : '') +
+        chartCard('월별 금액 (VAT 포함)', legend, kChartStack(lbls, mSA, mJA, ['스낵', '조식'], kAbbr), '') +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+        chartCard('월별 누락율 (%)', '', kChartLine(lbls, mRate, '#E34948', function(v) { return (Math.round(v * 10) / 10) + '%'; }), '미출 건수 ÷ 총 착지') +
+        chartCard('월별 기사당 일평균 착지', '', kChartLine(lbls, months.map(function(a) { return a.days ? a.drvAvg : null; }), '#4A3AA7', function(v) { return (Math.round(v * 10) / 10) + '착'; }), '15착 이상이 지속되면 증차/코스조정 검토') +
         '</div>';
-      /* 소속별 */
+      /* 하단: 운수사별(선택월) / 증차 후보 / 반복 미출 */
       var bels = KBELS.filter(function(b) { return cur.byBel[b]; }).concat(Object.keys(cur.byBel).filter(function(b) { return KBELS.indexOf(b) < 0; }).sort());
       h += '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">';
       h += '<div style="flex:1.4;min-width:340px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:10px 12px">' +
-        '<b style="font-size:12.5px">운수사별 실적</b><table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">' +
+        '<b style="font-size:12.5px">운수사별 실적 (' + (selM + 1) + '월)</b><table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">' +
         '<tr style="color:#64748B"><th style="text-align:left;padding:3px 6px">소속</th><th style="text-align:right;padding:3px 6px">기사</th><th style="text-align:right;padding:3px 6px">착지</th><th style="text-align:right;padding:3px 6px">금액</th><th style="text-align:right;padding:3px 6px">기사당 일평균</th><th style="text-align:right;padding:3px 6px">착지 전월비</th></tr>';
+      var belMax = 1;
+      bels.forEach(function(bl) { belMax = Math.max(belMax, cur.byBel[bl].ts); });
       bels.forEach(function(bl) {
         var v = cur.byBel[bl], pv = hasPrv ? prv.byBel[bl] : null;
-        h += '<tr style="border-top:1px solid #F1F5F9"><td style="padding:4px 6px">' + kBelChip(bl) + '</td>' +
+        var pct = Math.round(v.ts / belMax * 100);
+        h += '<tr style="border-top:1px solid #F1F5F9"><td style="padding:4px 6px;white-space:nowrap">' + kBelChip(bl) + '</td>' +
           '<td style="padding:4px 6px;text-align:right">' + v.n + '</td>' +
-          '<td style="padding:4px 6px;text-align:right;font-weight:700">' + v.ts.toLocaleString() + '</td>' +
+          '<td style="padding:4px 6px;text-align:right;font-weight:700"><span style="display:inline-block;vertical-align:middle;height:8px;border-radius:2.5px;background:#2A78D6;opacity:.85;width:' + Math.max(3, Math.round(pct * 0.6)) + 'px;margin-right:5px"></span>' + v.ts.toLocaleString() + '</td>' +
           '<td style="padding:4px 6px;text-align:right;color:#0a7d47;font-weight:700">' + kWon(v.ta) + '</td>' +
           '<td style="padding:4px 6px;text-align:right">' + (v.n ? Math.round(v.avgSum / v.n * 10) / 10 : 0) + '착</td>' +
           '<td style="padding:4px 6px;text-align:right">' + kDelta(v.ts, pv ? pv.ts : null, true) + '</td></tr>';
       });
       h += '</table></div>';
-      /* 증차 신호 */
       var hotDrv = Object.keys(cur.drv).map(function(k) {
         var d = cur.drv[k];
         return { drv: k, bel: d.bel, avg: d.wd ? Math.round(d.ts / d.wd * 10) / 10 : 0, ts: d.ts, wd: d.wd };
       }).filter(function(x) { return x.avg >= 15 && x.wd >= 5; }).sort(function(a, b) { return b.avg - a.avg; });
-      h += '<div style="flex:1;min-width:280px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:10px 12px">' +
-        '<b style="font-size:12.5px;color:#DC2626">🚛 증차/코스조정 검토 후보</b> <span style="font-size:11px;color:#94A3B8">(일평균 15착↑ · 근무 5일↑)</span>';
+      h += '<div style="flex:1;min-width:270px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:10px 12px">' +
+        '<b style="font-size:12.5px;color:#DC2626">🚛 증차/코스조정 검토 후보</b> <span style="font-size:11px;color:#94A3B8">(' + (selM + 1) + '월 · 일평균 15착↑ · 근무 5일↑)</span>';
       if (hotDrv.length) {
         h += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">';
         hotDrv.slice(0, 8).forEach(function(x) {
@@ -5212,15 +5368,14 @@ document.getElementById('__wpSave').onclick = function() {
         h += '</table>' + (hotDrv.length > 8 ? '<div style="font-size:11px;color:#94A3B8;margin-top:3px">외 ' + (hotDrv.length - 8) + '명</div>' : '');
       } else { h += '<div style="font-size:12px;color:#94A3B8;margin-top:6px">해당 없음 — 과부하 기사 없음 ✓</div>'; }
       h += '</div>';
-      /* 반복 미출 스팟 */
       var missTop = Object.keys(cur.missBr).map(function(nm) {
         var v = cur.missBr[nm];
         var bd = '', bn = 0;
         Object.keys(v.drv).forEach(function(d2) { if (v.drv[d2] > bn) { bn = v.drv[d2]; bd = d2; } });
         return { br: nm, n: v.n, drv: bd };
       }).sort(function(a, b) { return b.n - a.n; });
-      h += '<div style="flex:1;min-width:280px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:10px 12px">' +
-        '<b style="font-size:12.5px;color:#B45309">⚠ 반복 미출 스팟 TOP</b> <span style="font-size:11px;color:#94A3B8">(2회↑ = 인입 미반영 의심)</span>';
+      h += '<div style="flex:1;min-width:270px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:10px 12px">' +
+        '<b style="font-size:12.5px;color:#B45309">⚠ 반복 미출 스팟 TOP</b> <span style="font-size:11px;color:#94A3B8">(' + (selM + 1) + '월 2회↑)</span>';
       var mt = missTop.filter(function(x) { return x.n >= 2; }).slice(0, 8);
       if (mt.length) {
         h += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">';
@@ -5232,18 +5387,21 @@ document.getElementById('__wpSave').onclick = function() {
       h += '</div></div></div>';
       box.innerHTML = h;
       document.getElementById('__wpKRptCls').onclick = function() { kRptToggle(); };
+      var fb = document.getElementById('__wpKFill');
+      if (fb) fb.onclick = function() { kFillYear(fb); };
       document.getElementById('__wpKRptXls').onclick = function() {
         ensureXLSX().then(function() {
-          var mm = kY + '-' + kPad(kM + 1);
-          var kpi = [['지표', mm, hasPrv ? (pY + '-' + kPad(pM + 1)) : '전월(없음)', '증감%'],
+          var mm = kY + '-' + kPad(selM + 1);
+          var mon = [['월', '집계일', '스낵 착지', '스낵 금액', '조식 착지', '조식 금액', '총 착지', '총 금액(VAT)', '일평균 착지', '활동 기사', '미출', '누락율(%)']];
+          months.forEach(function(a, i) {
+            mon.push([(i + 1) + '월', a.days, a.ss, a.sa, a.js, a.ja, a.ts, a.ta, a.days ? Math.round(a.ts / a.days) : '', a.nDrv, a.ms, a.days ? a.rate : '']);
+          });
+          mon.push(['누계', ytd.days, '', '', '', '', ytd.ts, ytd.ta, '', '', ytd.ms, ytd.rate]);
+          var kpi = [['지표', (selM + 1) + '월', hasPrv ? '전월' : '전월(없음)', '증감%'],
             ['총 착지', cur.ts, hasPrv ? prv.ts : '', hasPrv && prv.ts ? Math.round((cur.ts - prv.ts) / prv.ts * 1000) / 10 : ''],
             ['총 금액(VAT)', cur.ta, hasPrv ? prv.ta : '', hasPrv && prv.ta ? Math.round((cur.ta - prv.ta) / prv.ta * 1000) / 10 : ''],
-            ['스낵 착지', cur.ss, hasPrv ? prv.ss : '', ''],
-            ['스낵 금액', cur.sa, hasPrv ? prv.sa : '', ''],
-            ['조식 착지', cur.js, hasPrv ? prv.js : '', ''],
-            ['조식 금액', cur.ja, hasPrv ? prv.ja : '', ''],
             ['집계일수', cur.days, hasPrv ? prv.days : '', ''],
-            ['일평균 착지', Math.round(cur.ts / cur.days), hasPrv ? Math.round(prv.ts / prv.days) : '', ''],
+            ['일평균 착지', cur.days ? Math.round(cur.ts / cur.days) : '', hasPrv ? Math.round(prv.ts / prv.days) : '', ''],
             ['활동 기사', cur.nDrv, hasPrv ? prv.nDrv : '', ''],
             ['기사당 일평균 착지', cur.drvAvg, hasPrv ? prv.drvAvg : '', ''],
             ['미출 건수', cur.ms, hasPrv ? prv.ms : '', ''],
@@ -5255,12 +5413,13 @@ document.getElementById('__wpSave').onclick = function() {
           var ms2 = [['거래처', '미출 횟수', '주 담당기사']];
           missTop.slice(0, 30).forEach(function(x) { ms2.push([x.br, x.n, x.drv]); });
           var wb5 = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb5, XLSX.utils.aoa_to_sheet(kpi), 'KPI');
+          XLSX.utils.book_append_sheet(wb5, XLSX.utils.aoa_to_sheet(mon), kY + '년 월별');
+          XLSX.utils.book_append_sheet(wb5, XLSX.utils.aoa_to_sheet(kpi), (selM + 1) + '월 KPI');
           XLSX.utils.book_append_sheet(wb5, XLSX.utils.aoa_to_sheet(bl2), '운수사별');
           XLSX.utils.book_append_sheet(wb5, XLSX.utils.aoa_to_sheet(hd), '증차검토');
           XLSX.utils.book_append_sheet(wb5, XLSX.utils.aoa_to_sheet(ms2), '미출스팟');
-          XLSX.writeFile(wb5, '물류월간리포트_' + mm + '.xlsx');
-          toast('✓ 월간 리포트 엑셀', '#0a7d47');
+          XLSX.writeFile(wb5, '물류대시보드_' + mm + '.xlsx');
+          toast('✓ 대시보드 엑셀', '#0a7d47');
         }).catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); });
       };
     }
