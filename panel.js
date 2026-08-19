@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.19 18:17';
+  var VERSION = '26.08.19 18:25';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -6847,33 +6847,88 @@ document.getElementById('__wpSave').onclick = function() {
         if (!cands.length) { fallback('배송정보 섹션을 찾지 못함'); return; }
         var best = cands[0];
         cands.forEach(function(el) { if (el.innerHTML.length < best.innerHTML.length) best = el; });
-        var clone = best.cloneNode(true);
-        [].forEach.call(clone.querySelectorAll('button,input,select,textarea,script'), function(el) { if (el.parentNode) el.parentNode.removeChild(el); });
+        /* 필드 추출: 라벨 셀 → 다음 셀이 값 */
+        var cells = [].slice.call(best.querySelectorAll('td,th'));
+        var got = {};
+        var WANT = { '기업': 1, '거래처': 1, '서비스': 1, '배송일': 1, '주문상태': 1, '정산상태': 1 };
+        cells.forEach(function(c, ix) {
+          var k = (c.textContent || '').replace(/\s+/g, '');
+          if (WANT[k] && !(k in got) && cells[ix + 1]) got[k] = (cells[ix + 1].textContent || '').replace(/\s+/g, ' ').trim();
+        });
+        var addr = '', memoL = [];
+        cells.forEach(function(c, ix) {
+          var k = (c.textContent || '').replace(/\s+/g, '');
+          if (k === '배송정보' && cells[ix + 1] && !addr) {
+            var lines = (cells[ix + 1].innerText || cells[ix + 1].textContent || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
+            addr = (lines[0] || '').replace(/^\d{5}\]?\s*/, '');
+            memoL = lines.slice(1, 3);
+          }
+        });
+        /* 증적 사진 + BEFORE/AFTER 라벨 (문서 순서 추적) */
+        var photos = [];
+        (function() {
+          var evCell = null;
+          cells.forEach(function(c, ix) { if ((c.textContent || '').replace(/\s+/g, '') === '배송증적자료' && cells[ix + 1]) evCell = cells[ix + 1]; });
+          var scope = evCell || best;
+          var cur = '';
+          [].forEach.call(scope.querySelectorAll('*'), function(el) {
+            if (el.children.length === 0) {
+              var tx2 = (el.textContent || '').trim().toUpperCase();
+              if (tx2 === 'BEFORE') cur = 'BEFORE';
+              else if (tx2 === 'AFTER') cur = 'AFTER';
+            }
+            if (el.tagName === 'IMG' && el.getAttribute('src')) photos.push({ src: el.getAttribute('src'), label: cur });
+          });
+          if (photos.length && !photos.some(function(p) { return p.label === 'AFTER'; }) && photos.length % 2 === 0) {
+            photos.forEach(function(p, k2) { p.label = k2 < photos.length / 2 ? 'BEFORE' : 'AFTER'; });
+          }
+          photos = photos.slice(0, 4);
+        })();
+        /* 깔끔 카드 렌더 (실데이터 + 실사진) */
         card.innerHTML = '';
         var wrap = document.createElement('div');
         wrap.id = '__wpTkCap' + i;
-        wrap.style.cssText = 'width:1150px;background:#fff;padding:8px';
-        wrap.appendChild(clone);
+        wrap.style.cssText = 'width:620px;background:#fff;padding:16px 18px;font-family:inherit';
+        var brFull = (got['기업'] && got['거래처']) ? (got['기업'] + ' - ' + got['거래처']) : (got['거래처'] || r.br);
+        function rowH(k2, v2) { return v2 ? '<tr><td style="padding:5px 0;color:#64748B;width:84px;font-size:12.5px;vertical-align:top;white-space:nowrap">' + k2 + '</td><td style="padding:5px 0;font-size:13px;color:#0F172A">' + esc(v2) + '</td></tr>' : ''; }
+        var hh = '<div style="font-size:14px;font-weight:800;color:#0F172A;border-bottom:2.5px solid #1f4e78;padding-bottom:7px;margin-bottom:10px">위펀오피스 거래명세 · 배송정보 <span style="float:right;color:#1f4e78">' + esc(got['배송일'] || t.date) + '</span></div>' +
+          '<table style="width:100%;border-collapse:collapse">' +
+          '<tr><td style="padding:5px 0;color:#64748B;width:84px;font-size:12.5px;white-space:nowrap">거래처</td><td style="padding:5px 0;font-size:13px;color:#0F172A;font-weight:700">' + esc(brFull) + '</td></tr>' +
+          rowH('서비스', (got['서비스'] || '') + (got['주문상태'] ? ' · ' + got['주문상태'] : '')) +
+          rowH('배송지', addr || r.addr) +
+          (memoL.length ? rowH('배송메모', memoL.join(' / ')) : '') +
+          rowH('배송담당', r.drv) +
+          rowH('명세번호', r.stmt) +
+          '</table>';
+        if (photos.length) {
+          hh += '<div style="margin-top:10px;padding-top:9px;border-top:1px solid #E2E8F0"><div style="font-size:12px;color:#64748B;margin-bottom:6px;font-weight:700">배송 증적사진</div><div style="display:flex;gap:10px;flex-wrap:wrap">';
+          photos.forEach(function(p) {
+            hh += '<div style="text-align:center">' + (p.label ? '<div style="font-size:10.5px;font-weight:700;color:#1f4e78;margin-bottom:3px">' + p.label + '</div>' : '') +
+              '<img data-tksrc="' + esc(p.src) + '" style="height:170px;border-radius:7px;border:1px solid #E2E8F0;display:block"></div>';
+          });
+          hh += '</div></div>';
+        }
+        hh += '<div style="font-size:10.5px;color:#94A3B8;margin-top:10px;border-top:1px solid #F1F5F9;padding-top:6px">위펀오피스 거래명세 상세 (명세번호 ' + esc(r.stmt) + ') 기준 · 출력 ' + now() + '</div>';
+        wrap.innerHTML = hh;
         card.appendChild(wrap);
-        /* 증적 사진(외부 호스팅) → blob으로 교체해 캔버스 오염 방지. 실패한 사진은 제거 */
-        var imgs = [].slice.call(wrap.querySelectorAll('img'));
+        /* 사진 로드: blob으로 (캔버스 오염 방지). 실패한 사진은 제거 */
+        var imgs = [].slice.call(wrap.querySelectorAll('img[data-tksrc]'));
         var fails = 0;
         var jobs = imgs.map(function(im) {
-          var src = im.getAttribute('src') || '';
-          if (!src) return Promise.resolve();
+          var src = im.getAttribute('data-tksrc') || '';
           var full = src.charAt(0) === '/' ? (location.origin + src) : src;
           return fetch(full, { mode: 'cors' }).then(function(rs2) {
             if (!rs2.ok) throw 0;
             return rs2.blob();
           }).then(function(bl) {
             return new Promise(function(rsv) { im.onload = rsv; im.onerror = rsv; im.src = URL.createObjectURL(bl); });
-          }).catch(function() { fails++; if (im.parentNode) im.parentNode.removeChild(im); });
+          }).catch(function() { fails++; if (im.parentNode && im.parentNode.parentNode) im.parentNode.parentNode.removeChild(im.parentNode); });
         });
         Promise.all(jobs).then(function() {
           if (fails) {
             var nt = document.createElement('div');
             nt.style.cssText = 'font-size:11px;color:#B45309;padding:4px 8px';
-            nt.textContent = '⚠ 사진 ' + fails + '장은 보안 정책 때문에 못 담음 (필요하면 [오피스 원본 열기]로 직접 캡처)';
+            nt.textContent = '⚠ 사진 ' + fails + '장은 보안 정책 때문에 못 담음 ([오피스 원본 열기]로 직접 캡처 가능)';
             card.appendChild(nt);
           }
         });
