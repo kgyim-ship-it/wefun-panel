@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.19 16:15';
+  var VERSION = '26.08.19 17:30';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -838,6 +838,7 @@
       ['stats', '배송통계'],
       ['kstats', '기사통계'],
       ['dispatch', '배차'],
+      ['ticket', '차량고지서'],
       ['board_update', '업데이트 이력'],
       ['board_feature', '기능개선']
     ]
@@ -874,6 +875,7 @@
     else if (t === 'stats') viewStats();
     else if (t === 'kstats') viewKStats();
     else if (t === 'dispatch') viewDispatch();
+    else if (t === 'ticket') viewTicket();
     else if (t === 'newcode') viewNewCode();
     else if (t === 'board_update') viewBoard('update');
     else if (t === 'board_feature') viewBoard('feature');
@@ -6536,6 +6538,247 @@ document.getElementById('__wpSave').onclick = function() {
         });
       });
     }
+  }
+
+  /* ---------- 차량고지서 (주정차위반 소명 자동화) ---------- */
+  function viewTicket() {
+    var TKD = {}; /* date → 배송동선 rows */
+    var TK_ROWS = [];
+    var TK_TPL_DEF = '귀관의 노고에 항상 감사드립니다.\n당사 ㈜위펀은 고객사의 니즈에 맞추어 사내 복지 서비스를 제공하는 회사입니다.\n업무 특성상, 고객사가 주로 밀집해있는 도심 지역에서 배송서비스를 제공하다보니\n주차 공간이 마땅히 없어 부득이하게 주차 정차 위반을 하게 되는 경우가 발생합니다.\n{날짜} {장소} 주변 인근에서의 위반 역시 동일한 이유로 발생한 상황입니다.\n\n본의 아니게 교통질서를 지키지 못한점 죄송하게 생각하고 있습니다.\n다만, 당사의 업무 특성을 십분 이해해주시어 선처해주시길 부탁드립니다.';
+    var TK_TPL = TK_TPL_DEF;
+    function tnn(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
+    function tBase(a) { var i = a.indexOf(')'); return i > -1 ? a.slice(0, i + 1) : a; }
+    function tDist(a, b) { if (!a || !b) return 9999; var dx = (a.x - b.x) * 88, dy = (a.y - b.y) * 111; return Math.sqrt(dx * dx + dy * dy); }
+
+    VIEW.innerHTML = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155;line-height:1.7;margin-bottom:10px">' +
+      '<b>주정차위반 고지서 → 소명자료 자동 생성</b><br>' +
+      '고지서 PDF를 올리면 파일명에서 차량번호·위반일을 읽고, <b>위반장소만 입력</b>하면 그 날짜 배송일정에서 근처 거래처를 찾아 ' +
+      '소명 문구와 증빙 이미지를 만들어줍니다. [문구 복사] + [이미지 복사] 후 슬랙 스레드에 붙여넣기(Ctrl+V)만 하면 끝.</div>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:10px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:9px">' +
+      '<input type="file" id="__wpTkF" accept=".pdf" multiple style="font-size:12px">' +
+      '<span style="font-size:11.5px;color:#94A3B8">파일명 예: 주정차위반_824우9037_260803.pdf (여러 개 한 번에)</span>' +
+      '<button id="__wpTkAdd" class="wp-btn gh" style="padding:7px 14px">+ 직접 입력</button>' +
+      '<span style="flex:1"></span>' +
+      '<button id="__wpTkTplBtn" class="wp-btn gh" style="padding:7px 14px">소명 템플릿</button></div>' +
+      '<div id="__wpTkTplBox" style="display:none;margin-bottom:8px"></div>' +
+      '<div id="__wpTkList"></div>';
+
+    fetch(apiUrl() + '?e=cfg_get&k=ticket_tpl').then(function(r) { return r.json(); }).then(function(j) {
+      if (j && j.ok && j.v) TK_TPL = j.v;
+    }).catch(function() {});
+
+    document.getElementById('__wpTkTplBtn').onclick = function() {
+      var box = document.getElementById('__wpTkTplBox');
+      if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+      box.style.display = '';
+      box.innerHTML = '<div style="padding:12px 14px;background:#fff;border:1px solid #E2E8F0;border-radius:9px">' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b style="font-size:12.5px">소명 문구 템플릿</b>' +
+        '<span style="font-size:11px;color:#94A3B8">{날짜} {장소} {거래처} 자리에 값이 들어갑니다 · 서버 저장(팀 공유)</span>' +
+        '<span style="flex:1"></span><button id="__wpTkTplSave" class="wp-btn ok" style="padding:5px 14px">저장</button></div>' +
+        '<textarea id="__wpTkTplTa" style="width:100%;min-height:150px;padding:9px;border:1px solid #CBD5E1;border-radius:7px;font-size:12.5px;line-height:1.6;box-sizing:border-box"></textarea></div>';
+      document.getElementById('__wpTkTplTa').value = TK_TPL;
+      document.getElementById('__wpTkTplSave').onclick = function() {
+        var self = this, v = document.getElementById('__wpTkTplTa').value;
+        self.disabled = true;
+        fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=cfg_set&k=ticket_tpl&v=' + encodeURIComponent(v) })
+          .then(function(r) { return r.json(); }).then(function(j) {
+            if (!j || !j.ok) throw new Error('저장 실패');
+            TK_TPL = v; self.disabled = false;
+            toast('✓ 템플릿 저장', '#0a7d47');
+          }).catch(function(e) { self.disabled = false; alert('저장 실패: ' + ((e && e.message) || e)); });
+      };
+    };
+
+    document.getElementById('__wpTkF').onchange = function() {
+      [].forEach.call(this.files, function(f) {
+        var m = f.name.match(/_?(\d{2,3}[가-힣]\d{4})_(\d{6})/);
+        var veh = m ? m[1] : '', date = '';
+        if (m) date = '20' + m[2].slice(0, 2) + '-' + m[2].slice(2, 4) + '-' + m[2].slice(4, 6);
+        TK_ROWS.push({ veh: veh, date: date, place: '', url: URL.createObjectURL(f), name: f.name });
+      });
+      this.value = '';
+      tkRender();
+    };
+    document.getElementById('__wpTkAdd').onclick = function() {
+      TK_ROWS.push({ veh: '', date: '', place: '', url: '', name: '(직접 입력)' });
+      tkRender();
+    };
+
+    function tkRender() {
+      var box = document.getElementById('__wpTkList');
+      if (!TK_ROWS.length) { box.innerHTML = '<div style="padding:14px;color:#94A3B8;font-size:12.5px;border:1px solid #E2E8F0;border-radius:7px;background:#fff">고지서 PDF를 올리거나 [+ 직접 입력]을 눌러 시작하세요.</div>'; return; }
+      var h = '';
+      TK_ROWS.forEach(function(t, i) {
+        h += '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:9px;padding:11px 13px;margin-bottom:8px">' +
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<b style="font-size:12px;color:#64748B">#' + (i + 1) + '</b>' +
+          (t.url ? '<a href="' + t.url + '" target="_blank" style="font-size:12px;color:#1f4e78;font-weight:600">📄 ' + esc(t.name.slice(0, 30)) + '</a>' : '<span style="font-size:12px;color:#94A3B8">' + esc(t.name) + '</span>') +
+          '<input data-tk="veh" data-i="' + i + '" value="' + esc(t.veh) + '" placeholder="차량번호" style="width:100px;padding:6px 8px;border:1px solid #CBD5E1;border-radius:6px;font-size:12.5px">' +
+          '<input type="date" data-tk="date" data-i="' + i + '" value="' + esc(t.date) + '" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:6px;font-size:12.5px">' +
+          '<input data-tk="place" data-i="' + i + '" value="' + esc(t.place) + '" placeholder="위반장소 (예: 삼성동 위워크 빌딩)" style="flex:1;min-width:220px;padding:6px 8px;border:1.5px solid #93C5FD;border-radius:6px;font-size:12.5px">' +
+          '<button class="wp-btn pri __wpTkGo" data-i="' + i + '" style="padding:7px 14px">근처 배송 조회</button>' +
+          '<span class="__wpTkDel" data-i="' + i + '" style="color:#DC2626;cursor:pointer;font-size:11.5px;text-decoration:underline">삭제</span></div>' +
+          '<div id="__wpTkRes' + i + '" style="margin-top:8px"></div></div>';
+      });
+      box.innerHTML = h;
+      [].forEach.call(box.querySelectorAll('input[data-tk]'), function(inp) {
+        inp.oninput = function() { TK_ROWS[Number(inp.getAttribute('data-i'))][inp.getAttribute('data-tk')] = inp.value; };
+      });
+      [].forEach.call(box.querySelectorAll('.__wpTkGo'), function(b) {
+        b.onclick = function() { tkFind(Number(b.getAttribute('data-i')), b); };
+      });
+      [].forEach.call(box.querySelectorAll('.__wpTkDel'), function(s) {
+        s.onclick = function() { TK_ROWS.splice(Number(s.getAttribute('data-i')), 1); tkRender(); };
+      });
+    }
+
+    function tkDay(day) {
+      if (TKD[day]) return Promise.resolve(TKD[day]);
+      return ensureXLSX().then(function() {
+        return fetch('/office/order/woolin/delivery/excel', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'deliveryDate=' + encodeURIComponent(day) + '&logisType=' });
+      }).then(function(r) {
+        if (!r.ok) throw new Error('배송동선 다운로드 실패 HTTP ' + r.status);
+        return r.arrayBuffer();
+      }).then(function(b) {
+        var u8 = new Uint8Array(b.slice(0, 2));
+        if (u8[0] !== 0x50 || u8[1] !== 0x4B) throw new Error('해당 날짜 배송동선을 받을 수 없습니다 (날짜 확인)');
+        var wb = XLSX.read(b, { type: 'array' });
+        var out = [];
+        wb.SheetNames.forEach(function(sn) {
+          XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' }).slice(1).forEach(function(r2) {
+            var br = String(r2[1]).trim(), addr = String(r2[2]).trim();
+            if (!br || !addr) return;
+            out.push({ drv: String(r2[0]).trim(), br: br, addr: addr, stmt: String(r2[4] || '') });
+          });
+        });
+        if (!out.length) throw new Error('해당 날짜 배송 데이터가 없습니다');
+        TKD[day] = out;
+        return out;
+      });
+    }
+    function tkGeo(addrs) {
+      var out = {}, idx = 0;
+      function chunk() {
+        if (idx >= addrs.length) return Promise.resolve(out);
+        var part = addrs.slice(idx, idx + 20);
+        idx += 20;
+        return fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=geo&addrs=' + encodeURIComponent(JSON.stringify(part)) })
+          .then(function(r) { return r.json(); }).then(function(j) {
+            if (j && j.ok) Object.keys(j.geo || {}).forEach(function(k) { out[k] = j.geo[k]; });
+            return chunk();
+          });
+      }
+      return chunk();
+    }
+
+    function tkFind(i, btn) {
+      var t = TK_ROWS[i];
+      var res = document.getElementById('__wpTkRes' + i);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(t.date)) { alert('위반일을 선택해주세요.'); return; }
+      if (!t.place.trim()) { alert('위반장소를 입력해주세요. (고지서의 위반장소 그대로)'); return; }
+      btn.disabled = true; btn.textContent = '조회 중…';
+      res.innerHTML = '<div style="font-size:12px;color:#0369A1">배송동선 조회 중…</div>';
+      tkDay(t.date).then(function(rows) {
+        res.innerHTML = '<div style="font-size:12px;color:#0369A1">좌표 매칭 중… (' + rows.length + '착지)</div>';
+        var uniq = {};
+        rows.forEach(function(r2) { uniq[tBase(r2.addr)] = 1; });
+        return tkGeo([t.place.trim()]).then(function(g1) {
+          var pxy = g1[t.place.trim()];
+          return tkGeo(Object.keys(uniq)).then(function(geo) {
+            var toks = t.place.trim().split(/\s+/).filter(function(x) { return x.length >= 2; });
+            var list = rows.map(function(r2) {
+              var xy = geo[tBase(r2.addr)];
+              var d = pxy ? tDist(pxy, xy) : 9999;
+              var hit = toks.some(function(tk) { return r2.br.indexOf(tk) > -1 || r2.addr.indexOf(tk) > -1; });
+              return { r: r2, d: d, hit: hit, score: d - (hit ? 100 : 0) };
+            }).sort(function(a, b) { return a.score - b.score; }).slice(0, 8);
+            btn.disabled = false; btn.textContent = '근처 배송 조회';
+            if (!pxy && !list.some(function(x) { return x.hit; })) {
+              res.innerHTML = '<div style="font-size:12px;color:#DC2626">위반장소 좌표를 못 찾았고 이름 일치도 없습니다. 장소를 더 구체적으로 (동 이름 + 건물명) 입력해보세요.</div>';
+              return;
+            }
+            var h = '<div style="font-size:12px;color:#334155;margin-bottom:4px"><b>근처 배송 후보</b> — 소명에 쓸 거래처를 선택하세요' + (pxy ? '' : ' <span style="color:#B45309">(장소 좌표 실패 — 이름 일치 기준)</span>') + '</div>';
+            list.forEach(function(x, k) {
+              h += '<label style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;cursor:pointer;background:' + (k % 2 ? '#FCFDFE' : '#fff') + '">' +
+                '<input type="radio" name="__wpTkC' + i + '" data-k="' + k + '">' +
+                '<span style="flex:1;font-size:12px"><b>' + esc(x.r.br) + '</b> <span style="color:#64748B">' + esc(x.r.addr) + '</span></span>' +
+                (x.hit ? '<span style="background:#DBEAFE;color:#1D4ED8;border-radius:4px;padding:0 6px;font-size:10.5px;font-weight:700">이름일치</span>' : '') +
+                '<span style="font-size:11.5px;color:' + (x.d <= 0.5 ? '#0a7d47' : '#94A3B8') + ';white-space:nowrap">' + (x.d < 9000 ? x.d.toFixed(1) + 'km' : '-') + '</span>' +
+                '<span style="font-size:11.5px;color:#64748B;white-space:nowrap">' + esc(x.r.drv) + '</span></label>';
+            });
+            h += '<div id="__wpTkOut' + i + '" style="margin-top:8px"></div>';
+            res.innerHTML = h;
+            [].forEach.call(res.querySelectorAll('input[name="__wpTkC' + i + '"]'), function(rd) {
+              rd.onchange = function() { tkPick(i, list[Number(rd.getAttribute('data-k'))].r); };
+            });
+          });
+        });
+      }).catch(function(e) {
+        btn.disabled = false; btn.textContent = '근처 배송 조회';
+        res.innerHTML = '<div style="font-size:12px;color:#DC2626">' + esc((e && e.message) || e) + '</div>';
+      });
+    }
+
+    function tkPick(i, r) {
+      var t = TK_ROWS[i];
+      var out = document.getElementById('__wpTkOut' + i);
+      if (!out) return;
+      var comp = r.br.split(' - ')[0];
+      var mmdd = t.date.slice(5).replace('-', '/');
+      var dateK = parseInt(t.date.slice(5, 7), 10) + '월 ' + parseInt(t.date.slice(8, 10), 10) + '일';
+      var msg = mmdd + ' ' + t.veh + ' ' + comp + '\n' +
+        TK_TPL.replace(/\{날짜\}/g, dateK).replace(/\{장소\}/g, t.place.trim()).replace(/\{거래처\}/g, comp);
+      var h = '<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;border-top:1px solid #F1F5F9;padding-top:8px">' +
+        '<div style="flex:1.2;min-width:300px"><b style="font-size:12px">소명 문구</b>' +
+        '<textarea id="__wpTkMsg' + i + '" style="width:100%;min-height:170px;padding:9px;border:1px solid #CBD5E1;border-radius:7px;font-size:12.5px;line-height:1.6;box-sizing:border-box;margin-top:4px"></textarea>' +
+        '<button class="wp-btn ok" id="__wpTkCp' + i + '" style="padding:7px 16px;margin-top:4px">📋 문구 복사</button></div>' +
+        '<div style="flex:1;min-width:300px"><b style="font-size:12px">증빙 이미지</b>' +
+        '<div id="__wpTkCard' + i + '" style="background:#fff;border:1px solid #CBD5E1;border-radius:8px;padding:14px 16px;margin-top:4px;max-width:420px">' +
+        '<div style="font-size:13px;font-weight:800;color:#0F172A;border-bottom:2px solid #1f4e78;padding-bottom:6px;margin-bottom:8px">위펀오피스 배송일정 확인 <span style="float:right;color:#1f4e78">' + esc(t.date) + '</span></div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#0F172A">' +
+        '<tr><td style="padding:4px 0;color:#64748B;width:80px">거래처</td><td style="padding:4px 0;font-weight:700">' + esc(r.br) + '</td></tr>' +
+        '<tr><td style="padding:4px 0;color:#64748B">주소</td><td style="padding:4px 0">' + esc(r.addr) + '</td></tr>' +
+        '<tr><td style="padding:4px 0;color:#64748B">배송담당</td><td style="padding:4px 0">' + esc(r.drv) + '</td></tr>' +
+        (r.stmt ? '<tr><td style="padding:4px 0;color:#64748B">명세번호</td><td style="padding:4px 0">' + esc(r.stmt) + '</td></tr>' : '') +
+        '</table>' +
+        '<div style="font-size:10.5px;color:#94A3B8;margin-top:8px;border-top:1px solid #F1F5F9;padding-top:5px">위펀 물류패널 · 위펀오피스 배송일정 기준 · 출력 ' + now() + '</div></div>' +
+        '<div style="margin-top:5px;display:flex;gap:6px">' +
+        '<button class="wp-btn ok" id="__wpTkIc' + i + '" style="padding:7px 14px">🖼 이미지 복사</button>' +
+        '<button class="wp-btn gh" id="__wpTkId' + i + '" style="padding:7px 14px">⬇ 다운로드</button></div></div></div>';
+      out.innerHTML = h;
+      document.getElementById('__wpTkMsg' + i).value = msg;
+      document.getElementById('__wpTkCp' + i).onclick = function() {
+        var v = document.getElementById('__wpTkMsg' + i).value;
+        navigator.clipboard.writeText(v).then(function() { toast('✓ 문구 복사 — 슬랙에 붙여넣기', '#0a7d47'); }).catch(function() { alert('복사 실패 — 직접 선택해 복사하세요.'); });
+      };
+      function toCanvas() {
+        return (window.html2canvas ? Promise.resolve() : loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'))
+          .then(function() { return html2canvas(document.getElementById('__wpTkCard' + i), { backgroundColor: '#ffffff', scale: 2 }); });
+      }
+      function dl(blob) {
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = '소명_' + (t.veh || '차량') + '_' + t.date + '.png';
+        a.click();
+        toast('✓ 이미지 다운로드', '#0a7d47');
+      }
+      document.getElementById('__wpTkIc' + i).onclick = function() {
+        toCanvas().then(function(cv) {
+          cv.toBlob(function(blob) {
+            if (navigator.clipboard && window.ClipboardItem) {
+              navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+                .then(function() { toast('✓ 이미지 복사 — 슬랙에 붙여넣기(Ctrl+V)', '#0a7d47'); })
+                .catch(function() { dl(blob); });
+            } else dl(blob);
+          });
+        }).catch(function(e) { alert('이미지 생성 실패: ' + ((e && e.message) || e)); });
+      };
+      document.getElementById('__wpTkId' + i).onclick = function() {
+        toCanvas().then(function(cv) { cv.toBlob(dl); }).catch(function(e) { alert('이미지 생성 실패: ' + ((e && e.message) || e)); });
+      };
+    }
+
+    tkRender();
   }
 
   function viewSchedBulk() {
