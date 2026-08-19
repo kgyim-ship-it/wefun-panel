@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.19 10:37';
+  var VERSION = '26.08.19 11:46';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5247,8 +5247,9 @@ document.getElementById('__wpSave').onclick = function() {
         }
       }
       if (!tasks.length) { toast('✓ ' + kY + '년 데이터가 이미 전부 집계돼 있습니다', '#0a7d47'); return; }
-      if (!confirm(kY + '년 미집계 ' + tasks.length + '일을 오피스에서 수집합니다.\n(하루당 조회 4회 — 수 분 걸릴 수 있고, 진행분은 중간에 닫아도 저장됩니다)\n진행할까요?')) return;
+      if (!confirm(kY + '년 미집계 ' + tasks.length + '일을 채웁니다.\n서버 공유 캐시에 있는 날짜는 즉시 받아오고, 없는 날짜만 오피스에서 수집합니다 (하루당 조회 4회).\n진행분은 중간에 닫아도 저장되고, 수집분은 서버에도 공유됩니다.\n진행할까요?')) return;
       btn.disabled = true;
+      btn.textContent = '서버 공유 캐시 확인 중…';
       var seq = ++kSeq;
       var done = 0, fails = 0, idx = 0;
       function w2() {
@@ -5260,17 +5261,30 @@ document.getElementById('__wpSave').onclick = function() {
           if (typeof cc[ds].sp !== 'number') { cc[ds].sp = res.sp; cc[ds].tp = Date.now(); }
           if (typeof cc[ds].as !== 'number') { cc[ds].as = res.as; cc[ds].aj = res.aj; cc[ds].nj = res.nj; cc[ds].ta = Date.now(); }
           kSave(cc);
+          statPush(ds); /* 수집분 서버 공유 */
         }).catch(function() { fails++; }).then(function() {
           done++;
           if (btn) btn.textContent = '수집 중… ' + done + '/' + tasks.length + (fails ? ' (실패 ' + fails + ')' : '');
           return w2();
         });
       }
-      Promise.all([w2(), w2()]).then(function() {
-        if (btn) { btn.disabled = false; btn.textContent = '연간 데이터 채우기'; }
-        toast('연간 수집 완료 · 성공 ' + (done - fails) + '일' + (fails ? ' / 실패 ' + fails + '일 (다시 누르면 재시도)' : ''), fails ? '#B45309' : '#0a7d47');
-        var bx = document.getElementById('__wpKRptBox');
-        if (bx && bx.style.display !== 'none') kRptRender();
+      statPull(tasks).then(function(remain) {
+        var fromSv = tasks.length - remain.length;
+        tasks = remain;
+        if (!tasks.length) {
+          if (btn) { btn.disabled = false; btn.textContent = '연간 데이터 채우기'; }
+          toast('✓ 서버 공유 캐시에서 ' + fromSv + '일 전부 받았습니다 (오피스 조회 0회)', '#0a7d47');
+          var bx0 = document.getElementById('__wpKRptBox');
+          if (bx0 && bx0.style.display !== 'none') kRptRender();
+          return;
+        }
+        if (fromSv) toast('서버에서 ' + fromSv + '일 받음 — 나머지 ' + tasks.length + '일 수집 시작', '#0369A1');
+        return Promise.all([w2(), w2()]).then(function() {
+          if (btn) { btn.disabled = false; btn.textContent = '연간 데이터 채우기'; }
+          toast('연간 채우기 완료 · 서버 ' + fromSv + '일 + 수집 ' + (done - fails) + '일' + (fails ? ' / 실패 ' + fails + '일 (다시 누르면 재시도)' : ''), fails ? '#B45309' : '#0a7d47');
+          var bx = document.getElementById('__wpKRptBox');
+          if (bx && bx.style.display !== 'none') kRptRender();
+        });
       });
     }
     function kRptRender() {
@@ -5316,6 +5330,7 @@ document.getElementById('__wpSave').onclick = function() {
         '<span style="font-size:11.5px;color:#94A3B8">스낵24/조식24 방문 · 금액 VAT 포함 · 집계 ' + ytd.mN + '개월/' + months.length + '개월' + (gapM ? ' · <b style="color:#B45309">미집계 ' + gapM + '개월</b>' : '') + '</span>' +
         '<span style="flex:1"></span>' +
         (gapM ? '<button id="__wpKFill" class="wp-btn pri" style="padding:6px 14px">연간 데이터 채우기</button>' : '') +
+        '<button id="__wpKSync" class="wp-btn gh" style="padding:6px 14px">☁ 서버 동기화</button>' +
         '<button id="__wpKRptXls" class="wp-btn ok" style="padding:6px 14px">⬇ 리포트 엑셀</button>' +
         '<button id="__wpKRptCls" class="wp-btn gh" style="padding:6px 12px">닫기</button></div>' +
         /* KPI 카드: 연 누계 + 선택월 */
@@ -5389,6 +5404,8 @@ document.getElementById('__wpSave').onclick = function() {
       document.getElementById('__wpKRptCls').onclick = function() { kRptToggle(); };
       var fb = document.getElementById('__wpKFill');
       if (fb) fb.onclick = function() { kFillYear(fb); };
+      var sb = document.getElementById('__wpKSync');
+      if (sb) sb.onclick = function() { kSync(sb); };
       document.getElementById('__wpKRptXls').onclick = function() {
         ensureXLSX().then(function() {
           var mm = kY + '-' + kPad(selM + 1);
@@ -5553,6 +5570,90 @@ document.getElementById('__wpSave').onclick = function() {
       };
     }
 
+    /* ---- 서버 공유 캐시 (D1 stats_cache) — 로컬 우선 → 서버 → 오피스 수집, 수집분은 서버에도 적재 ---- */
+    function statPull(days) {
+      var remain = days.slice();
+      if (!days.length) return Promise.resolve(remain);
+      var idx = 0;
+      function chunk() {
+        if (idx >= days.length) return Promise.resolve();
+        var part = days.slice(idx, idx + 30);
+        idx += 30;
+        return fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=stat_get&days=' + encodeURIComponent(JSON.stringify(part)) })
+          .then(function(r) { return r.json(); }).then(function(j) {
+            if (j && j.ok && j.m) {
+              var cc = kCache(), got = false;
+              var today2 = kToday(), nowMs2 = Date.now();
+              var d2l = new Date(nowMs2 - 2 * 86400000);
+              var lim2 = kDs(d2l.getFullYear(), d2l.getMonth(), d2l.getDate());
+              Object.keys(j.m).forEach(function(d) {
+                try {
+                  var v = JSON.parse(j.m[d]);
+                  if (!v || !v.dv) return;
+                  /* 신선도: 과거 영구 / 오늘 10분 / 최근2일 6시간 — 오래된 서버 사본은 버리고 직접 수집 */
+                  var age = nowMs2 - (v.tdv || 0);
+                  if (d >= today2 && age >= 600000) return;
+                  if (d >= lim2 && d < today2 && age >= 21600000) return;
+                  cc[d] = v; got = true;
+                  remain = remain.filter(function(x) { return x !== d; });
+                } catch (e2) {}
+              });
+              if (got) kSave(cc);
+            }
+            return chunk();
+          });
+      }
+      return chunk().then(function() { return remain; }).catch(function() { return remain; });
+    }
+    var STAT_PQ = {}, _spT = null;
+    function statPush(ds) {
+      var c = kCache();
+      if (!c[ds] || !c[ds].dv) return;
+      STAT_PQ[ds] = c[ds];
+      if (_spT) return;
+      _spT = setTimeout(function() {
+        _spT = null;
+        var keys = Object.keys(STAT_PQ);
+        if (!keys.length) return;
+        var batch = {};
+        keys.slice(0, 15).forEach(function(d) { batch[d] = STAT_PQ[d]; delete STAT_PQ[d]; });
+        fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=stat_set&rows=' + encodeURIComponent(JSON.stringify(batch)) })
+          .then(function(r) { return r.json(); }).catch(function() {})
+          .then(function() { if (Object.keys(STAT_PQ).length && !_spT) statPush(Object.keys(STAT_PQ)[0]); });
+      }, 900);
+    }
+    function kSync(btn) {
+      btn.disabled = true; btn.textContent = '동기화 중…';
+      function reset() { btn.disabled = false; btn.textContent = '☁ 서버 동기화'; }
+      fetch(apiUrl() + '?e=stat_days').then(function(r) { return r.json(); }).then(function(j) {
+        if (!j || !j.ok) throw new Error('서버 응답 오류 — 워커가 26.08.19 이상인지 확인하세요');
+        var sv = {}; (j.days || []).forEach(function(d) { sv[d] = 1; });
+        var c = kCache();
+        var toPush = Object.keys(c).filter(function(d) { return /^\d{4}-\d{2}-\d{2}$/.test(d) && c[d] && c[d].dv && !sv[d]; }).sort();
+        var toPull = (j.days || []).filter(function(d) { return !(c[d] && c[d].dv); });
+        var pi = 0;
+        function pushChunk() {
+          if (pi >= toPush.length) return Promise.resolve();
+          var part = toPush.slice(pi, pi + 15); pi += 15;
+          var batch = {};
+          part.forEach(function(d) { batch[d] = c[d]; });
+          btn.textContent = '올리는 중… ' + Math.min(pi, toPush.length) + '/' + toPush.length;
+          return fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=stat_set&rows=' + encodeURIComponent(JSON.stringify(batch)) })
+            .then(function(r) { return r.json(); }).then(pushChunk);
+        }
+        return pushChunk().then(function() {
+          btn.textContent = '받는 중… (' + toPull.length + '일)';
+          return statPull(toPull);
+        }).then(function(remain) {
+          reset();
+          toast('✓ 동기화 — 서버로 올림 ' + toPush.length + '일 · 서버에서 받음 ' + (toPull.length - remain.length) + '일', '#0a7d47');
+          var bx = document.getElementById('__wpKRptBox');
+          if (bx && bx.style.display !== 'none') kRptRender();
+          kTable(kDays());
+        });
+      }).catch(function(e) { reset(); alert('동기화 실패: ' + ((e && e.message) || e)); });
+    }
+
     function kLoad(force) {
       var seq = ++kSeq;
       var today = kToday();
@@ -5574,8 +5675,7 @@ document.getElementById('__wpSave').onclick = function() {
       var done = 0, totalT = tasks.length, kFails = 0;
       var prog = document.getElementById('__wpKProg');
       function upProg() { if (prog) prog.textContent = (done < totalT) ? ('집계 ' + done + '/' + totalT + '일' + (kFails ? ' · 실패 ' + kFails : '')) : (kFails ? '⚠ ' + kFails + '일 집계 실패 — 새로고침으로 재시도' : ''); }
-      upProg();
-      if (!tasks.length) return;
+      if (!tasks.length) { upProg(); return; }
       var idx = 0;
       function worker() {
         if (seq !== kSeq) return Promise.resolve();
@@ -5588,6 +5688,7 @@ document.getElementById('__wpSave').onclick = function() {
           if (typeof cc[ds].sp !== 'number') { cc[ds].sp = res.sp; cc[ds].tp = Date.now(); }
           if (typeof cc[ds].as !== 'number') { cc[ds].as = res.as; cc[ds].aj = res.aj; cc[ds].nj = res.nj; cc[ds].ta = Date.now(); }
           kSave(cc);
+          statPush(ds); /* 수집분 서버 공유 */
         }).catch(function() { kFails++; })
           .then(function() {
             if (seq !== kSeq) return;
@@ -5597,8 +5698,19 @@ document.getElementById('__wpSave').onclick = function() {
             return worker();
           });
       }
-      var pool = [];
-      for (var w = 0; w < 2; w++) { pool.push(worker()); }
+      /* 서버 공유 캐시 먼저 확인 → 없는 날짜만 오피스 수집 */
+      if (prog) prog.textContent = '서버 공유 캐시 확인 중… (' + tasks.length + '일)';
+      statPull(tasks).then(function(remain) {
+        if (seq !== kSeq) return;
+        if (remain.length !== tasks.length) {
+          kTable(days);
+          var mb2 = document.getElementById('__wpKMissBox'); if (mb2 && mb2.style.display !== 'none') kMissRender();
+        }
+        tasks = remain; totalT = tasks.length; idx = 0;
+        upProg();
+        if (!tasks.length) return;
+        for (var w = 0; w < 2; w++) { worker(); }
+      });
     }
 
     kRender();
