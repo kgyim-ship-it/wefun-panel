@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.19 11:46';
+  var VERSION = '26.08.19 16:15';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -3200,33 +3200,36 @@ document.getElementById('__wpSave').onclick = function() {
       var c = JSON.parse(localStorage.getItem('__wpDvT') || '{}');
       if (c[key] && Date.now() - c[key].t < 259200000) { DVT_MEM[key] = c[key].v; return Promise.resolve(c[key].v); }
     } catch (e) {}
-    return resolveSid(it.branchId, it.branchName).then(function(ids) {
-      if (!ids.length) return [];
-      /* 서비스가 여럿(스낵/조식)이면 2개까지 확인 — 다르면 둘 다 표기 */
-      return Promise.all(ids.slice(0, 2).map(function(sid) {
-        return fetch('/office/sales/service/update/' + sid).then(function(r) { return r.text(); }).then(function(html) {
-          var doc = new DOMParser().parseFromString(html, 'text/html');
-          var e = doc.querySelector('[name=deliveryType]');
-          if (e) {
-            if (e.value) return e.value;
-            var o = e.querySelector ? e.querySelector('option[selected]') : null;
-            if (o) return o.value;
-          }
-          var r2 = doc.querySelector('input[name=deliveryType][checked]');
-          if (r2) return r2.value;
-          /* 폴백: 방문/택배 옵션을 가진 select 탐색 */
-          var sels = doc.querySelectorAll('select');
-          for (var i = 0; i < sels.length; i++) {
-            var vals = [].map.call(sels[i].options, function(o2) { return o2.value; });
-            if (vals.indexOf('방문') > -1 && vals.indexOf('택배') > -1) return sels[i].value;
-          }
-          return '';
-        }).catch(function() { return ''; });
-      }));
-    }).then(function(vs) {
-      var uq = [];
-      (vs || []).forEach(function(v) { if (v && uq.indexOf(v) < 0) uq.push(v); });
-      var out = uq.join('/');
+    /* 1순위: 거래처 상세 페이지의 배송정보 > 배송 방법 (data-field="deliveryType" 옆 셀) */
+    return (function() {
+      if (!it.branchId) return Promise.resolve('');
+      return fetch('/office/sales/branch/' + encodeURIComponent(it.branchId)).then(function(r) { return r.text(); }).then(function(html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var el = doc.querySelector('[data-field="deliveryType"]');
+        var td = el && el.closest ? el.closest('td') : null;
+        var nx = td && td.nextElementSibling ? td.nextElementSibling.textContent.replace(/\s+/g, ' ').trim() : '';
+        return /방문|택배/.test(nx) ? nx : '';
+      }).catch(function() { return ''; });
+    })().then(function(v) {
+      if (v) return v;
+      /* 폴백: 서비스 목록 검색 (거래처명 + 배송방법 필터로 존재 여부 확인) */
+      if (!it.branchName) return '';
+      function cnt(dt) {
+        return fetch('/office/sales/service?searchYN=Y&size=5&searchKeyword=' + encodeURIComponent(it.branchName) + '&deliveryType=' + encodeURIComponent(dt))
+          .then(function(r) { return r.text(); }).then(function(html) {
+            var doc = new DOMParser().parseFromString(html, 'text/html');
+            return [].filter.call(doc.querySelectorAll('tr'), function(tr) { return /service\/update\/\d+/.test(tr.innerHTML); }).length;
+          }).catch(function() { return 0; });
+      }
+      return cnt('방문').then(function(nv) {
+        return cnt('택배').then(function(nt) {
+          var parts = [];
+          if (nv) parts.push('방문');
+          if (nt) parts.push('택배');
+          return parts.join('/');
+        });
+      });
+    }).then(function(out) {
       if (out) {
         DVT_MEM[key] = out;
         try {
