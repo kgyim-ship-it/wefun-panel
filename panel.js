@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.19 17:42';
+  var VERSION = '26.08.19 18:17';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -6775,28 +6775,24 @@ document.getElementById('__wpSave').onclick = function() {
         '<div style="flex:1.2;min-width:300px"><b style="font-size:12px">소명 문구</b>' +
         '<textarea id="__wpTkMsg' + i + '" style="width:100%;min-height:170px;padding:9px;border:1px solid #CBD5E1;border-radius:7px;font-size:12.5px;line-height:1.6;box-sizing:border-box;margin-top:4px"></textarea>' +
         '<button class="wp-btn ok" id="__wpTkCp' + i + '" style="padding:7px 16px;margin-top:4px">📋 문구 복사</button></div>' +
-        '<div style="flex:1;min-width:300px"><b style="font-size:12px">증빙 이미지</b>' +
-        '<div id="__wpTkCard' + i + '" style="background:#fff;border:1px solid #CBD5E1;border-radius:8px;padding:14px 16px;margin-top:4px;max-width:420px">' +
-        '<div style="font-size:13px;font-weight:800;color:#0F172A;border-bottom:2px solid #1f4e78;padding-bottom:6px;margin-bottom:8px">위펀오피스 배송일정 확인 <span style="float:right;color:#1f4e78">' + esc(t.date) + '</span></div>' +
-        '<table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#0F172A">' +
-        '<tr><td style="padding:4px 0;color:#64748B;width:80px">거래처</td><td style="padding:4px 0;font-weight:700">' + esc(r.br) + '</td></tr>' +
-        '<tr><td style="padding:4px 0;color:#64748B">주소</td><td style="padding:4px 0">' + esc(r.addr) + '</td></tr>' +
-        '<tr><td style="padding:4px 0;color:#64748B">배송담당</td><td style="padding:4px 0">' + esc(r.drv) + '</td></tr>' +
-        (r.stmt ? '<tr><td style="padding:4px 0;color:#64748B">명세번호</td><td style="padding:4px 0">' + esc(r.stmt) + '</td></tr>' : '') +
-        '</table>' +
-        '<div style="font-size:10.5px;color:#94A3B8;margin-top:8px;border-top:1px solid #F1F5F9;padding-top:5px">위펀 물류패널 · 위펀오피스 배송일정 기준 · 출력 ' + now() + '</div></div>' +
-        '<div style="margin-top:5px;display:flex;gap:6px">' +
+        '<div style="flex:1.4;min-width:340px"><b style="font-size:12px">증빙 이미지 — 오피스 거래명세 배송정보' + (r.stmt ? ' (명세 ' + esc(r.stmt) + ')' : '') + '</b>' +
+        '<div id="__wpTkCard' + i + '" style="background:#fff;border:1px solid #CBD5E1;border-radius:8px;margin-top:4px;max-height:460px;overflow:auto"><div style="padding:12px;font-size:12px;color:#0369A1">오피스 배송정보 불러오는 중…</div></div>' +
+        '<div style="margin-top:5px;display:flex;gap:6px;align-items:center">' +
         '<button class="wp-btn ok" id="__wpTkIc' + i + '" style="padding:7px 14px">🖼 이미지 복사</button>' +
-        '<button class="wp-btn gh" id="__wpTkId' + i + '" style="padding:7px 14px">⬇ 다운로드</button></div></div></div>';
+        '<button class="wp-btn gh" id="__wpTkId' + i + '" style="padding:7px 14px">⬇ 다운로드</button>' +
+        (r.stmt ? '<a href="/office/order/order/' + esc(r.stmt) + '" target="_blank" style="font-size:11.5px;color:#1f4e78;text-decoration:underline">오피스 원본 열기</a>' : '') +
+        '</div></div></div>';
       out.innerHTML = h;
+      tkEvid(i, r);
       document.getElementById('__wpTkMsg' + i).value = msg;
       document.getElementById('__wpTkCp' + i).onclick = function() {
         var v = document.getElementById('__wpTkMsg' + i).value;
         navigator.clipboard.writeText(v).then(function() { toast('✓ 문구 복사 — 슬랙에 붙여넣기', '#0a7d47'); }).catch(function() { alert('복사 실패 — 직접 선택해 복사하세요.'); });
       };
       function toCanvas() {
+        var target = document.getElementById('__wpTkCap' + i) || document.getElementById('__wpTkCard' + i);
         return (window.html2canvas ? Promise.resolve() : loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'))
-          .then(function() { return html2canvas(document.getElementById('__wpTkCard' + i), { backgroundColor: '#ffffff', scale: 2 }); });
+          .then(function() { return html2canvas(target, { backgroundColor: '#ffffff', scale: 2, useCORS: true }); });
       }
       function dl(blob) {
         var a = document.createElement('a');
@@ -6819,6 +6815,69 @@ document.getElementById('__wpSave').onclick = function() {
       document.getElementById('__wpTkId' + i).onclick = function() {
         toCanvas().then(function(cv) { cv.toBlob(dl); }).catch(function(e) { alert('이미지 생성 실패: ' + ((e && e.message) || e)); });
       };
+    }
+
+    /* 오피스 거래명세 상세의 [배송정보] 섹션을 그대로 가져와 증빙으로 사용 */
+    function tkEvid(i, r) {
+      var t = TK_ROWS[i];
+      var card = document.getElementById('__wpTkCard' + i);
+      if (!card) return;
+      function fallback(why) {
+        card.innerHTML = '<div id="__wpTkCap' + i + '" style="background:#fff;padding:14px 16px;max-width:420px">' +
+          '<div style="font-size:13px;font-weight:800;color:#0F172A;border-bottom:2px solid #1f4e78;padding-bottom:6px;margin-bottom:8px">위펀오피스 배송일정 확인 <span style="float:right;color:#1f4e78">' + esc(t.date) + '</span></div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#0F172A">' +
+          '<tr><td style="padding:4px 0;color:#64748B;width:80px">거래처</td><td style="padding:4px 0;font-weight:700">' + esc(r.br) + '</td></tr>' +
+          '<tr><td style="padding:4px 0;color:#64748B">주소</td><td style="padding:4px 0">' + esc(r.addr) + '</td></tr>' +
+          '<tr><td style="padding:4px 0;color:#64748B">배송담당</td><td style="padding:4px 0">' + esc(r.drv) + '</td></tr>' +
+          (r.stmt ? '<tr><td style="padding:4px 0;color:#64748B">명세번호</td><td style="padding:4px 0">' + esc(r.stmt) + '</td></tr>' : '') +
+          '</table>' +
+          '<div style="font-size:10.5px;color:#94A3B8;margin-top:8px;border-top:1px solid #F1F5F9;padding-top:5px">위펀 물류패널 · 위펀오피스 배송일정 기준 · 출력 ' + now() + '</div></div>' +
+          (why ? '<div style="padding:0 12px 8px;font-size:11px;color:#B45309">⚠ ' + esc(why) + ' — 요약 카드로 대체</div>' : '');
+      }
+      if (!r.stmt || !/^\d+$/.test(String(r.stmt).trim())) { fallback('명세번호가 없어 오피스 화면을 못 가져옴'); return; }
+      fetch('/office/order/order/' + String(r.stmt).trim()).then(function(rs) {
+        if (!rs.ok) throw new Error('HTTP ' + rs.status);
+        return rs.text();
+      }).then(function(html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var cands = [].filter.call(doc.querySelectorAll('div,table,section'), function(el) {
+          var tx = el.textContent || '';
+          return tx.indexOf('배송정보') > -1 && tx.indexOf('배송증적') > -1;
+        });
+        if (!cands.length) { fallback('배송정보 섹션을 찾지 못함'); return; }
+        var best = cands[0];
+        cands.forEach(function(el) { if (el.innerHTML.length < best.innerHTML.length) best = el; });
+        var clone = best.cloneNode(true);
+        [].forEach.call(clone.querySelectorAll('button,input,select,textarea,script'), function(el) { if (el.parentNode) el.parentNode.removeChild(el); });
+        card.innerHTML = '';
+        var wrap = document.createElement('div');
+        wrap.id = '__wpTkCap' + i;
+        wrap.style.cssText = 'width:1150px;background:#fff;padding:8px';
+        wrap.appendChild(clone);
+        card.appendChild(wrap);
+        /* 증적 사진(외부 호스팅) → blob으로 교체해 캔버스 오염 방지. 실패한 사진은 제거 */
+        var imgs = [].slice.call(wrap.querySelectorAll('img'));
+        var fails = 0;
+        var jobs = imgs.map(function(im) {
+          var src = im.getAttribute('src') || '';
+          if (!src) return Promise.resolve();
+          var full = src.charAt(0) === '/' ? (location.origin + src) : src;
+          return fetch(full, { mode: 'cors' }).then(function(rs2) {
+            if (!rs2.ok) throw 0;
+            return rs2.blob();
+          }).then(function(bl) {
+            return new Promise(function(rsv) { im.onload = rsv; im.onerror = rsv; im.src = URL.createObjectURL(bl); });
+          }).catch(function() { fails++; if (im.parentNode) im.parentNode.removeChild(im); });
+        });
+        Promise.all(jobs).then(function() {
+          if (fails) {
+            var nt = document.createElement('div');
+            nt.style.cssText = 'font-size:11px;color:#B45309;padding:4px 8px';
+            nt.textContent = '⚠ 사진 ' + fails + '장은 보안 정책 때문에 못 담음 (필요하면 [오피스 원본 열기]로 직접 캡처)';
+            card.appendChild(nt);
+          }
+        });
+      }).catch(function(e) { fallback('오피스 조회 실패: ' + ((e && e.message) || e)); });
     }
 
     tkRender();
