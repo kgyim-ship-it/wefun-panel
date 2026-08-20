@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.19 18:25';
+  var VERSION = '26.08.20 14:03';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -1511,7 +1511,7 @@
       return '<label style="display:block;padding:5px 8px;font-size:13px;cursor:pointer;border-radius:6px"><input type="checkbox" value="' + esc(o) + '" style="margin-right:8px;vertical-align:middle">' + esc(o) + '</label>';
     }).join('') + '</div></div></div>';
     if (f.type === 'textarea') return '<div style="margin:10px 0"><div style="color:#475569;font-size:13px;margin-bottom:4px">' + flab(f) + '</div><textarea id="' + id + '" class="wp-inp" style="width:100%;height:130px;font-family:inherit"></textarea></div>';
-    if (f.type === 'addr') return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;gap:6px"><input id="' + id + '" class="wp-inp" type="text" style="flex:1" placeholder="주소검색 버튼으로 입력"><button type="button" id="' + id + '_btn" class="wp-btn gh" style="padding:7px 12px;white-space:nowrap">주소검색</button></div></div>';
+    if (f.type === 'addr') return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;gap:6px"><input id="' + id + '" class="wp-inp" type="text" readonly style="flex:1;background:#F8FAFC;cursor:pointer" placeholder="🔍 주소검색으로만 입력 가능 (클릭) · 동/호/층은 상세주소에"><button type="button" id="' + id + '_btn" class="wp-btn pri" style="padding:7px 12px;white-space:nowrap">주소검색</button></div></div>';
     if (f.type === 'date') {
       /* 날짜 고르면 옆에 요일이 바로 뜬다 — 잘못된 요일 선택을 입력 시점에 잡기 위함 */
       return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="date" style="flex:1"><span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span></div></div>';
@@ -1550,13 +1550,20 @@
   function bindAddr(key) {
     var id = '__wpf_' + key;
     var btn = document.getElementById(id + '_btn');
+    var inp = document.getElementById(id);
     if (!btn) return;
-    btn.onclick = function() {
+    function pick() {
       openPostcodeModal(function(addr) {
         var el = document.getElementById(id);
         if (el) el.value = addr;
+        /* 검색 확정 후 상세주소 칸으로 포커스 이동 — 동/호를 자연스럽게 상세에 쓰게 유도 */
+        var fld = el && el.closest ? el.closest('.wp-fld') : null;
+        var nx = fld && fld.nextElementSibling ? fld.nextElementSibling.querySelector('input.wp-inp:not([readonly])') : null;
+        if (nx) nx.focus();
       });
-    };
+    }
+    btn.onclick = pick;
+    if (inp) inp.onclick = pick; /* readonly 입력칸 클릭해도 검색 열림 */
   }
 
       var BOARD_CACHE = {};
