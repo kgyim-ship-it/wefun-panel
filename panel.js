@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.20 14:03';
+  var VERSION = '26.08.20 14:21';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -1524,7 +1524,7 @@
       var ov = document.createElement('div');
       ov.id = '__wpPcOv';
       ov.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif';
-      ov.innerHTML = '<div style="background:#fff;border-radius:12px;padding:10px;width:460px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:14px">주소 검색</b><button id="__wpPcX" class="wp-btn gh" style="padding:4px 10px">✕</button></div><div id="__wpPcBox" style="height:440px"></div></div>';
+      ov.innerHTML = '<div style="background:#fff;border-radius:12px;padding:10px;width:460px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.35)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:14px">주소 검색</b><button id="__wpPcX" class="wp-btn gh" style="padding:4px 10px">✕</button></div><div id="__wpPcBox" style="width:100%;height:440px;overflow:hidden;border-radius:8px"></div></div>';
       document.body.appendChild(ov);
 
       function close() {
@@ -1538,10 +1538,18 @@
         oncomplete: function(d) {
           cb(d.roadAddress || d.address, d);
           close();
-        }
+        },
+        width: '100%',
+        height: '100%'
       }).embed(document.getElementById('__wpPcBox'), {
         autoClose: false
       });
+      /* 위젯 iframe이 컨테이너를 넘치지 않게 강제 */
+      setTimeout(function() {
+        var bx = document.getElementById('__wpPcBox');
+        if (!bx) return;
+        [].forEach.call(bx.querySelectorAll('iframe, div'), function(el) { el.style.maxWidth = '100%'; });
+      }, 100);
     }).catch(function(e) {
       alert('주소검색 로드 실패: ' + (e && e.message || e));
     });
