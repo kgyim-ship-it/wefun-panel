@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.20 14:21';
+  var VERSION = '26.08.20 16:00';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -5744,7 +5744,7 @@ document.getElementById('__wpSave').onclick = function() {
     var DCAP = 3000000; /* 코스당 금액 상한 */
     var DCENTER = { x: 127.34088020267, y: 37.3138971988571 }; /* 출발지: 경기 광주시 도척면 진우리 1009-1 */
     var DLOOK = 14; /* 고정 자동감지 lookback 일수 */
-    var DTGT = null, DRES = null, DFIX_AUTO = null, DFIX_OVR = {}, DRT_OVR = {}, DLRN = null;
+    var DTGT = null, DRES = null, DFIX_AUTO = null, DFIX_OVR = {}, DRT_OVR = {}, DLRN = null, DSUB = {}, DOFF = {};
     function dnn(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
     function dBase(a) { var i = a.indexOf(')'); return i > -1 ? a.slice(0, i + 1) : a; }
     function dRegion(addr) {
@@ -5773,6 +5773,16 @@ document.getElementById('__wpSave').onclick = function() {
       '<span id="__wpDpProg" style="font-size:13px;color:#0369A1;font-weight:600"></span>' +
       '<span style="flex:1"></span>' +
       '<span style="font-size:11.5px;color:#94A3B8">파일로 직접 실행 →</span><input type="file" id="__wpDpF" accept=".xlsx,.xls" style="font-size:11px;max-width:190px"></div>' +
+      '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px;padding:9px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;font-size:12.5px;color:#334155">' +
+      '<label style="display:flex;align-items:center;gap:5px;font-weight:700;cursor:pointer"><input type="checkbox" id="__wpDp2nd" checked> 2차 완화 배차 (미배정 구제)</label>' +
+      '<span>완화 상한 <input id="__wpDpCap2" type="number" value="330" style="width:56px;padding:4px 6px;border:1px solid #CBD5E1;border-radius:5px">만원</span>' +
+      '<span style="color:#CBD5E1">|</span>' +
+      '<span>용차 용량 <input id="__wpDpVcap" type="number" value="300" style="width:56px;padding:4px 6px;border:1px solid #CBD5E1;border-radius:5px">만원</span>' +
+      '<span>용차 최대 주소지 <input id="__wpDpVstop" type="number" value="9" style="width:44px;padding:4px 6px;border:1px solid #CBD5E1;border-radius:5px">곳</span>' +
+      '<span style="color:#CBD5E1">|</span>' +
+      '<button id="__wpDpOff" class="wp-btn gh" style="padding:6px 14px">😴 휴무/대체</button>' +
+      '<span id="__wpDpOffN" style="color:#DC2626;font-weight:700"></span></div>' +
+      '<div id="__wpDpOffBox" style="display:none;margin-bottom:8px"></div>' +
       '<div id="__wpDpFixBox" style="display:none;margin-bottom:8px"></div>' +
       '<div id="__wpDpRtBox" style="display:none;margin-bottom:8px"></div>' +
       '<div id="__wpDpLrnBox" style="display:none;margin-bottom:8px"></div>' +
@@ -5790,6 +5800,75 @@ document.getElementById('__wpSave').onclick = function() {
       if (j && j.ok && j.v) { try { DRT_OVR = JSON.parse(j.v) || {}; } catch (e) {} }
     }).catch(function() {});
     function dRegions(name, def) { return String(DRT_OVR[name] || def).split('/').map(function(x) { return x.trim(); }).filter(Boolean); }
+    fetch(apiUrl() + '?e=cfg_get&k=sub_master').then(function(r) { return r.json(); }).then(function(j) {
+      if (j && j.ok && j.v) { try { DSUB = JSON.parse(j.v) || {}; } catch (e) {} }
+    }).catch(function() {});
+    /* 휴무면 대체기사로 치환, 대체도 휴무/없음이면 '' */
+    function dActv(name) {
+      if (!name) return '';
+      if (!DOFF[name]) return name;
+      var s = DSUB[name];
+      if (s && !DOFF[s]) return s;
+      return '';
+    }
+    function dOffN() { var el = document.getElementById('__wpDpOffN'); var n = Object.keys(DOFF).length; if (el) el.textContent = n ? '오늘 휴무 ' + n + '명' : ''; }
+
+    /* ── 휴무/대체기사 관리 ── */
+    document.getElementById('__wpDpOff').onclick = function() {
+      var box = document.getElementById('__wpDpOffBox');
+      if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+      box.style.display = '';
+      dOffUI();
+    };
+    function dOffUI() {
+      var box = document.getElementById('__wpDpOffBox');
+      if (!box) return;
+      var h = '<div style="padding:12px 14px;background:#fff;border:1px solid #E2E8F0;border-radius:9px;font-size:12.5px;color:#334155">' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b>오늘 휴무 기사</b>' +
+        '<span style="font-size:11.5px;color:#94A3B8">체크한 기사는 배차에서 제외 · 그 기사의 고정 스팟은 아래 대체기사에게 감 (배차 실행 시 적용, 저장 안 됨)</span>' +
+        '<span style="flex:1"></span><button id="__wpDpOffClr" class="wp-btn gh" style="padding:4px 12px">전체 해제</button></div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:2px;max-height:200px;overflow:auto;margin-bottom:10px">';
+      DDRV.forEach(function(r) {
+        h += '<label style="display:flex;gap:5px;align-items:center;padding:2px 4px;cursor:pointer;border-radius:5px;' + (DOFF[r[1]] ? 'background:#FEF2F2' : '') + '">' +
+          '<input type="checkbox" class="__wpDpOffC" data-n="' + esc(r[1]) + '"' + (DOFF[r[1]] ? ' checked' : '') + '><span style="font-size:12px;' + (DOFF[r[1]] ? 'color:#DC2626;font-weight:700' : '') + '">' + esc(r[1]) + '</span></label>';
+      });
+      h += '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;border-top:1px solid #F1F5F9;padding-top:8px"><b>대체기사 표</b>' +
+        '<span style="font-size:11.5px;color:#94A3B8">기사가 휴무면 이 대체기사가 고정 스팟을 이어받음 · 서버 저장(팀 공유)</span>' +
+        '<span style="flex:1"></span><button id="__wpDpSubSave" class="wp-btn ok" style="padding:5px 14px">대체표 저장</button></div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:3px;max-height:240px;overflow:auto">';
+      var names = DDRV.map(function(r) { return r[1]; });
+      DDRV.forEach(function(r) {
+        var o = '<option value="">(대체 없음)</option>';
+        names.forEach(function(n) { if (n !== r[1]) o += '<option value="' + esc(n) + '"' + (DSUB[r[1]] === n ? ' selected' : '') + '>' + esc(n) + '</option>'; });
+        h += '<div style="display:flex;gap:6px;align-items:center;padding:1px 4px"><span style="width:64px;font-size:11.5px;font-weight:600">' + esc(r[1]) + '</span><span style="color:#94A3B8;font-size:11px">→</span>' +
+          '<select data-subn="' + esc(r[1]) + '" style="flex:1;padding:2px 5px;border:1px solid ' + (DSUB[r[1]] ? '#0EA5E9' : '#E2E8F0') + ';border-radius:5px;font-size:11.5px">' + o + '</select></div>';
+      });
+      h += '</div></div>';
+      box.innerHTML = h;
+      [].forEach.call(box.querySelectorAll('.__wpDpOffC'), function(c) {
+        c.onchange = function() {
+          var n = c.getAttribute('data-n');
+          if (c.checked) DOFF[n] = 1; else delete DOFF[n];
+          dOffN();
+        };
+      });
+      document.getElementById('__wpDpOffClr').onclick = function() { DOFF = {}; dOffN(); dOffUI(); };
+      document.getElementById('__wpDpSubSave').onclick = function() {
+        var self = this, ovr = {};
+        [].forEach.call(box.querySelectorAll('select[data-subn]'), function(sl) {
+          if (sl.value) ovr[sl.getAttribute('data-subn')] = sl.value;
+        });
+        self.disabled = true; self.textContent = '저장 중…';
+        fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=cfg_set&k=sub_master&v=' + encodeURIComponent(JSON.stringify(ovr)) })
+          .then(function(r) { return r.json(); }).then(function(j) {
+            if (!j || !j.ok) throw new Error('저장 실패');
+            DSUB = ovr;
+            self.disabled = false; self.textContent = '대체표 저장';
+            toast('✓ 대체기사 표 저장', '#0a7d47');
+          }).catch(function(e) { self.disabled = false; self.textContent = '대체표 저장'; alert('저장 실패: ' + ((e && e.message) || e)); });
+      };
+    }
 
     /* 수정본 러닝 로그 (서버 누적, 60일 보관) */
     function dLrnLoad() {
@@ -5920,11 +5999,17 @@ document.getElementById('__wpSave').onclick = function() {
     };
 
     function dRun(geo, fixAuto) {
-      var drivers = DDRV.map(function(r) { return { course: r[0], name: r[1], belong: r[2], regions: dRegions(r[1], r[3]), load: 0, stops: [] }; });
+      /* 휴무 기사 제외 (그 기사 고정 스팟은 대체기사 표를 따라감) */
+      var drivers = DDRV.filter(function(r) { return !DOFF[r[1]]; }).map(function(r) { return { course: r[0], name: r[1], belong: r[2], regions: dRegions(r[1], r[3]), load: 0, stops: [] }; });
       var byName = {}; drivers.forEach(function(d) { byName[d.name] = d; });
       /* 수정본 러닝 반영: 같은 수정 2회 이상 → 일반 스팟은 우선배정(LPREF), 고정 스팟은 자동감지보다 우선(LFIX) */
       var LPREF = {}, LFIX = {};
-      dLrnAgg().forEach(function(x) { if (x.n >= 2 && x.to && byName[x.to]) { if (x.f) LFIX[x.k] = x.to; else LPREF[x.k] = x.to; } });
+      dLrnAgg().forEach(function(x) {
+        if (x.n < 2 || !x.to) return;
+        var to2 = dActv(x.to);
+        if (!to2 || !byName[to2]) return;
+        if (x.f) LFIX[x.k] = to2; else LPREF[x.k] = to2;
+      });
       /* 그룹핑: 같은 주소(건물) = 무조건 같은 기사 */
       var groups = {};
       DTGT.forEach(function(t) {
@@ -5935,7 +6020,7 @@ document.getElementById('__wpSave').onclick = function() {
         groups[gk].amt += t.amt;
         var k = dKey(t.br);
         if (t.fixed) {
-          var fd = DFIX_OVR[k] || LFIX[k] || fixAuto[k] || '';
+          var fd = dActv(DFIX_OVR[k] || LFIX[k] || fixAuto[k] || '');
           if (fd) groups[gk].fixVotes[fd] = (groups[gk].fixVotes[fd] || 0) + 1;
         } else if (LPREF[k]) {
           groups[gk].prefVotes[LPREF[k]] = (groups[gk].prefVotes[LPREF[k]] || 0) + 1;
@@ -6024,8 +6109,97 @@ document.getElementById('__wpSave').onclick = function() {
           });
         });
       });
+      /* ── 2차 완화 배차: 미배정 구제 ──
+         건물(주소지)=1착 취급, 상한을 DCAP2(기본 330만)로 완화해 권역 기사에 끼워넣기.
+         그래도 남는 덩어리는 용차 자동 편성(용량 VCAP·주소지 VSTOP곳), 흩어진 소액 건은 권역 기사 강제 배정. */
+      var vans = [];
+      var relieved = 0, forced = 0;
+      var USE2 = (document.getElementById('__wpDp2nd') || { checked: true }).checked;
+      if (USE2 && DUNAS.length) {
+        var DCAP2 = (parseInt((document.getElementById('__wpDpCap2') || {}).value, 10) || 330) * 10000;
+        var VCAP = (parseInt((document.getElementById('__wpDpVcap') || {}).value, 10) || 300) * 10000;
+        var VSTOP = parseInt((document.getElementById('__wpDpVstop') || {}).value, 10) || 9;
+        /* 미배정을 건물 단위로 재그룹 */
+        var ug = {};
+        DUNAS.forEach(function(s) {
+          var ba = dBase(s.addr), gk2 = dnn(ba);
+          if (!ug[gk2]) ug[gk2] = { stops: [], amt: 0, region: dRegion(s.addr), xy: s.xy || geo[ba] };
+          ug[gk2].stops.push(s); ug[gk2].amt += s.amt;
+        });
+        var ulist = Object.keys(ug).map(function(k2) { return ug[k2]; }).sort(function(a, b) { return b.amt - a.amt; });
+        var left = [];
+        /* ① 완화 상한으로 권역 기사에 건물 통째 끼워넣기 */
+        ulist.forEach(function(g) {
+          var inR = drivers.filter(function(d) { return d.regions.indexOf(g.region) > -1 && d.load + g.amt <= DCAP2; });
+          if (!inR.length) { left.push(g); return; }
+          var best = null, bs = 1e18;
+          inR.forEach(function(d) {
+            var c = centroid(d);
+            var dd = c ? dDist(c, g.xy) : 3;
+            var sc = dd + (d.load / DCAP2) * 6;
+            if (sc < bs) { bs = sc; best = d; }
+          });
+          g.stops.forEach(function(s2) { s2.xy = g.xy; s2.flag = '2차완화'; best.stops.push(s2); });
+          best.load += g.amt;
+          relieved += g.stops.length;
+        });
+        /* ② 흩어진 소액 지역(주소지 1~2곳 + 권역 기사 있음) → 기존 기사 강제 배정 (상한 초과 허용) */
+        DUNAS = [];
+        var byRg0 = {};
+        left.forEach(function(g) { if (!byRg0[g.region]) byRg0[g.region] = []; byRg0[g.region].push(g); });
+        var vanPool = [];
+        Object.keys(byRg0).forEach(function(rg) {
+          var gs = byRg0[rg];
+          var hasDrv = drivers.some(function(d) { return d.regions.indexOf(rg) > -1; });
+          if (hasDrv && gs.length <= 2) {
+            gs.forEach(function(g) {
+              var inR2 = drivers.filter(function(d) { return d.regions.indexOf(rg) > -1; });
+              var best2 = inR2[0];
+              inR2.forEach(function(d) { if (d.load < best2.load) best2 = d; });
+              g.stops.forEach(function(s2) { s2.xy = g.xy; s2.flag = '2차강제(상한초과)'; best2.stops.push(s2); });
+              best2.load += g.amt;
+              forced += g.stops.length;
+            });
+          } else {
+            gs.forEach(function(g) { vanPool.push(g); });
+          }
+        });
+        /* ③ 덩어리 → 용차 편성 (무게중심 8km 이내 건물끼리, 용량·주소지 제한) */
+        vanPool.sort(function(a, b) { return b.amt - a.amt; });
+        while (vanPool.length) {
+          var seed = vanPool.shift();
+          var van = { course: '', name: '', belong: '용차', regions: [], load: 0, stops: [], bld: 0, xys: [] };
+          var addG = function(g2) {
+            g2.stops.forEach(function(s2) { s2.xy = g2.xy; s2.flag = '용차'; van.stops.push(s2); });
+            van.load += g2.amt; van.bld++;
+            if (van.regions.indexOf(g2.region) < 0) van.regions.push(g2.region);
+            if (g2.xy) van.xys.push(g2.xy);
+          };
+          var vcen = function() {
+            if (!van.xys.length) return null;
+            var x = 0, y = 0;
+            van.xys.forEach(function(p) { x += p.x; y += p.y; });
+            return { x: x / van.xys.length, y: y / van.xys.length };
+          };
+          addG(seed);
+          for (;;) {
+            var c0 = vcen();
+            var bi2 = -1, bd2 = 8; /* 무게중심에서 8km 이내만 동승 */
+            vanPool.forEach(function(g2, i2) {
+              if (van.load + g2.amt > VCAP || van.bld >= VSTOP) return;
+              var dd2 = c0 ? dDist(c0, g2.xy) : 999;
+              if (dd2 < bd2) { bd2 = dd2; bi2 = i2; }
+            });
+            if (bi2 < 0) break;
+            addG(vanPool.splice(bi2, 1)[0]);
+          }
+          vans.push(van);
+        }
+        vans.forEach(function(v2, i2) { v2.course = '용차' + (i2 + 1); v2.name = '용차' + (i2 + 1); });
+      }
+      var allDrv = drivers.concat(vans);
       /* 동선 순서: 센터(광주 진우리) 출발 → 가까운 순 최근접 이웃 (km는 확정본 러닝 때 실주행으로만 계산) */
-      drivers.forEach(function(d) {
+      allDrv.forEach(function(d) {
         if (!d.stops.length) return;
         var rest = d.stops.slice();
         var path = [];
@@ -6039,14 +6213,15 @@ document.getElementById('__wpSave').onclick = function() {
         }
         d.path = path;
       });
-      DRES = drivers;
+      DRES = allDrv;
       DRES._unassigned = DUNAS;
+      DRES._relief = relieved; DRES._forced = forced; DRES._vans = vans.length;
       /* 수정본 러닝용 자동배차 스냅샷 (명세번호→기사, 브라우저 보관 14개) */
       try {
         var snapDay = (document.getElementById('__wpDpDate') || {}).value;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(snapDay || '')) snapDay = now().slice(0, 10);
         var sm = {};
-        drivers.forEach(function(d) { d.stops.forEach(function(s) { sm[String(s.stmt)] = { v: d.name, b: s.br, f: s.fixed ? 1 : 0 }; }); });
+        allDrv.forEach(function(d) { d.stops.forEach(function(s) { sm[String(s.stmt)] = { v: d.name, b: s.br, f: s.fixed ? 1 : 0 }; }); });
         DUNAS.forEach(function(s) { sm[String(s.stmt)] = { v: '', b: s.br, f: s.fixed ? 1 : 0 }; });
         var snaps = {}; try { snaps = JSON.parse(localStorage.getItem('__wpAutoSnap')) || {}; } catch (e4) {}
         snaps[snapDay] = { m: sm };
@@ -6083,10 +6258,15 @@ document.getElementById('__wpSave').onclick = function() {
       var tot = 0, stops = 0, over = 0;
       used.forEach(function(d) { tot += d.load; stops += d.path.length; if (d.load > DCAP) over++; });
       var unas = (DRES._unassigned || []).length;
+      var offN = Object.keys(DOFF).length;
       var h = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:13px;color:#334155;margin-bottom:8px">' +
         '<b>배차 완료</b> · 코스 <b>' + used.length + '</b> · 착지 <b>' + stops + '</b> · 총액 <b style="color:#0a7d47">₩' + tot.toLocaleString() + '</b>' +
-        ' · 300만 초과 <b style="color:' + (over ? '#DC2626' : '#0a7d47') + '">' + over + '</b> (고정·권역유지 시 허용)' +
-        ' · <b style="color:' + (unas ? '#DC2626' : '#0a7d47') + '">미배정 ' + unas + '</b>' + (unas ? ' <span style="font-size:11.5px;color:#DC2626">(권역 담당 기사 없음 — 엑셀 미배정 시트 확인)</span>' : '') + '</div>';
+        ' · 상한 초과 <b style="color:' + (over ? '#DC2626' : '#0a7d47') + '">' + over + '</b>' +
+        (DRES._relief ? ' · <b style="color:#0369A1">2차 구제 ' + DRES._relief + '착</b>' : '') +
+        (DRES._forced ? ' · <b style="color:#B45309">강제 배정 ' + DRES._forced + '착</b>' : '') +
+        (DRES._vans ? ' · <b style="color:#7C3AED">용차 ' + DRES._vans + '대</b>' : '') +
+        (offN ? ' · <b style="color:#DC2626">휴무 ' + offN + '명 제외</b>' : '') +
+        ' · <b style="color:' + (unas ? '#DC2626' : '#0a7d47') + '">미배정 ' + unas + '</b>' + (unas ? ' <span style="font-size:11.5px;color:#DC2626">(용차도 못 묶는 잔여 — 엑셀 확인)</span>' : '') + '</div>';
       h += '<div style="border:1px solid #E2E8F0;border-radius:7px;overflow:auto;background:#fff"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
         '<tr style="background:#F8FAFC;color:#475569"><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">코스</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">기사</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">소속</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">착지</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">금액</th><th style="text-align:right;padding:5px 10px;border-bottom:1px solid #E2E8F0">고정</th><th style="text-align:left;padding:5px 10px;border-bottom:1px solid #E2E8F0">권역</th></tr>';
       used.sort(function(a, b) { return a.course.localeCompare(b.course); }).forEach(function(d, i) {
