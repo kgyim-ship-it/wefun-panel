@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.20 16:00';
+  var VERSION = '26.08.26 12:56';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -489,6 +489,9 @@
      실패해도 반영 자체는 이미 끝난 상태라 사용자 흐름은 막지 않는다. */
   function bulkLogStart(o) { o.e = 'bulklog'; return api(o).then(function(j) { return (j && j.ts) || ''; }); }
   function bulkLogReply(threadTs, body) { return api({ e: 'bulklog', threadTs: threadTs, body: body }); }
+  /* 일괄입력 실행 이력 — 슬랙에 올리지 않고 D1에만 저장, 관리자 화면 '실행 이력'에서 조회 */
+  function execLogAdd(o) { o.e = 'exec_log_add'; return api(o); }
+  function execLogList(o) { o = o || {}; o.e = 'exec_log_list'; return api(o); }
 
   function setNotice(id, val) {
     return api({ e: 'meta', id: id, custNotice: val });
@@ -806,6 +809,12 @@
     document.getElementById('__wpMadm').style.display = IS_ADMIN ? '' : 'none';
     document.getElementById('__wpCfg').style.display = IS_ADMIN ? '' : 'none';
     if (!IS_ADMIN && MODE === 'admin') setMode('requester');
+    /* 접속 기록 — 패널 열 때 1회만 D1에 남긴다 (누가 언제 열었는지, 관리자 '접속 이력'에서 조회).
+       실패해도 무시 — 접속 로그 때문에 패널이 막히면 안 된다. */
+    if (!window.__wpVisitSent) {
+      window.__wpVisitSent = true;
+      try { api({ e: 'visit_add', name: REQ.name || '', email: REQ.email || '', dept: REQ.dept || '' }).catch(function() {}); } catch (e) {}
+    }
   }
 
   var _tabsBuilt = false;
@@ -839,6 +848,7 @@
       ['kstats', '기사통계'],
       ['dispatch', '배차'],
       ['ticket', '차량고지서'],
+      ['visits', '접속 이력'],
       ['board_update', '업데이트 이력'],
       ['board_feature', '기능개선']
     ]
@@ -876,6 +886,7 @@
     else if (t === 'kstats') viewKStats();
     else if (t === 'dispatch') viewDispatch();
     else if (t === 'ticket') viewTicket();
+    else if (t === 'visits') viewVisits();
     else if (t === 'newcode') viewNewCode();
     else if (t === 'board_update') viewBoard('update');
     else if (t === 'board_feature') viewBoard('feature');
@@ -4172,15 +4183,16 @@ document.getElementById('__wpSave').onclick = function() {
     });
   }
 
-  /* 요약 1건 + 상세는 스레드 답글로만 — 채널에 300줄이 쏟아지는 것 방지 */
-  function sbSlack(total, ok, ng, res, sblog) {
+  /* 요약 1건 + 상세는 스레드 답글로만 — 채널에 300줄이 쏟아지는 것 방지
+     title 생략 시 '배송일정 일괄 반영' — 배송정보 일괄입력에서도 같이 쓴다 */
+  function sbSlack(total, ok, ng, res, sblog, title) {
     var kinds = {};
     res.forEach(function(x) { kinds[x[1]] = (kinds[x[1]] || 0) + 1; });
     var fails = res.filter(function(x) { return x[3] === '실패'; })
       .map(function(x) { return x[0] + '행 ' + x[2] + ' — ' + x[4]; }).join('\n');
     sblog('슬랙 기록 올리는 중…');
     return bulkLogStart({
-      title: '배송일정 일괄 반영', name: REQ.name || '', email: REQ.email || '',
+      title: title || '배송일정 일괄 반영', name: REQ.name || '', email: REQ.email || '',
       total: total, ok: ok, ng: ng,
       kinds: Object.keys(kinds).map(function(k) { return k + ' ' + kinds[k]; }).join(' · '),
       fails: fails
@@ -5756,6 +5768,19 @@ document.getElementById('__wpSave').onclick = function() {
     }
     function dDist(a, b) { if (!a || !b) return 999; var dx = (a.x - b.x) * 88, dy = (a.y - b.y) * 111; return Math.sqrt(dx * dx + dy * dy); }
     function dKey(br) { var i = br.indexOf(' - '); return dnn(i > -1 ? br.slice(i + 3) : br); }
+    /* 현재 코스(엑셀 A열 주간NN) → 기사: 고정 스팟의 1순위 담당 (오피스에 저장된 현재 배정이 진실)
+       오피스 표기가 '주간1'/'주간01' 혼재라 번호 기준으로 정규화해 매칭 */
+    function dCourseNorm(c) {
+      var m = String(c || '').trim().match(/^주간\s*0*(\d+)$/);
+      if (!m) return String(c || '').trim();
+      return '주간' + (m[1].length < 2 ? '0' + m[1] : m[1]);
+    }
+    function dCourseDrv(course) {
+      var cn = dCourseNorm(course);
+      if (!cn) return '';
+      for (var i = 0; i < DDRV.length; i++) { if (DDRV[i][0] === cn) return DDRV[i][1]; }
+      return '';
+    }
 
     VIEW.innerHTML = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155;line-height:1.7;margin-bottom:10px">' +
       '<b>배송동선 엑셀 → 타 운수사 코스 자동 배차</b><br>' +
@@ -5978,7 +6003,7 @@ document.getElementById('__wpSave').onclick = function() {
         var sn = wb2.SheetNames.filter(function(n) { return n.indexOf('커피') < 0; })[0];
         var rows2 = XLSX.utils.sheet_to_json(wb2.Sheets[sn], { header: 1, defval: '' }).slice(1);
         DTGT = rows2.filter(function(r) { var c = String(r[0]).trim(); return c.indexOf('주간') === 0 && DEXC.indexOf(c) < 0; })
-          .map(function(r) { return { br: String(r[1]).trim(), addr: String(r[2]).trim(), memo: String(r[3] || ''), stmt: String(r[4]), amt: Number(r[5]) || 0, fixed: /고정|카드키|이관/.test(String(r[3] || '')) }; });
+          .map(function(r) { return { course: String(r[0]).trim(), br: String(r[1]).trim(), addr: String(r[2]).trim(), memo: String(r[3] || ''), stmt: String(r[4]), amt: Number(r[5]) || 0, fixed: /고정|카드키|이관/.test(String(r[3] || '')) }; });
         if (!DTGT.length) throw new Error('라우팅 대상(주간 코스)이 없습니다. 파일을 확인하세요.');
         dlog('대상 ' + DTGT.length + '착지');
         return dFixAuto();
@@ -6020,7 +6045,8 @@ document.getElementById('__wpSave').onclick = function() {
         groups[gk].amt += t.amt;
         var k = dKey(t.br);
         if (t.fixed) {
-          var fd = dActv(DFIX_OVR[k] || LFIX[k] || fixAuto[k] || '');
+          /* 우선순위: 수동지정 > 현재 코스 기사(엑셀 A열) > 러닝 > 14일 자동감지 */
+          var fd = dActv(DFIX_OVR[k] || dCourseDrv(t.course) || LFIX[k] || fixAuto[k] || '');
           if (fd) groups[gk].fixVotes[fd] = (groups[gk].fixVotes[fd] || 0) + 1;
         } else if (LPREF[k]) {
           groups[gk].prefVotes[LPREF[k]] = (groups[gk].prefVotes[LPREF[k]] || 0) + 1;
@@ -6388,13 +6414,13 @@ document.getElementById('__wpSave').onclick = function() {
       DTGT.filter(function(t) { return t.fixed; }).forEach(function(t) {
         var k = dKey(t.br);
         if (seen[k]) return; seen[k] = 1;
-        list.push({ k: k, br: t.br, auto: (DFIX_AUTO && DFIX_AUTO[k]) || '', ovr: DFIX_OVR[k] || '' });
+        list.push({ k: k, br: t.br, auto: dCourseDrv(t.course) || (DFIX_AUTO && DFIX_AUTO[k]) || '', ovr: DFIX_OVR[k] || '' });
       });
       list.sort(function(a, b) { return (a.ovr || a.auto ? 1 : 0) - (b.ovr || b.auto ? 1 : 0); });
       var names = DDRV.map(function(r) { return r[1]; });
       var h = '<div style="padding:10px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155">' +
         '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><b>고정 스팟 담당 (' + list.length + ')</b>' +
-        '<span style="font-size:11.5px;color:#94A3B8">(자동) = 최근 ' + DLOOK + '일 최다 배송 기사 · 드롭다운 지정 시 항상 우선</span>' +
+        '<span style="font-size:11.5px;color:#94A3B8">(자동) = 현재 코스 기사(배송동선 A열) · 코스 매칭 안 되면 최근 ' + DLOOK + '일 최다 · 드롭다운 지정 시 항상 우선</span>' +
         '<span style="flex:1"></span><button id="__wpDpFixSave" class="wp-btn ok" style="padding:5px 14px">저장</button></div>' +
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:4px;max-height:340px;overflow:auto">';
       list.forEach(function(x) {
@@ -7223,8 +7249,48 @@ document.getElementById('__wpSave').onclick = function() {
     };
   }
 
+  /* ---------- 접속 이력 (관리자 전용 탭) ----------
+     패널이 열릴 때마다 visit_add 로 남긴 기록을 보여준다. 최근 300건. */
+  function viewVisits() {
+    VIEW.innerHTML = '<div id="__wpVs">접속 이력 불러오는 중…</div>';
+    api({ e: 'visit_list', limit: 300 }).then(function(j) {
+      var logs = (j && j.logs) || [];
+      var bx = document.getElementById('__wpVs');
+      if (!bx) { return; }
+      if (!logs.length) { bx.innerHTML = '접속 기록이 아직 없습니다. (이 버전 배포 이후의 접속부터 쌓입니다)'; return; }
+      var today = logs.length ? logs[0].ts.slice(0, 10) : '';
+      var tNow = new Date(); var t7 = new Date(tNow.getTime() - 6 * 86400000);
+      function pad(n) { return (n < 10 ? '0' : '') + n; }
+      var d7 = t7.getFullYear() + '-' + pad(t7.getMonth() + 1) + '-' + pad(t7.getDate());
+      var todayN = 0, todayU = {}, wkU = {}, per = {};
+      logs.forEach(function(l) {
+        var d = String(l.ts || '').slice(0, 10);
+        var who = (l.name || l.email || '-');
+        if (d === today) { todayN++; todayU[who] = 1; }
+        if (d >= d7) {
+          wkU[who] = 1;
+          if (!per[who]) { per[who] = { n: 0, dept: l.dept || '', last: l.ts }; }
+          per[who].n++;
+        }
+      });
+      var top = Object.keys(per).sort(function(a, b) { return per[b].n - per[a].n; });
+      bx.innerHTML =
+        '<div class="wp-meta" style="margin-bottom:8px"><b>오늘(' + esc(today) + ')</b> 접속 ' + todayN + '회 · ' + Object.keys(todayU).length + '명 &nbsp;|&nbsp; <b>최근 7일</b> 이용자 ' + Object.keys(wkU).length + '명</div>' +
+        '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">' +
+        '<div style="flex:0 0 300px"><b style="font-size:12.5px">최근 7일 사람별</b><table class="wp-tbl" style="margin-top:5px;width:100%"><tr><th>이름</th><th>부서</th><th>횟수</th></tr>' +
+        top.map(function(k) { return '<tr><td>' + esc(k) + '</td><td>' + esc(per[k].dept) + '</td><td>' + per[k].n + '</td></tr>'; }).join('') +
+        '</table></div>' +
+        '<div style="flex:1;min-width:340px"><b style="font-size:12.5px">전체 기록 (최근 ' + logs.length + '건)</b><div class="wp-scroll" style="max-height:430px;margin-top:5px"><table class="wp-tbl" style="width:100%"><tr><th>접속시각</th><th>이름</th><th>부서</th><th>이메일</th></tr>' +
+        logs.map(function(l) { return '<tr><td style="white-space:nowrap">' + esc(l.ts) + '</td><td>' + esc(l.name || '-') + '</td><td>' + esc(l.dept || '') + '</td><td style="color:#94a3b8;font-size:11px">' + esc(l.email || '') + '</td></tr>'; }).join('') +
+        '</table></div></div></div>';
+    }).catch(function(e) {
+      var bx = document.getElementById('__wpVs');
+      if (bx) { bx.innerHTML = '<div style="color:#b00;padding:10px">' + esc((e && e.message) || e) + ' — 워커가 26.08.25 이상인지 확인하세요</div>'; }
+    });
+  }
+
   function viewBulk() {
-    VIEW.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><input type="file" id="__wpF" accept=".xlsx,.xls"><button id="__wpV" class="wp-btn pri">1. 검증</button><button id="__wpR" class="wp-btn ok" disabled>2. 실행</button><button id="__wpC" class="wp-btn gh" disabled>결과 복사</button><button id="__wpK" class="wp-btn gh">주소API 키</button></div><div id="__wpAddr"></div><div id="__wpLog" class="wp-log"></div>';
+    VIEW.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><input type="file" id="__wpF" accept=".xlsx,.xls"><button id="__wpV" class="wp-btn pri">1. 검증</button><button id="__wpR" class="wp-btn ok" disabled>2. 실행</button><button id="__wpC" class="wp-btn gh" disabled>결과 복사</button><button id="__wpK" class="wp-btn gh">주소API 키</button><button id="__wpH" class="wp-btn gh">📜 실행 이력</button></div><div id="__wpAddr"></div><div id="__wpLog" class="wp-log"></div>';
     BLOG = document.getElementById('__wpLog');
     document.getElementById('__wpV').onclick = function() {
       var f = document.getElementById('__wpF').files[0];
@@ -7281,6 +7347,20 @@ document.getElementById('__wpSave').onclick = function() {
               return x[3] === '실패';
             }).length;
           blog('<b>완료 — 성공 ' + s + ' · 실패 ' + fl + ' · 스킵 ' + (results.length - s - fl) + '</b>');
+          /* 실행 이력 저장 — 슬랙 미발송, D1에만 남긴다(누가 언제 몇 건).
+             저장이 실패해도 반영 자체는 이미 끝났으므로 흐름은 막지 않는다. */
+          var kinds = {};
+          results.forEach(function(x) { kinds[x[1]] = (kinds[x[1]] || 0) + 1; });
+          execLogAdd({
+            title: '배송정보 일괄입력', name: REQ.name || '', email: REQ.email || '',
+            total: results.length, ok: s, ng: fl,
+            kinds: Object.keys(kinds).map(function(k) { return k + ' ' + kinds[k]; }).join(' · '),
+            detail: results.map(function(x) { return x.join(' | '); }).join('\n')
+          }).then(function(j) {
+            blog(j && j.ok ? '<span style="color:#0a7d47">✓ 실행 이력 저장됨 — 상단 [실행 이력] 버튼에서 확인</span>' : '<span style="color:#b45309">실행 이력 저장 실패 (워커 26.08.25 이상 필요) — 결과 복사로 남겨주세요</span>');
+          }).catch(function() {
+            blog('<span style="color:#b45309">실행 이력 저장 실패 — 결과 복사로 남겨주세요</span>');
+          });
           return;
         }
         var r = rows[i++];
@@ -7291,6 +7371,36 @@ document.getElementById('__wpSave').onclick = function() {
         });
       }
       next();
+    };
+    /* 실행 이력 — 관리자 탭 전용 화면이므로 관리자만 본다. 최근 50건 + 건별 상세 */
+    document.getElementById('__wpH').onclick = function() {
+      BLOG.innerHTML = '이력 불러오는 중…';
+      execLogList({ limit: 50 }).then(function(j) {
+        var logs = (j && j.logs) || [];
+        if (!logs.length) { BLOG.innerHTML = '실행 이력이 아직 없습니다. (실행 완료 시 자동 저장)'; return; }
+        BLOG.innerHTML = '<b>일괄입력 실행 이력 — 최근 ' + logs.length + '건</b>' +
+          '<table class="wp-tbl" style="margin-top:6px;width:100%"><tr><th>실행시각</th><th>작업</th><th>실행자</th><th>총</th><th>성공</th><th>실패</th><th>작업 종류</th><th></th></tr>' +
+          logs.map(function(l) {
+            return '<tr><td style="white-space:nowrap">' + esc(l.ts) + '</td><td>' + esc(l.title) + '</td><td>' + esc(l.name || '-') +
+              '<br><span style="color:#94a3b8;font-size:10.5px">' + esc(l.email || '') + '</span></td><td>' + (l.total || 0) +
+              '</td><td style="color:#0a7d47;font-weight:600">' + (l.ok || 0) + '</td><td style="color:' + (l.ng ? '#b00' : '#94a3b8') + ';font-weight:600">' + (l.ng || 0) +
+              '</td><td style="font-size:11px">' + esc(l.kinds || '') + '</td><td><button class="wp-btn gh __wpHD" data-id="' + esc(l.id) + '" style="padding:3px 9px;font-size:11px">상세</button></td></tr>';
+          }).join('') + '</table><div id="__wpHDet"></div>';
+        [].forEach.call(BLOG.querySelectorAll('.__wpHD'), function(b) {
+          b.onclick = function() {
+            var box = document.getElementById('__wpHDet');
+            box.innerHTML = '상세 불러오는 중…';
+            execLogList({ id: b.getAttribute('data-id') }).then(function(j2) {
+              var l = j2 && j2.logs && j2.logs[0];
+              box.innerHTML = l
+                ? '<hr><b>' + esc(l.ts) + ' · ' + esc(l.name || '') + ' · ' + esc(l.title) + '</b><pre style="white-space:pre-wrap;font-size:11px;background:#f8fafc;border:1px solid #e2e8f0;padding:9px;border-radius:6px;max-height:340px;overflow:auto;margin-top:5px">' + esc(l.detail || '(상세 없음)') + '</pre>'
+                : '상세를 찾지 못했습니다.';
+            }).catch(function(e) { box.innerHTML = '<span style="color:#b00">' + esc((e && e.message) || e) + '</span>'; });
+          };
+        });
+      }).catch(function(e) {
+        BLOG.innerHTML = '<span style="color:#b00">' + esc((e && e.message) || e) + ' — 워커가 26.08.25 이상인지 확인하세요</span>';
+      });
     };
     document.getElementById('__wpK').onclick = function() {
       var cur = localStorage.getItem('__wdbJusoKey') || '';
