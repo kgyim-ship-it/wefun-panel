@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.27 15:57';
+  var VERSION = '26.08.27 16:02';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -7274,7 +7274,50 @@ document.getElementById('__wpSave').onclick = function() {
       '<div style="margin-top:8px"><label style="font-size:11.5px;color:#475569">고객 클레임 내용<br><textarea id="__wpVcBody" class="wp-inp" rows="3" style="width:100%;max-width:640px" placeholder="예: 4층 거래처 저지방우유 1개 누락 문의"></textarea></label></div>' +
       '<div style="margin-top:6px"><label style="font-size:11.5px;color:#475569">물류팀 요청사항<br><textarea id="__wpVcAsk" class="wp-inp" rows="2" style="width:100%;max-width:640px" placeholder="예: 누락 여부 확인 후 재배송 가능한지 회신 부탁드립니다"></textarea></label></div>' +
       '<div style="margin-top:10px"><button id="__wpVcSend" class="wp-btn ok" style="padding:10px 18px">VOC 접수</button></div>';
-    var VC = { no: '', date: '', items: [] };
+    var VC = { no: '', date: '', items: [], drv: '' };
+
+    /* 배송기사 관리 목록 (코스→기사·연락처) — 패널 세션 동안 1회만 로드 */
+    function vocDrvList() {
+      if (window.__wpVocDrvP) return window.__wpVocDrvP;
+      window.__wpVocDrvP = fetch('/office/delivery-manager/v2/driver?searchYN=Y&size=1000&page=0').then(function(r) { return r.text(); }).then(function(html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var list = [];
+        [].forEach.call(doc.querySelectorAll('table tbody tr'), function(tr) {
+          var td = tr.querySelectorAll('td');
+          if (td.length < 7) return;
+          var name = (td[2].textContent || '').trim();
+          var phone = (td[3].textContent || '').trim();
+          var courses = (td[5].textContent || '').split(',').map(function(s) { return s.replace(/\s+/g, ''); }).filter(Boolean);
+          var active = (td[6].textContent || '').indexOf('재직') > -1;
+          if (name && active) list.push({ name: name, phone: phone, courses: courses });
+        });
+        return list;
+      }).catch(function() { window.__wpVocDrvP = null; return []; });
+      return window.__wpVocDrvP;
+    }
+    function vocNormCourse(c) { return String(c || '').replace(/\s+/g, '').replace(/^(주간|야간)0+(\d)/, '$1$2'); }
+    /* 거래처명 → 담당코스 → 기사·연락처. 실패해도 조용히 넘어간다(VOC 접수 자체는 막지 않음) */
+    function vocFindDriver(brName) {
+      var kw = String(brName || '').replace(/^\([^)]*\)/, '').trim();
+      if (!kw) return Promise.resolve(null);
+      return searchRich(kw).then(function(list) {
+        if (!list.length && kw.indexOf(' ') > -1) return searchRich(kw.split(' ').pop());
+        return list;
+      }).then(function(list) {
+        if (!list || !list.length) return null;
+        var exact = list.filter(function(x) { return x.name === brName || x.name === kw; });
+        var br = exact[0] || list[0];
+        if (!br.course) return { course: '', name: '', phone: '' };
+        return vocDrvList().then(function(ds) {
+          var cn = vocNormCourse(br.course);
+          var hit = null;
+          ds.forEach(function(d) {
+            if (!hit && d.courses.some(function(c) { return vocNormCourse(c) === cn; })) hit = d;
+          });
+          return { course: br.course, name: hit ? hit.name : '', phone: hit ? hit.phone : '' };
+        });
+      }).catch(function() { return null; });
+    }
 
     document.getElementById('__wpVcGo').onclick = function() {
       var no = (document.getElementById('__wpVcNo').value || '').replace(/[^\d]/g, '');
@@ -7325,6 +7368,17 @@ document.getElementById('__wpSave').onclick = function() {
           if (VC.items.length) break;
         }
         info.innerHTML = '<div class="wp-meta">✔ <b>' + esc(brFull || '거래처 미확인') + '</b>' + (VC.date ? ' · 배송일 ' + esc(VC.date) : '') + ' · 명세번호 ' + esc(no) + ' · 품목 ' + VC.items.length + '개 <a href="/office/order/order/' + esc(no) + '" target="_blank" style="color:#1f4e78;text-decoration:underline;font-size:11.5px">원본 열기</a></div>';
+        /* 배송기사 매핑 — 거래처 담당코스 → 배송기사 관리에서 기사·연락처 */
+        VC.drv = '';
+        var dvBox = document.createElement('div');
+        dvBox.className = 'wp-meta'; dvBox.style.marginTop = '4px';
+        dvBox.innerHTML = '<span style="color:#94a3b8">배송기사 확인 중…</span>';
+        info.appendChild(dvBox);
+        vocFindDriver(got['거래처'] || brFull).then(function(d) {
+          if (!d || (!d.course && !d.name)) { dvBox.innerHTML = '<span style="color:#94a3b8">배송기사: 자동 매핑 실패 — 담당코스를 못 찾았어요</span>'; return; }
+          VC.drv = (d.course || '-') + ' / ' + (d.name || '기사 미매핑') + (d.phone ? ' / ' + d.phone : '');
+          dvBox.innerHTML = '🚚 <b>배송담당</b> ' + esc(d.course || '-') + ' · ' + esc(d.name || '기사 미확인') + (d.phone ? ' · <a href="tel:' + esc(d.phone) + '" style="color:#1f4e78;font-weight:700">' + esc(d.phone) + '</a>' : '');
+        });
         if (!VC.items.length) {
           ibox.innerHTML = '<div style="color:#b45309;font-size:12px;padding:4px 0">품목 표를 자동으로 읽지 못했어요 — 클레임 내용에 품목·수량을 직접 적어주세요.</div>';
           return;
@@ -7357,6 +7411,7 @@ document.getElementById('__wpSave').onclick = function() {
       var parts = ['VOC유형: ' + typ];
       if (VC.no) parts.push('주문번호: ' + VC.no);
       if (VC.date) parts.push('배송일: ' + VC.date);
+      if (VC.drv) parts.push('배송담당: ' + VC.drv);
       if (picked.length) parts.push('품목: ' + picked.join(', '));
       parts.push('내용: ' + body);
       if (ask) parts.push('요청: ' + ask);
