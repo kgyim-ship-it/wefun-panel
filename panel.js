@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.27 15:47';
+  var VERSION = '26.08.27 15:57';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -7298,26 +7298,28 @@ document.getElementById('__wpSave').onclick = function() {
         var brFull = (got['기업'] && got['거래처']) ? (got['기업'] + ' - ' + got['거래처']) : (got['거래처'] || got['기업'] || '');
         VC.no = no; VC.date = got['배송일'] || '';
         if (brFull) document.getElementById('__wpVcBr').value = brFull;
-        /* 품목 테이블: 헤더에 바코드 + (상품명|품목명) 이 있는 표를 찾는다 */
+        /* 품목 테이블: 헤더가 '품번/상품명/수량'인 편집형 표 — 실측(#2268668) 기준
+           바코드는 품번 셀 텍스트(상품코드+바코드 병기), 상품명은 input value, 수량은 select value 에 있다. */
         VC.items = [];
         var tables = [].slice.call(doc.querySelectorAll('table'));
         for (var ti = 0; ti < tables.length; ti++) {
-          var ths = [].map.call(tables[ti].querySelectorAll('thead th, tr:first-child th, tr:first-child td'), function(x) { return (x.textContent || '').replace(/\s+/g, ''); });
+          var ths = [].map.call(tables[ti].querySelectorAll('thead th, thead td, tr:first-child th, tr:first-child td'), function(x) { return (x.textContent || '').replace(/\s+/g, ''); });
           var hj = ths.join('|');
-          if (hj.indexOf('바코드') < 0 || (hj.indexOf('상품명') < 0 && hj.indexOf('품목명') < 0)) continue;
-          var bIdx = -1, nIdx = -1, qIdx = -1;
-          ths.forEach(function(h, k) {
-            if (h === '바코드' && bIdx < 0) bIdx = k;
-            if ((h === '상품명' || h === '품목명') && nIdx < 0) nIdx = k;
-            if ((h.indexOf('주문') > -1 && h.indexOf('수량') > -1 && qIdx < 0) || (h === '수량' && qIdx < 0)) qIdx = k;
-          });
+          if ((hj.indexOf('품번') < 0 && hj.indexOf('바코드') < 0) || hj.indexOf('상품명') < 0 || hj.indexOf('수량') < 0) continue;
           [].forEach.call(tables[ti].querySelectorAll('tbody tr'), function(tr) {
-            var td = tr.querySelectorAll('td');
-            if (td.length <= Math.max(bIdx, nIdx)) return;
-            var bc = (td[bIdx] ? td[bIdx].textContent : '').replace(/\s+/g, '');
-            var nm = (td[nIdx] ? td[nIdx].textContent : '').replace(/\s+/g, ' ').trim();
-            if (!/^\d{8,14}$/.test(bc) || !nm) return;
-            var q = qIdx > -1 && td[qIdx] ? parseInt((td[qIdx].textContent || '').replace(/[^\d]/g, '')) || 1 : 1;
+            var rowTx = (tr.textContent || '');
+            var bc = (rowTx.match(/\b\d{13}\b/) || rowTx.match(/\b\d{10,14}\b/) || [''])[0];
+            var nm = '';
+            var inp = tr.querySelector('input[type=text]');
+            if (inp && (inp.value || '').trim()) nm = inp.value.trim();
+            if (!nm) { /* 폴백: 상품명 셀 텍스트에서 편집 버튼 문구 제거 후 사용 */
+              var td3 = tr.children[3] || tr.children[2];
+              nm = td3 ? (td3.textContent || '').replace(/수정|저장|취소/g, '').replace(/\s+/g, ' ').trim() : '';
+            }
+            var q = 1;
+            var sel = tr.querySelector('select');
+            if (sel && sel.value !== '' && !isNaN(Number(sel.value))) q = Number(sel.value);
+            if (!bc || !nm) return;
             VC.items.push({ bc: bc, nm: nm, q: q });
           });
           if (VC.items.length) break;
