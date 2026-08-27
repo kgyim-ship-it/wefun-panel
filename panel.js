@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.26 12:56';
+  var VERSION = '26.08.27 15:47';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -833,6 +833,7 @@
     requester: [
       ['find', '거래처 조회 · 요청'],
       ['newcode', '신규코드'],
+      ['voc', '배송 VOC'],
       ['mine', '내 요청 상태'],
       ['board_update', '업데이트 이력'],
       ['board_feature', '기능개선']
@@ -887,6 +888,7 @@
     else if (t === 'dispatch') viewDispatch();
     else if (t === 'ticket') viewTicket();
     else if (t === 'visits') viewVisits();
+    else if (t === 'voc') viewVoc();
     else if (t === 'newcode') viewNewCode();
     else if (t === 'board_update') viewBoard('update');
     else if (t === 'board_feature') viewBoard('feature');
@@ -2099,11 +2101,12 @@ document.getElementById('__wpSave').onclick = function() {
         cnt = 0;
       [].forEach.call(itemsBox.querySelectorAll('.pk-item'), function(card) {
         var price = Number((card.querySelector('.pk-price').value || '').replace(/[^\d.]/g, '')) || 0;
-        var inbox = Number((card.querySelector('.pk-inbox').value || '').replace(/[^\d.]/g, '')) || 0;
-        var boxes = Number((card.querySelector('.pk-boxes').value || '').replace(/[^\d.]/g, '')) || 0;
-        var ea = (inbox > 0 ? inbox : 1) * boxes;
+        /* 주문수량(EA)을 직접 입력받는다 — 입수×박스 환산은 혼선만 만들어서 폐기.
+           입수박스 값이 있으면 박스 환산치를 참고로만 보여준다. */
+        var ea = Number((card.querySelector('.pk-qty').value || '').replace(/[^\d.]/g, '')) || 0;
+        var inbox = Number(card.getAttribute('data-inbox') || 0);
         var sum = price * ea;
-        card.querySelector('.pk-ea').textContent = pkComma(ea);
+        card.querySelector('.pk-boxinfo').textContent = (inbox > 0 && ea > 0) ? (Math.round(ea / inbox * 100) / 100) + '박스 (입수 ' + inbox + ')' : '-';
         card.querySelector('.pk-sum').textContent = pkComma(sum);
         if (card.getAttribute('data-code') || card.getAttribute('data-barcode')) cnt++;
         total += sum;
@@ -2122,9 +2125,8 @@ document.getElementById('__wpSave').onclick = function() {
         '<div class="pk-meta" style="font-size:11.5px;color:#94a3b8;margin:6px 0">품목 미선택</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
         '<label style="font-size:11.5px;color:#475569">단가<br><input class="pk-price wp-inp" type="number" min="0" style="width:90px"></label>' +
-        '<label style="font-size:11.5px;color:#475569">입수수량<br><input class="pk-inbox wp-inp" type="number" min="0" style="width:80px"></label>' +
-        '<label style="font-size:11.5px;color:#475569">박스수량<br><input class="pk-boxes wp-inp" type="number" min="0" style="width:80px"></label>' +
-        '<span style="font-size:11.5px;color:#475569">주문수량(EA)<br><b class="pk-ea" style="font-size:14px;color:#1f4e78">0</b></span>' +
+        '<label style="font-size:11.5px;color:#475569">주문수량(EA)<br><input class="pk-qty wp-inp" type="number" min="0" style="width:90px"></label>' +
+        '<span style="font-size:11.5px;color:#475569">박스환산(참고)<br><b class="pk-boxinfo" style="font-size:12px;color:#94a3b8">-</b></span>' +
         '<span style="font-size:11.5px;color:#475569">합계<br><b class="pk-sum" style="font-size:14px;color:#0a7d47">0</b></span>' +
         '</div>';
       itemsBox.appendChild(card);
@@ -2140,8 +2142,10 @@ document.getElementById('__wpSave').onclick = function() {
         card.setAttribute('data-name', pre.name || '');
         nameEl.value = pre.name || '';
         if (pre.price) card.querySelector('.pk-price').value = pre.price;
-        if (pre.inbox) card.querySelector('.pk-inbox').value = pre.inbox;
-        if (pre.boxes) card.querySelector('.pk-boxes').value = pre.boxes;
+        if (pre.inbox) card.setAttribute('data-inbox', pre.inbox);
+        /* 구양식 호환: 주문수량(EA) 열이 있으면 그대로, 없으면 입수×박스로 환산해서 EA로 넣는다 */
+        var preQty = Number(pre.qty || 0) || ((Number(pre.inbox || 0) || 1) * (Number(pre.boxes || 0) || 0));
+        if (preQty) card.querySelector('.pk-qty').value = preQty;
         metaEl.innerHTML = '✔ <b style="color:#334155">' + esc(pre.name || '') + '</b> · 바코드 ' + esc(pre.barcode || '') + ' · ' + esc(pre.storage || '') + ' · ' + esc(pre.volume || '') + (pre.moq ? ' · 주문단위 ' + esc(pre.moq) : '');
         metaEl.style.color = '#0a7d47';
       }
@@ -2205,7 +2209,7 @@ document.getElementById('__wpSave').onclick = function() {
         card.remove();
         recalc();
       };
-      [].forEach.call(card.querySelectorAll('.pk-price,.pk-inbox,.pk-boxes'), function(i) {
+      [].forEach.call(card.querySelectorAll('.pk-price,.pk-qty'), function(i) {
         i.oninput = recalc;
       });
       recalc();
@@ -2261,6 +2265,7 @@ document.getElementById('__wpSave').onclick = function() {
           price: col('단가'),
           inbox: col('입수박스'),
           boxes: col('박스수량'),
+          qty: (col('주문수량(EA)') > -1 ? col('주문수량(EA)') : col('주문수량')),
           moq: col('주문단위')
         };
         // 기존 빈 카드 제거
@@ -2284,7 +2289,8 @@ document.getElementById('__wpSave').onclick = function() {
             moq: g('moq'),
             price: g('price').replace(/[^\d.]/g, ''),
             inbox: g('inbox').replace(/[^\d.]/g, ''),
-            boxes: g('boxes').replace(/[^\d.]/g, '')
+            boxes: g('boxes').replace(/[^\d.]/g, ''),
+            qty: g('qty').replace(/[^\d.]/g, '')
           });
           added++;
         }
@@ -2321,12 +2327,11 @@ document.getElementById('__wpSave').onclick = function() {
         var volume = card.getAttribute('data-volume') || '';
         var moq = card.getAttribute('data-moq') || '';
         var price = Number((card.querySelector('.pk-price').value || '').replace(/[^\d.]/g, '')) || 0;
-        var inbox = Number((card.querySelector('.pk-inbox').value || '').replace(/[^\d.]/g, '')) || 0;
-        var boxes = Number((card.querySelector('.pk-boxes').value || '').replace(/[^\d.]/g, '')) || 0;
-        var ea = (inbox > 0 ? inbox : 1) * boxes;
+        var ea = Number((card.querySelector('.pk-qty').value || '').replace(/[^\d.]/g, '')) || 0;
+        var inbox = Number(card.getAttribute('data-inbox') || 0);
         var sum = price * ea;
         total += sum;
-        lines.push('▸ ' + name + ' | 바코드 ' + barcode + ' | ' + storage + ' | ' + volume + ' | 단가 ' + pkComma(price) + '원 | 입수 ' + (inbox || '-') + ' | 박스 ' + (boxes || '-') + ' | 주문 ' + pkComma(ea) + 'EA | 합계 ' + pkComma(sum) + '원 | 주문단위 ' + (moq || '-'));
+        lines.push('▸ ' + name + ' | 바코드 ' + barcode + ' | ' + storage + ' | ' + volume + ' | 단가 ' + pkComma(price) + '원 | 입수 ' + (inbox || '-') + ' | 주문 ' + pkComma(ea) + 'EA | 합계 ' + pkComma(sum) + '원 | 주문단위 ' + (moq || '-'));
       });
       if (!lines.length) {
         toast(bad ? '품목을 검색해서 선택하세요' : '품목을 1개 이상 추가하세요', '#c0392b');
@@ -2611,7 +2616,7 @@ document.getElementById('__wpSave').onclick = function() {
     };
   var REV_GROUP = 'deliv';
   var REV_GROUPS = {
-    deliv: ['배송주기변경', '배송일정생성', '배송일정변경', '배송일정삭제', '배송메모', '배송시간문의'],
+    deliv: ['배송주기변경', '배송일정생성', '배송일정변경', '배송일정삭제', '배송메모', '배송시간문의', '배송VOC'],
     syn: ['신규코드발급', '주소변경', '거래처명변경', '담당자변경', '코스변경'],
     pick: ['수기피킹']
   };
@@ -3329,6 +3334,8 @@ document.getElementById('__wpSave').onclick = function() {
   }
 
   function runActionCore(it) {
+    /* 배송VOC: 오피스에 반영할 게 없다 — 확인·조치 후 완료하면 요청자에게 슬랙 회신만 나간다 */
+    if (it.action === '배송VOC') { return Promise.resolve('VOC 확인·조치 완료'); }
     if (/조식/.test(String(it.branchName || '')) && (it.action === '배송주기변경' || it.action === '배송일정생성' || it.action === '배송일정변경' || it.action === '배송일정삭제')) {
       return Promise.resolve('조식 건 · 위펀오피스 미반영 → 조식팀 일정반영 요청');
     }
@@ -7246,6 +7253,122 @@ document.getElementById('__wpSave').onclick = function() {
     document.getElementById('__wpSbC').onclick = function() {
       var tsv = '행\t작업\t거래처\t결과\t내용\n' + SBRES.map(function(x) { return x.join('\t'); }).join('\n');
       navigator.clipboard.writeText(tsv).then(function() { toast('결과 복사됨', '#0a7d47'); });
+    };
+  }
+
+  /* ---------- 배송 VOC (요청자용) ----------
+     누락·파손·유통기한·배송시간 클레임을 슬랙 수기 대신 정형 접수한다.
+     주문번호(명세번호)를 넣으면 오피스 거래명세에서 거래처·품목을 자동으로 불러오고,
+     품목을 체크해서 제출하면 기존 요청 흐름(슬랙 접수 + 관리자 검토)에 들어간다. */
+  function viewVoc() {
+    VIEW.innerHTML = '' +
+      '<div class="wp-meta" style="margin-bottom:8px">누락·파손·유통기한·배송시간 VOC를 접수합니다. <b>주문번호</b>를 넣으면 명세에서 품목을 자동으로 불러와요. (주문번호를 모르면 비워두고 거래처명·내용만 적어도 접수됩니다)</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">' +
+      '<label style="font-size:11.5px;color:#475569">VOC 유형<br><select id="__wpVcT" class="wp-inp" style="min-height:38px;padding:7px 9px"><option>누락</option><option>파손</option><option>유통기한</option><option>배송시간</option><option>기타</option></select></label>' +
+      '<label style="font-size:11.5px;color:#475569">주문번호(명세번호)<br><input id="__wpVcNo" class="wp-inp" placeholder="예: 2274453" style="width:140px"></label>' +
+      '<button id="__wpVcGo" class="wp-btn pri" style="padding:9px 14px">명세 불러오기</button>' +
+      '</div>' +
+      '<div id="__wpVcInfo"></div>' +
+      '<div id="__wpVcItems"></div>' +
+      '<div style="margin-top:8px"><label style="font-size:11.5px;color:#475569">거래처명 (명세를 불러오면 자동 입력)<br><input id="__wpVcBr" class="wp-inp" style="width:340px"></label></div>' +
+      '<div style="margin-top:8px"><label style="font-size:11.5px;color:#475569">고객 클레임 내용<br><textarea id="__wpVcBody" class="wp-inp" rows="3" style="width:100%;max-width:640px" placeholder="예: 4층 거래처 저지방우유 1개 누락 문의"></textarea></label></div>' +
+      '<div style="margin-top:6px"><label style="font-size:11.5px;color:#475569">물류팀 요청사항<br><textarea id="__wpVcAsk" class="wp-inp" rows="2" style="width:100%;max-width:640px" placeholder="예: 누락 여부 확인 후 재배송 가능한지 회신 부탁드립니다"></textarea></label></div>' +
+      '<div style="margin-top:10px"><button id="__wpVcSend" class="wp-btn ok" style="padding:10px 18px">VOC 접수</button></div>';
+    var VC = { no: '', date: '', items: [] };
+
+    document.getElementById('__wpVcGo').onclick = function() {
+      var no = (document.getElementById('__wpVcNo').value || '').replace(/[^\d]/g, '');
+      if (!no) { toast('주문번호를 입력하세요', '#c0392b'); return; }
+      var info = document.getElementById('__wpVcInfo');
+      var ibox = document.getElementById('__wpVcItems');
+      info.innerHTML = '<div style="color:#94a3b8;padding:6px 0">명세 불러오는 중…</div>'; ibox.innerHTML = '';
+      fetch('/office/order/order/' + no).then(function(rs) {
+        if (!rs.ok) throw new Error('명세를 찾지 못함 (HTTP ' + rs.status + ') — 주문번호 확인');
+        return rs.text();
+      }).then(function(html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        /* 거래처·배송일: 라벨 셀 → 다음 셀 (차량고지서와 동일 방식) */
+        var cells = [].slice.call(doc.querySelectorAll('td,th'));
+        var got = {};
+        var WANT = { '기업': 1, '거래처': 1, '배송일': 1, '서비스': 1 };
+        cells.forEach(function(c, ix) {
+          var k = (c.textContent || '').replace(/\s+/g, '');
+          if (WANT[k] && !(k in got) && cells[ix + 1]) got[k] = (cells[ix + 1].textContent || '').replace(/\s+/g, ' ').trim();
+        });
+        var brFull = (got['기업'] && got['거래처']) ? (got['기업'] + ' - ' + got['거래처']) : (got['거래처'] || got['기업'] || '');
+        VC.no = no; VC.date = got['배송일'] || '';
+        if (brFull) document.getElementById('__wpVcBr').value = brFull;
+        /* 품목 테이블: 헤더에 바코드 + (상품명|품목명) 이 있는 표를 찾는다 */
+        VC.items = [];
+        var tables = [].slice.call(doc.querySelectorAll('table'));
+        for (var ti = 0; ti < tables.length; ti++) {
+          var ths = [].map.call(tables[ti].querySelectorAll('thead th, tr:first-child th, tr:first-child td'), function(x) { return (x.textContent || '').replace(/\s+/g, ''); });
+          var hj = ths.join('|');
+          if (hj.indexOf('바코드') < 0 || (hj.indexOf('상품명') < 0 && hj.indexOf('품목명') < 0)) continue;
+          var bIdx = -1, nIdx = -1, qIdx = -1;
+          ths.forEach(function(h, k) {
+            if (h === '바코드' && bIdx < 0) bIdx = k;
+            if ((h === '상품명' || h === '품목명') && nIdx < 0) nIdx = k;
+            if ((h.indexOf('주문') > -1 && h.indexOf('수량') > -1 && qIdx < 0) || (h === '수량' && qIdx < 0)) qIdx = k;
+          });
+          [].forEach.call(tables[ti].querySelectorAll('tbody tr'), function(tr) {
+            var td = tr.querySelectorAll('td');
+            if (td.length <= Math.max(bIdx, nIdx)) return;
+            var bc = (td[bIdx] ? td[bIdx].textContent : '').replace(/\s+/g, '');
+            var nm = (td[nIdx] ? td[nIdx].textContent : '').replace(/\s+/g, ' ').trim();
+            if (!/^\d{8,14}$/.test(bc) || !nm) return;
+            var q = qIdx > -1 && td[qIdx] ? parseInt((td[qIdx].textContent || '').replace(/[^\d]/g, '')) || 1 : 1;
+            VC.items.push({ bc: bc, nm: nm, q: q });
+          });
+          if (VC.items.length) break;
+        }
+        info.innerHTML = '<div class="wp-meta">✔ <b>' + esc(brFull || '거래처 미확인') + '</b>' + (VC.date ? ' · 배송일 ' + esc(VC.date) : '') + ' · 명세번호 ' + esc(no) + ' · 품목 ' + VC.items.length + '개 <a href="/office/order/order/' + esc(no) + '" target="_blank" style="color:#1f4e78;text-decoration:underline;font-size:11.5px">원본 열기</a></div>';
+        if (!VC.items.length) {
+          ibox.innerHTML = '<div style="color:#b45309;font-size:12px;padding:4px 0">품목 표를 자동으로 읽지 못했어요 — 클레임 내용에 품목·수량을 직접 적어주세요.</div>';
+          return;
+        }
+        ibox.innerHTML = '<div style="font-size:12px;color:#475569;margin:6px 0 4px"><b>문제 품목 체크</b> (수량 = 누락/파손 수량으로 수정)</div>' +
+          '<div style="max-height:260px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;max-width:640px">' +
+          VC.items.map(function(it2, k2) {
+            return '<label style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:12.5px;border-bottom:1px solid #f8fafc"><input type="checkbox" class="__wpVcCk" data-i="' + k2 + '"><span style="flex:1">' + esc(it2.nm) + ' <span style="color:#94a3b8;font-size:11px">' + esc(it2.bc) + ' · 주문 ' + it2.q + '개</span></span><input type="number" class="__wpVcQ wp-inp" data-i="' + k2 + '" value="' + it2.q + '" min="1" style="width:64px;padding:4px 6px"></label>';
+          }).join('') + '</div>';
+      }).catch(function(e) {
+        info.innerHTML = '<div style="color:#b00;padding:6px 0">' + esc((e && e.message) || e) + '</div>';
+      });
+    };
+
+    document.getElementById('__wpVcSend').onclick = function() {
+      if (!REQ.email) { alert('요청자 정보를 아직 못 불러왔어요. 잠시 후 다시 시도하세요.'); return; }
+      var typ = document.getElementById('__wpVcT').value;
+      var br = (document.getElementById('__wpVcBr').value || '').trim();
+      var body = (document.getElementById('__wpVcBody').value || '').trim();
+      var ask = (document.getElementById('__wpVcAsk').value || '').trim();
+      if (!br) { toast('거래처명을 입력하세요 (또는 명세 불러오기)', '#c0392b'); return; }
+      if (!body) { toast('클레임 내용을 입력하세요', '#c0392b'); return; }
+      var picked = [];
+      [].forEach.call(document.querySelectorAll('.__wpVcCk:checked'), function(c) {
+        var k2 = Number(c.getAttribute('data-i'));
+        var qEl = document.querySelector('.__wpVcQ[data-i="' + k2 + '"]');
+        var it2 = VC.items[k2];
+        if (it2) picked.push(it2.nm + '(' + it2.bc + ') ×' + ((qEl && qEl.value) || it2.q));
+      });
+      var parts = ['VOC유형: ' + typ];
+      if (VC.no) parts.push('주문번호: ' + VC.no);
+      if (VC.date) parts.push('배송일: ' + VC.date);
+      if (picked.length) parts.push('품목: ' + picked.join(', '));
+      parts.push('내용: ' + body);
+      if (ask) parts.push('요청: ' + ask);
+      var btn = this; btn.disabled = true; btn.textContent = '접수 중…';
+      submitReq({ ts: now(), dept: REQ.dept, name: REQ.name, email: REQ.email, action: '배송VOC', hot: '', cold: '', branchId: '', branchName: br, detail: parts.join(' · ') })
+        .then(function() {
+          btn.disabled = false; btn.textContent = 'VOC 접수';
+          toast('✓ VOC 접수 완료 — 슬랙 알림 발송 · 관리자 검토 대기', '#0a7d47');
+          document.getElementById('__wpVcBody').value = ''; document.getElementById('__wpVcAsk').value = '';
+          [].forEach.call(document.querySelectorAll('.__wpVcCk:checked'), function(c) { c.checked = false; });
+        }).catch(function(e) {
+          btn.disabled = false; btn.textContent = 'VOC 접수';
+          alert('접수 실패: ' + ((e && e.message) || e));
+        });
     };
   }
 
