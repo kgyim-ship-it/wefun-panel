@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.08.27 16:02';
+  var VERSION = '26.09.01 18:28';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -338,6 +338,21 @@
         label: '변경 사유',
         type: 'text'
       }]
+    },
+    '피킹방법변경': {
+      passthru: true,
+      d1: true,
+      fields: [{
+        k: '피킹방식',
+        label: '피킹방식',
+        type: 'select',
+        opts: ['보냉백', '빵박스'],
+        req: true
+      }, {
+        k: '사유',
+        label: '변경 사유',
+        type: 'text'
+      }]
     }
   };
 
@@ -348,6 +363,8 @@
       if (b === '신규코드발급') return 1;
       if (a === '배송시간문의') return 1;      /* 조회성 문의라 맨 끝 */
       if (b === '배송시간문의') return -1;
+      if (a === '피킹방법변경') return 1;      /* 코스변경 바로 아래 */
+      if (b === '피킹방법변경') return -1;
       if (a === '코스변경') return 1;
       if (b === '코스변경') return -1;
       return 0;
@@ -2617,7 +2634,7 @@ document.getElementById('__wpSave').onclick = function() {
   var REV_GROUP = 'deliv';
   var REV_GROUPS = {
     deliv: ['배송주기변경', '배송일정생성', '배송일정변경', '배송일정삭제', '배송메모', '배송시간문의', '배송VOC'],
-    syn: ['신규코드발급', '주소변경', '거래처명변경', '담당자변경', '코스변경'],
+    syn: ['신규코드발급', '주소변경', '거래처명변경', '담당자변경', '코스변경', '피킹방법변경'],
     pick: ['수기피킹']
   };
 
@@ -2643,7 +2660,7 @@ document.getElementById('__wpSave').onclick = function() {
     }).join('') + '</select>';
     VIEW.innerHTML = '<div style="margin-bottom:10px"><div style="margin-bottom:8px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">' + filters.map(function(f) {
       return '<button class="wp-btn ' + (f === REV_STATUS ? 'pri' : 'gh') + ' __wpFt" data-f="' + f + '" style="padding:7px 13px">' + f + '</button>';
-    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 ' + (group === 'pick' ? '수기피킹' : '코드전달') + ' 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + (ALLW ? '<div style="margin-top:7px;padding:9px 12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E;line-height:1.65"><b>대기 — 아직 처리 안 된 요청 전부입니다.</b><br>기간과 상관없이 나옵니다. 어제·지난주에 들어온 건도 처리할 때까지 계속 보입니다.</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' + (ALLW ? '<button id="__wpBulkAp" class="wp-btn ok" style="padding:7px 13px">✓ 일괄승인</button><button id="__wpBulkRj" class="wp-btn dg" style="padding:7px 13px">일괄반려</button><span style="color:#cbd5e1">|</span>' : '') + '<button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
+    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 ' + (group === 'pick' ? '수기피킹' : '코드전달') + ' 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + (ALLW ? '<div style="margin-top:7px;padding:9px 12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E;line-height:1.65"><b>대기 — 아직 처리 안 된 요청 전부입니다.</b><br>기간과 상관없이 나옵니다. 어제·지난주에 들어온 건도 처리할 때까지 계속 보입니다.</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' + (ALLW ? '<button id="__wpBulkAp" class="wp-btn ok" style="padding:7px 13px">✓ 일괄승인</button><button id="__wpBulkRj" class="wp-btn dg" style="padding:7px 13px">일괄반려</button><span style="color:#cbd5e1">|</span>' : '') + '<button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스·피킹방법변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
     document.getElementById('__wpRF').value = REV_DR.from;
     document.getElementById('__wpRT').value = REV_DR.to;
     if (NODATE) {  /* 대기·미전달은 기간 개념이 없다 — 날짜칸 잠금 */
@@ -2795,7 +2812,7 @@ document.getElementById('__wpSave').onclick = function() {
   }
 
   function codeGubun(action) {
-    return action === '신규코드발급' ? '신규' : action === '주소변경' ? '주소변경' : action === '거래처명변경' ? '거래처명변경' : action === '담당자변경' ? '담당자변경' : action === '코스변경' ? '코스변경' : '';
+    return action === '신규코드발급' ? '신규' : action === '주소변경' ? '주소변경' : action === '거래처명변경' ? '거래처명변경' : action === '담당자변경' ? '담당자변경' : action === '코스변경' ? '코스변경' : action === '피킹방법변경' ? '피킹방법변경' : '';
   }
 
   function codeRow(it) {
@@ -2841,6 +2858,11 @@ document.getElementById('__wpSave').onclick = function() {
       var nco = detailGet(it.detail, '변경코스') || '기존';
       return Promise.resolve([it.branchName || '', '기존', nco, '코스변경', phone, it.hot || '', it.cold || '']);
     }
+    if (it.action === '피킹방법변경') {
+      /* 5열은 택배건이면 수령인 연락처, 피킹방법변경이면 보냉백/빵박스가 들어간다 */
+      var pkw = detailGet(it.detail, '피킹방식') || '';
+      return Promise.resolve([it.branchName || '', '기존', '기존', '피킹방법변경', pkw, it.hot || '', it.cold || '']);
+    }
     var nmC = it.branchName || '';
     if (it.action === '거래처명변경') { var nnC = detailGet(it.detail, '변경거래처명'); if (nnC) nmC = nnC; }
     // 거래처명변경·담당자변경 등
@@ -2852,7 +2874,7 @@ document.getElementById('__wpSave').onclick = function() {
       return codeGubun(it.action);
     });
     if (!targets.length) {
-      toast('코드전달 대상(신규·주소변경·거래처명변경·담당자변경)이 없습니다', '#c0392b');
+      toast('코드전달 대상(신규·주소·거래처명·담당자·코스·피킹방법변경)이 없습니다', '#c0392b');
       return;
     }
     /* codeRow 는 신규건일 때 오피스 거래처 페이지를 통째로 받아온다.
@@ -2869,8 +2891,8 @@ document.getElementById('__wpSave').onclick = function() {
       targets.forEach(function(it, i) {
         if (it.action === '신규코드발급') { newData.push(all[i]); } else { changeData.push(all[i]); }
       });
-      var head1 = ['거래처명', '주소', '코스', '구분', '담당자번호', '상온코드', '저온코드'];
-      var head2 = ['거래처명', '주소', '코스', '구분', '담당자번호', '상온코드', '저온코드'];
+      var head1 = ['거래처명', '주소', '코스', '구분', '피킹방법 / 택배수령인', '상온코드', '저온코드'];
+      var head2 = ['거래처명', '주소', '코스', '구분', '피킹방법 / 택배수령인', '상온코드', '저온코드'];
       var rows = [];
       if (changeData.length) {
         rows.push(head1);
@@ -3551,7 +3573,7 @@ document.getElementById('__wpSave').onclick = function() {
 
   function approve(it, btn) {
     if (!it || btn.disabled) return;
-    var passthru = (it.action === '주소변경' || it.action === '거래처명변경' || it.action === '담당자변경');
+    var passthru = (it.action === '주소변경' || it.action === '거래처명변경' || it.action === '담당자변경' || it.action === '피킹방법변경');
     if (it.action === '신규코드발급') {
       var drv = prompt('우린배송담당(코스)을 입력하세요.\n거래처 배송정보의 우린배송담당에 반영됩니다.', '');
       if (drv === null) return;
