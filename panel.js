@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.01 18:28';
+  var VERSION = '26.09.01 19:05';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -7284,19 +7284,26 @@ document.getElementById('__wpSave').onclick = function() {
      품목을 체크해서 제출하면 기존 요청 흐름(슬랙 접수 + 관리자 검토)에 들어간다. */
   function viewVoc() {
     VIEW.innerHTML = '' +
-      '<div class="wp-meta" style="margin-bottom:8px">누락·파손·유통기한·배송시간 VOC를 접수합니다. <b>주문번호</b>를 넣으면 명세에서 품목을 자동으로 불러와요. (주문번호를 모르면 비워두고 거래처명·내용만 적어도 접수됩니다)</div>' +
+      '<div class="wp-meta" style="margin-bottom:8px">누락·파손·유통기한·배송시간 VOC를 접수합니다. <b>거래처를 먼저 선택</b>하면 최근 거래명세가 일자별로 나옵니다. 명세를 고르면 품목을 자동으로 불러와요.</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">' +
       '<label style="font-size:11.5px;color:#475569">VOC 유형<br><select id="__wpVcT" class="wp-inp" style="min-height:38px;padding:7px 9px"><option>누락</option><option>파손</option><option>유통기한</option><option>배송시간</option><option>기타</option></select></label>' +
-      '<label style="font-size:11.5px;color:#475569">주문번호(명세번호)<br><input id="__wpVcNo" class="wp-inp" placeholder="예: 2274453" style="width:140px"></label>' +
-      '<button id="__wpVcGo" class="wp-btn pri" style="padding:9px 14px">명세 불러오기</button>' +
+      '<label style="font-size:11.5px;color:#475569">거래처 검색<br><input id="__wpVcKw" class="wp-inp" placeholder="거래처명 일부 (예: 엔픽셀)" style="width:230px"></label>' +
+      '<button id="__wpVcFind" class="wp-btn pri" style="padding:9px 14px">거래처 찾기</button>' +
+      '<span style="color:#cbd5e1">|</span>' +
+      '<label style="font-size:11.5px;color:#475569">주문번호 직접입력<br><input id="__wpVcNo" class="wp-inp" placeholder="예: 2274453" style="width:130px"></label>' +
+      '<button id="__wpVcGo" class="wp-btn gh" style="padding:9px 14px">명세 불러오기</button>' +
       '</div>' +
+      '<div id="__wpVcBrList"></div>' +
+      '<div id="__wpVcPicked"></div>' +
+      '<div id="__wpVcStmts"></div>' +
       '<div id="__wpVcInfo"></div>' +
       '<div id="__wpVcItems"></div>' +
-      '<div style="margin-top:8px"><label style="font-size:11.5px;color:#475569">거래처명 (명세를 불러오면 자동 입력)<br><input id="__wpVcBr" class="wp-inp" style="width:340px"></label></div>' +
+      '<div style="margin-top:8px"><label style="font-size:11.5px;color:#475569">거래처명 (선택하면 자동 입력)<br><input id="__wpVcBr" class="wp-inp" style="width:340px"></label></div>' +
       '<div style="margin-top:8px"><label style="font-size:11.5px;color:#475569">고객 클레임 내용<br><textarea id="__wpVcBody" class="wp-inp" rows="3" style="width:100%;max-width:640px" placeholder="예: 4층 거래처 저지방우유 1개 누락 문의"></textarea></label></div>' +
       '<div style="margin-top:6px"><label style="font-size:11.5px;color:#475569">물류팀 요청사항<br><textarea id="__wpVcAsk" class="wp-inp" rows="2" style="width:100%;max-width:640px" placeholder="예: 누락 여부 확인 후 재배송 가능한지 회신 부탁드립니다"></textarea></label></div>' +
       '<div style="margin-top:10px"><button id="__wpVcSend" class="wp-btn ok" style="padding:10px 18px">VOC 접수</button></div>';
-    var VC = { no: '', date: '', items: [], drv: '' };
+    /* br* = 선택된 거래처(코드까지 들고 간다 → 검토탭에서 거래처 클릭 가능) */
+    var VC = { no: '', date: '', items: [], drv: '', brId: '', brName: '', hot: '', cold: '', course: '' };
 
     /* 배송기사 관리 목록 (코스→기사·연락처) — 패널 세션 동안 1회만 로드 */
     function vocDrvList() {
@@ -7318,7 +7325,17 @@ document.getElementById('__wpSave').onclick = function() {
       return window.__wpVocDrvP;
     }
     function vocNormCourse(c) { return String(c || '').replace(/\s+/g, '').replace(/^(주간|야간)0+(\d)/, '$1$2'); }
-    /* 거래처명 → 담당코스 → 기사·연락처. 실패해도 조용히 넘어간다(VOC 접수 자체는 막지 않음) */
+
+    /* 담당코스 → 기사·연락처 (거래처가 이미 정해진 뒤에 쓴다) */
+    function vocDriverByCourse(course) {
+      if (!course) return Promise.resolve({ course: '', name: '', phone: '' });
+      return vocDrvList().then(function(ds) {
+        var cn = vocNormCourse(course), hit = null;
+        ds.forEach(function(d) { if (!hit && d.courses.some(function(c) { return vocNormCourse(c) === cn; })) hit = d; });
+        return { course: course, name: hit ? hit.name : '', phone: hit ? hit.phone : '' };
+      }).catch(function() { return { course: course, name: '', phone: '' }; });
+    }
+    /* 거래처명만 아는 경우(주문번호 직접입력 경로)의 폴백 */
     function vocFindDriver(brName) {
       var kw = String(brName || '').replace(/^\([^)]*\)/, '').trim();
       if (!kw) return Promise.resolve(null);
@@ -7329,20 +7346,130 @@ document.getElementById('__wpSave').onclick = function() {
         if (!list || !list.length) return null;
         var exact = list.filter(function(x) { return x.name === brName || x.name === kw; });
         var br = exact[0] || list[0];
-        if (!br.course) return { course: '', name: '', phone: '' };
-        return vocDrvList().then(function(ds) {
-          var cn = vocNormCourse(br.course);
-          var hit = null;
-          ds.forEach(function(d) {
-            if (!hit && d.courses.some(function(c) { return vocNormCourse(c) === cn; })) hit = d;
-          });
-          return { course: br.course, name: hit ? hit.name : '', phone: hit ? hit.phone : '' };
-        });
+        if (!VC.brId) { VC.brId = br.id || ''; VC.hot = br.hot || ''; VC.cold = br.cold || ''; VC.course = br.course || ''; }
+        return vocDriverByCourse(br.course);
       }).catch(function() { return null; });
     }
 
-    document.getElementById('__wpVcGo').onclick = function() {
-      var no = (document.getElementById('__wpVcNo').value || '').replace(/[^\d]/g, '');
+    function vcSetDriverBox(box, d) {
+      if (!d || (!d.course && !d.name)) { box.innerHTML = '<span style="color:#94a3b8">배송기사: 자동 매핑 실패 — 담당코스를 못 찾았어요</span>'; return; }
+      VC.drv = (d.course || '-') + ' / ' + (d.name || '기사 미매핑') + (d.phone ? ' / ' + d.phone : '');
+      box.innerHTML = '🚚 <b>배송담당</b> ' + esc(d.course || '-') + ' · ' + esc(d.name || '기사 미확인') + (d.phone ? ' · <a href="tel:' + esc(d.phone) + '" style="color:#1f4e78;font-weight:700">' + esc(d.phone) + '</a>' : '');
+    }
+
+    /* ---------- 1) 거래처 찾기 ---------- */
+    function vcFindBranches() {
+      var kw = (document.getElementById('__wpVcKw').value || '').trim();
+      if (!kw) { toast('거래처명을 입력하세요', '#c0392b'); return; }
+      var box = document.getElementById('__wpVcBrList');
+      box.innerHTML = '<div style="color:#94a3b8;padding:6px 0">거래처 찾는 중…</div>';
+      document.getElementById('__wpVcStmts').innerHTML = '';
+      document.getElementById('__wpVcPicked').innerHTML = '';
+      searchRich(kw).then(function(list) {
+        if (!list.length) { box.innerHTML = '<div style="color:#b45309;font-size:12px;padding:4px 0">일치하는 거래처가 없습니다.</div>'; return; }
+        window.__wpVcBrCache = list;
+        box.innerHTML = '<div style="font-size:12px;color:#475569;margin:6px 0 4px"><b>거래처 선택</b> (' + list.length + '건)</div>' +
+          '<div style="max-height:220px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;max-width:760px">' +
+          list.map(function(b, i) {
+            return '<div class="__wpVcBrPick" data-i="' + i + '" style="padding:7px 11px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:12.5px;display:flex;gap:10px;align-items:center">' +
+              '<span style="flex:1"><b>' + esc(b.name) + '</b>' + (b.addr ? ' <span style="color:#94a3b8;font-size:11px">' + esc(b.addr) + '</span>' : '') + '</span>' +
+              '<span style="color:#64748b;font-size:11px;white-space:nowrap">' + esc(b.course || '코스-') + '</span>' +
+              '<span style="color:#94a3b8;font-size:11px;white-space:nowrap">' + esc(b.cc || '-') + '</span></div>';
+          }).join('') + '</div>';
+        [].forEach.call(box.querySelectorAll('.__wpVcBrPick'), function(el) {
+          el.onmouseenter = function() { el.style.background = '#f8fafc'; };
+          el.onmouseleave = function() { el.style.background = ''; };
+          el.onclick = function() { vcPickBranch(window.__wpVcBrCache[Number(el.getAttribute('data-i'))]); };
+        });
+      }).catch(function(e) {
+        box.innerHTML = '<div style="color:#b00;padding:6px 0">' + esc((e && e.message) || e) + '</div>';
+      });
+    }
+
+    /* ---------- 2) 거래처 선택 → 최근 명세 일자별 ---------- */
+    function vcPickBranch(b) {
+      if (!b) return;
+      VC.brId = b.id || ''; VC.brName = b.name || ''; VC.hot = b.hot || ''; VC.cold = b.cold || ''; VC.course = b.course || '';
+      VC.no = ''; VC.date = ''; VC.items = []; VC.drv = '';
+      document.getElementById('__wpVcBr').value = b.name || '';
+      document.getElementById('__wpVcBrList').innerHTML = '';
+      document.getElementById('__wpVcInfo').innerHTML = '';
+      document.getElementById('__wpVcItems').innerHTML = '';
+      var pk = document.getElementById('__wpVcPicked');
+      pk.innerHTML = '<div class="wp-meta" style="margin-top:2px">✔ <b>' + esc(b.name) + '</b>' +
+        (b.addr ? ' · ' + esc(b.addr) : '') + ' · 코스 ' + esc(b.course || '-') + ' · 코드 ' + esc(b.cc || '-') +
+        ' <button id="__wpVcReset" class="wp-btn gh" style="padding:3px 9px;font-size:11px;margin-left:6px">거래처 바꾸기</button></div>' +
+        '<div id="__wpVcDrv" class="wp-meta" style="margin-top:4px"><span style="color:#94a3b8">배송기사 확인 중…</span></div>';
+      document.getElementById('__wpVcReset').onclick = function() {
+        VC.brId = ''; VC.brName = ''; VC.hot = ''; VC.cold = ''; VC.course = '';
+        pk.innerHTML = ''; document.getElementById('__wpVcStmts').innerHTML = '';
+        document.getElementById('__wpVcInfo').innerHTML = ''; document.getElementById('__wpVcItems').innerHTML = '';
+        document.getElementById('__wpVcBr').value = '';
+        vcFindBranches();
+      };
+      vocDriverByCourse(b.course).then(function(d) { vcSetDriverBox(document.getElementById('__wpVcDrv'), d); });
+      vcLoadStmts(b.name, 30);
+    }
+
+    /* 최근 N일 거래명세 목록 (거래처명 키워드 + 배송일 범위) */
+    function vcLoadStmts(brName, days) {
+      var box = document.getElementById('__wpVcStmts');
+      box.innerHTML = '<div style="color:#94a3b8;padding:6px 0">최근 거래명세 불러오는 중…</div>';
+      var e = kstDate(), b0 = new Date(e.getTime() - (days - 1) * 86400000);
+      function iso(d) { var p = function(n) { return ('0' + n).slice(-2); }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+      var kw = String(brName || '').replace(/^\([^)]*\)/, '').trim() || brName;
+      var u = '/office/order/order?searchYN=Y&deliveryDateBegin=' + iso(b0) + '&deliveryDateEnd=' + iso(e) +
+        '&searchKeyword=' + encodeURIComponent(kw) + '&size=100&page=1';
+      fetch(u).then(function(r) { return r.text(); }).then(function(t) {
+        var doc = new DOMParser().parseFromString(t, 'text/html');
+        var rows = [].slice.call(doc.querySelectorAll('table.orderSearchTable tbody tr'));
+        var list = [];
+        rows.forEach(function(tr) {
+          var td = tr.querySelectorAll('td');
+          if (td.length < 15) return;
+          var no = (td[1].textContent || '').replace(/[^\d]/g, '');
+          var a = td[3].querySelector('a');
+          var nm = (a ? a.textContent : (td[3].textContent.split('\n')[0] || '')).replace(/\s+/g, ' ').trim();
+          var dt = (td[12].textContent || '').trim();
+          var st = (td[14].textContent || '').trim();
+          var sku = (td[16] ? td[16].textContent : '').trim();
+          var qty = (td[17] ? td[17].textContent : '').trim();
+          if (!no) return;
+          list.push({ no: no, nm: nm, dt: dt, st: st, sku: sku, qty: qty });
+        });
+        list.sort(function(x, y) { return x.dt < y.dt ? 1 : x.dt > y.dt ? -1 : 0; });
+        window.__wpVcStList = list;
+        if (!list.length) {
+          box.innerHTML = '<div style="color:#b45309;font-size:12px;padding:4px 0">최근 ' + days + '일 거래명세가 없습니다. 주문번호를 직접 넣거나, 품목 없이 내용만 적어 접수하세요.</div>';
+          return;
+        }
+        box.innerHTML = '<div style="font-size:12px;color:#475569;margin:8px 0 4px"><b>거래명세 선택</b> — 최근 ' + days + '일 · ' + list.length + '건 <span style="color:#94a3b8;font-size:11px">(클릭하면 품목을 불러옵니다)</span></div>' +
+          '<div style="max-height:240px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;max-width:760px">' +
+          list.map(function(x, i) {
+            return '<div class="__wpVcStPick" data-i="' + i + '" style="padding:7px 11px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:12.5px;display:flex;gap:10px;align-items:center">' +
+              '<span style="font-weight:700;white-space:nowrap;color:#1f4e78">' + esc(x.dt || '-') + '</span>' +
+              '<span style="flex:1">' + esc(x.nm) + '</span>' +
+              '<span style="color:#94a3b8;font-size:11px;white-space:nowrap">SKU ' + esc(x.sku || '-') + ' · ' + esc(x.qty || '-') + '개</span>' +
+              '<span style="color:#64748b;font-size:11px;white-space:nowrap">' + esc(x.st) + '</span>' +
+              '<span style="color:#cbd5e1;font-size:11px;white-space:nowrap">#' + esc(x.no) + '</span></div>';
+          }).join('') + '</div>';
+        [].forEach.call(box.querySelectorAll('.__wpVcStPick'), function(el) {
+          el.onmouseenter = function() { el.style.background = '#f8fafc'; };
+          el.onmouseleave = function() { el.style.background = ''; };
+          el.onclick = function() {
+            var x = window.__wpVcStList[Number(el.getAttribute('data-i'))];
+            document.getElementById('__wpVcNo').value = x.no;
+            vcLoadOrder(x.no);
+          };
+        });
+      }).catch(function(e2) {
+        box.innerHTML = '<div style="color:#b00;padding:6px 0">거래명세 조회 실패: ' + esc((e2 && e2.message) || e2) + '</div>';
+      });
+    }
+
+    /* ---------- 3) 명세 → 품목 ---------- */
+    function vcLoadOrder(no) {
+      no = String(no || '').replace(/[^\d]/g, '');
       if (!no) { toast('주문번호를 입력하세요', '#c0392b'); return; }
       var info = document.getElementById('__wpVcInfo');
       var ibox = document.getElementById('__wpVcItems');
@@ -7352,7 +7479,6 @@ document.getElementById('__wpSave').onclick = function() {
         return rs.text();
       }).then(function(html) {
         var doc = new DOMParser().parseFromString(html, 'text/html');
-        /* 거래처·배송일: 라벨 셀 → 다음 셀 (차량고지서와 동일 방식) */
         var cells = [].slice.call(doc.querySelectorAll('td,th'));
         var got = {};
         var WANT = { '기업': 1, '거래처': 1, '배송일': 1, '서비스': 1 };
@@ -7362,9 +7488,7 @@ document.getElementById('__wpSave').onclick = function() {
         });
         var brFull = (got['기업'] && got['거래처']) ? (got['기업'] + ' - ' + got['거래처']) : (got['거래처'] || got['기업'] || '');
         VC.no = no; VC.date = got['배송일'] || '';
-        if (brFull) document.getElementById('__wpVcBr').value = brFull;
-        /* 품목 테이블: 헤더가 '품번/상품명/수량'인 편집형 표 — 실측(#2268668) 기준
-           바코드는 품번 셀 텍스트(상품코드+바코드 병기), 상품명은 input value, 수량은 select value 에 있다. */
+        if (!VC.brId && brFull) document.getElementById('__wpVcBr').value = brFull;
         VC.items = [];
         var tables = [].slice.call(doc.querySelectorAll('table'));
         for (var ti = 0; ti < tables.length; ti++) {
@@ -7377,7 +7501,7 @@ document.getElementById('__wpSave').onclick = function() {
             var nm = '';
             var inp = tr.querySelector('input[type=text]');
             if (inp && (inp.value || '').trim()) nm = inp.value.trim();
-            if (!nm) { /* 폴백: 상품명 셀 텍스트에서 편집 버튼 문구 제거 후 사용 */
+            if (!nm) {
               var td3 = tr.children[3] || tr.children[2];
               nm = td3 ? (td3.textContent || '').replace(/수정|저장|취소/g, '').replace(/\s+/g, ' ').trim() : '';
             }
@@ -7389,18 +7513,15 @@ document.getElementById('__wpSave').onclick = function() {
           });
           if (VC.items.length) break;
         }
-        info.innerHTML = '<div class="wp-meta">✔ <b>' + esc(brFull || '거래처 미확인') + '</b>' + (VC.date ? ' · 배송일 ' + esc(VC.date) : '') + ' · 명세번호 ' + esc(no) + ' · 품목 ' + VC.items.length + '개 <a href="/office/order/order/' + esc(no) + '" target="_blank" style="color:#1f4e78;text-decoration:underline;font-size:11.5px">원본 열기</a></div>';
-        /* 배송기사 매핑 — 거래처 담당코스 → 배송기사 관리에서 기사·연락처 */
-        VC.drv = '';
-        var dvBox = document.createElement('div');
-        dvBox.className = 'wp-meta'; dvBox.style.marginTop = '4px';
-        dvBox.innerHTML = '<span style="color:#94a3b8">배송기사 확인 중…</span>';
-        info.appendChild(dvBox);
-        vocFindDriver(got['거래처'] || brFull).then(function(d) {
-          if (!d || (!d.course && !d.name)) { dvBox.innerHTML = '<span style="color:#94a3b8">배송기사: 자동 매핑 실패 — 담당코스를 못 찾았어요</span>'; return; }
-          VC.drv = (d.course || '-') + ' / ' + (d.name || '기사 미매핑') + (d.phone ? ' / ' + d.phone : '');
-          dvBox.innerHTML = '🚚 <b>배송담당</b> ' + esc(d.course || '-') + ' · ' + esc(d.name || '기사 미확인') + (d.phone ? ' · <a href="tel:' + esc(d.phone) + '" style="color:#1f4e78;font-weight:700">' + esc(d.phone) + '</a>' : '');
-        });
+        info.innerHTML = '<div class="wp-meta">✔ <b>' + esc(VC.brName || brFull || '거래처 미확인') + '</b>' + (VC.date ? ' · 배송일 ' + esc(VC.date) : '') + ' · 명세번호 ' + esc(no) + ' · 품목 ' + VC.items.length + '개 <a href="/office/order/order/' + esc(no) + '" target="_blank" style="color:#1f4e78;text-decoration:underline;font-size:11.5px">원본 열기</a></div>';
+        /* 거래처를 먼저 고른 경우엔 기사 박스가 이미 위에 있다 → 중복 표시 안 함 */
+        if (!VC.brId) {
+          var dvBox = document.createElement('div');
+          dvBox.className = 'wp-meta'; dvBox.style.marginTop = '4px';
+          dvBox.innerHTML = '<span style="color:#94a3b8">배송기사 확인 중…</span>';
+          info.appendChild(dvBox);
+          vocFindDriver(got['거래처'] || brFull).then(function(d) { vcSetDriverBox(dvBox, d); });
+        }
         if (!VC.items.length) {
           ibox.innerHTML = '<div style="color:#b45309;font-size:12px;padding:4px 0">품목 표를 자동으로 읽지 못했어요 — 클레임 내용에 품목·수량을 직접 적어주세요.</div>';
           return;
@@ -7413,7 +7534,12 @@ document.getElementById('__wpSave').onclick = function() {
       }).catch(function(e) {
         info.innerHTML = '<div style="color:#b00;padding:6px 0">' + esc((e && e.message) || e) + '</div>';
       });
-    };
+    }
+
+    document.getElementById('__wpVcFind').onclick = vcFindBranches;
+    document.getElementById('__wpVcKw').onkeydown = function(ev) { if (ev.key === 'Enter') { ev.preventDefault(); vcFindBranches(); } };
+    document.getElementById('__wpVcGo').onclick = function() { vcLoadOrder(document.getElementById('__wpVcNo').value); };
+    document.getElementById('__wpVcNo').onkeydown = function(ev) { if (ev.key === 'Enter') { ev.preventDefault(); vcLoadOrder(this.value); } };
 
     document.getElementById('__wpVcSend').onclick = function() {
       if (!REQ.email) { alert('요청자 정보를 아직 못 불러왔어요. 잠시 후 다시 시도하세요.'); return; }
@@ -7421,7 +7547,7 @@ document.getElementById('__wpSave').onclick = function() {
       var br = (document.getElementById('__wpVcBr').value || '').trim();
       var body = (document.getElementById('__wpVcBody').value || '').trim();
       var ask = (document.getElementById('__wpVcAsk').value || '').trim();
-      if (!br) { toast('거래처명을 입력하세요 (또는 명세 불러오기)', '#c0392b'); return; }
+      if (!br) { toast('거래처를 선택하세요', '#c0392b'); return; }
       if (!body) { toast('클레임 내용을 입력하세요', '#c0392b'); return; }
       var picked = [];
       [].forEach.call(document.querySelectorAll('.__wpVcCk:checked'), function(c) {
@@ -7433,12 +7559,13 @@ document.getElementById('__wpSave').onclick = function() {
       var parts = ['VOC유형: ' + typ];
       if (VC.no) parts.push('주문번호: ' + VC.no);
       if (VC.date) parts.push('배송일: ' + VC.date);
+      if (VC.course) parts.push('담당코스: ' + VC.course);
       if (VC.drv) parts.push('배송담당: ' + VC.drv);
       if (picked.length) parts.push('품목: ' + picked.join(', '));
       parts.push('내용: ' + body);
       if (ask) parts.push('요청: ' + ask);
       var btn = this; btn.disabled = true; btn.textContent = '접수 중…';
-      submitReq({ ts: now(), dept: REQ.dept, name: REQ.name, email: REQ.email, action: '배송VOC', hot: '', cold: '', branchId: '', branchName: br, detail: parts.join(' · ') })
+      submitReq({ ts: now(), dept: REQ.dept, name: REQ.name, email: REQ.email, action: '배송VOC', hot: VC.hot || '', cold: VC.cold || '', branchId: VC.brId || '', branchName: VC.brName || br, detail: parts.join(' · ') })
         .then(function() {
           btn.disabled = false; btn.textContent = 'VOC 접수';
           toast('✓ VOC 접수 완료 — 슬랙 알림 발송 · 관리자 검토 대기', '#0a7d47');
@@ -7451,8 +7578,6 @@ document.getElementById('__wpSave').onclick = function() {
     };
   }
 
-  /* ---------- 접속 이력 (관리자 전용 탭) ----------
-     패널이 열릴 때마다 visit_add 로 남긴 기록을 보여준다. 최근 300건. */
   function viewVisits() {
     VIEW.innerHTML = '<div id="__wpVs">접속 이력 불러오는 중…</div>';
     api({ e: 'visit_list', limit: 300 }).then(function(j) {
