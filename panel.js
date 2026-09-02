@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.02 09:50';
+  var VERSION = '26.09.02 11:20';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -6787,7 +6787,7 @@ document.getElementById('__wpSave').onclick = function() {
 
     VIEW.innerHTML = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155;line-height:1.7;margin-bottom:10px">' +
       '<b>주정차위반 고지서 → 소명자료 자동 생성</b><br>' +
-      '고지서 PDF를 올리면 파일명에서 차량번호·위반일을 읽고, <b>위반장소만 입력</b>하면 그 날짜 배송일정에서 근처 거래처를 찾아 ' +
+      '고지서 PDF를 올리면 파일명에서 차량번호·위반일을 읽고, <b>위반장소만 입력</b>하면 그 날짜 <b>전 착지와 직선거리를 비교</b>해 가까운 순으로 찾아 ' +
       '소명 문구와 증빙 이미지를 만들어줍니다. [문구 복사] + [이미지 복사] 후 슬랙 스레드에 붙여넣기(Ctrl+V)만 하면 끝.</div>' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:10px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:9px">' +
       '<input type="file" id="__wpTkF" accept=".pdf" multiple style="font-size:12px">' +
@@ -6893,20 +6893,93 @@ document.getElementById('__wpSave').onclick = function() {
         return out;
       });
     }
+    /* 배송일정(배송일정 등록 화면) — 명세번호로 기사 실명·순번·완료여부를 붙인다.
+       착지 목록 자체는 배송동선 엑셀이 더 넓다(커피24 포함, 스낵도 더 많음). 그래서 소스는 엑셀, 사람 정보만 여기서 보강. */
+    var TKS = {};
+    function tkSched(day) {
+      if (TKS[day]) return Promise.resolve(TKS[day]);
+      var map = {};
+      function page(n) {
+        if (n > 6) return Promise.resolve();
+        var u = '/office/delivery-manager/v2/schedules?searchYN=Y&size=500&page=' + n + '&startDate=' + day + '&endDate=' + day + '&searchKeyword=';
+        return fetch(u).then(function(r) { return r.text(); }).then(function(html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var trs = [].slice.call(doc.querySelectorAll('table tbody tr'));
+          var got = 0;
+          trs.forEach(function(tr) {
+            var td = [].slice.call(tr.querySelectorAll('td'));
+            if (td.length < 14) return;
+            function tx(k) { return (td[k] ? (td[k].innerText || '') : '').replace(/\s+/g, ' ').trim(); }
+            var stmt = tx(8);
+            if (!stmt) return;
+            got++;
+            map[stmt] = { course: tx(2), driver: tx(3), seq: tx(4), status: tx(12), meridiem: tx(13) };
+          });
+          if (got >= 500) return page(n + 1);
+        });
+      }
+      return page(1).then(function() { TKS[day] = map; return map; }).catch(function() { TKS[day] = map; return map; });
+    }
+    function tkWho(sm, r) {
+      var v = sm && r.stmt ? sm[String(r.stmt)] : null;
+      if (!v) return r.drv;
+      return (v.driver || r.drv) + (v.course ? '(' + v.course + ')' : '') + (v.seq ? ' #' + v.seq : '') + (v.status ? ' ' + v.status : '');
+    }
+    /* 좌표 조회 — 워커 1회당 25건, 동시 8줄기로 병렬 (901곳 기준 2~3분 → 20초대) */
     function tkGeo(addrs, onProg) {
-      var out = {}, idx = 0;
-      function chunk() {
-        if (idx >= addrs.length) return Promise.resolve(out);
-        var part = addrs.slice(idx, idx + 20);
-        idx += 20;
-        if (onProg) onProg(Math.min(idx, addrs.length), addrs.length);
+      var out = {}, idx = 0, done = 0, total = addrs.length;
+      function worker() {
+        if (idx >= addrs.length) return Promise.resolve();
+        var part = addrs.slice(idx, idx + 25);
+        idx += 25;
         return fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=geo&addrs=' + encodeURIComponent(JSON.stringify(part)) })
-          .then(function(r) { return r.json(); }).then(function(j) {
+          .then(function(r) { return r.json(); })
+          .catch(function() { return null; })
+          .then(function(j) {
             if (j && j.ok) Object.keys(j.geo || {}).forEach(function(k) { out[k] = j.geo[k]; });
-            return chunk();
+            done += part.length;
+            if (onProg) onProg(Math.min(done, total), total);
+            return worker();
           });
       }
-      return chunk();
+      var lanes = [];
+      for (var w = 0; w < 10; w++) lanes.push(worker());
+      return Promise.all(lanes).then(function() { return out; });
+    }
+    /* 위반장소 문자열 → 좌표. 고지서 장소는 '○○ 주변/앞/인근' 처럼 꼬리가 붙어 그대로는 안 잡힌다.
+       꼬리말 제거 → 괄호 제거 → 뒤 어절부터 하나씩 떼기 순으로 시도해 첫 성공을 쓴다. */
+    var TK_TAIL = /\s*(주변|인근|근처|일대|부근|앞쪽|맞은편|건너편|반대편|앞|뒤|옆|노상|이면도로|이면|도로변|앞도로|앞노상|사거리|삼거리|교차로|버스정류장|정류장)\s*$/;
+    function tkPlaceQueries(place) {
+      var q = [], seen = {};
+      function add(v) { v = String(v || '').replace(/\s+/g, ' ').trim(); if (v.length >= 2 && !seen[v]) { seen[v] = 1; q.push(v); } }
+      var base = place.trim();
+      add(base);
+      var cut = base, guard = 0;
+      while (TK_TAIL.test(cut) && guard++ < 6) { cut = cut.replace(TK_TAIL, '').trim(); add(cut); }
+      add(cut.replace(/\([^)]*\)/g, ' '));
+      var toks = cut.split(/\s+/).filter(Boolean);
+      for (var n = toks.length - 1; n >= 1; n--) add(toks.slice(0, n).join(' '));
+      for (var m = 1; m < toks.length; m++) add(toks.slice(m).join(' '));
+      return q.slice(0, 8);
+    }
+    function tkPlaceXY(place) {
+      var qs = tkPlaceQueries(place), k = 0;
+      function step() {
+        if (k >= qs.length) return Promise.resolve({ xy: null, q: '' });
+        var q = qs[k++];
+        return tkGeo([q]).then(function(g) {
+          if (g && g[q]) return { xy: g[q], q: q };
+          return step();
+        });
+      }
+      return step();
+    }
+    /* 장소 토큰 정규화 — '삼성동'과 '삼성로'가 서로 안 걸리는 문제를 없앤다 */
+    function tkTok(place) {
+      return place.split(/\s+/).map(function(x) { return x.replace(/[()\[\]]/g, '').trim(); })
+        .filter(function(x) { return x.length >= 2 && !TK_TAIL.test(' ' + x); })
+        .map(function(x) { return x.replace(/(번길|길|동|로|가)$/, ''); })
+        .filter(function(x) { return x.length >= 2; });
     }
     /* PDF 1페이지 미리보기 (pdf.js) — 장소 보면서 바로 입력 */
     function ensurePDFJS() {
@@ -6937,58 +7010,67 @@ document.getElementById('__wpSave').onclick = function() {
       });
     }
 
-    function tkFind(i, btn, full) {
+    function tkFind(i, btn) {
       var t = TK_ROWS[i];
       var res = document.getElementById('__wpTkRes' + i);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(t.date)) { alert('위반일을 선택해주세요.'); return; }
       if (!t.place.trim()) { alert('위반장소를 입력해주세요. (고지서의 위반장소 그대로)'); return; }
       btn.disabled = true; btn.textContent = '조회 중…';
       res.innerHTML = '<div style="font-size:12px;color:#0369A1">배송동선 조회 중…</div>';
+      var place = t.place.trim();
+      var toks = tkTok(place);
       tkDay(t.date).then(function(rows) {
-        var place = t.place.trim();
-        var toks = place.split(/\s+/).filter(function(x) { return x.length >= 2; });
-        /* 동네/건물 토큰이 이름·주소에 걸리는 착지만 우선 좌표 조회 — 전체(1000+) 지오코딩으로 몇 분씩 멈추는 것 방지 */
-        var pool = full ? rows : rows.filter(function(r2) { return toks.some(function(tk) { return r2.br.indexOf(tk) > -1 || r2.addr.indexOf(tk) > -1; }); });
-        var narrowed = !full && pool.length >= 1;
-        if (!pool.length) pool = rows;
+        res.innerHTML = '<div style="font-size:12px;color:#0369A1">위반장소 좌표 찾는 중…</div>';
+        return tkPlaceXY(place).then(function(pr) { return { rows: rows, pxy: pr.xy, pq: pr.q }; });
+      }).then(function(ctx) {
+        var rows = ctx.rows, pxy = ctx.pxy;
+        /* 좌표를 찾았으면 전체 착지와 거리 비교가 정답률이 가장 높다.
+           (위반장소는 보통 랜드마크라 거래처 주소와 글자가 안 겹친다 — 이름 토큰으로 좁히면 정답이 빠진다)
+           좌표를 못 찾았을 때만 이름 토큰으로 좁힌다. */
+        var pool = rows, narrowed = false;
+        if (!pxy) {
+          var hitRows = rows.filter(function(r2) { return toks.some(function(tk) { return r2.br.indexOf(tk) > -1 || r2.addr.indexOf(tk) > -1; }); });
+          if (hitRows.length) { pool = hitRows; narrowed = true; }
+        }
         var uniq = {};
         pool.forEach(function(r2) { uniq[tBase(r2.addr)] = 1; });
         var keys = Object.keys(uniq);
-        var capped = false;
-        if (keys.length > 400) { keys = keys.slice(0, 400); capped = true; }
-        return tkGeo([place]).then(function(g1) {
-          var pxy = g1[place];
-          return tkGeo(keys, function(dn, tt) {
-            res.innerHTML = '<div style="font-size:12px;color:#0369A1">좌표 매칭 중… ' + dn + '/' + tt + (narrowed ? ' (장소 토큰으로 ' + pool.length + '착지 축소)' : ' (전체 조회 — 처음이면 몇 분 걸릴 수 있음)') + '</div>';
-          }).then(function(geo) {
-            var list = pool.map(function(r2) {
-              var xy = geo[tBase(r2.addr)];
-              var d = pxy ? tDist(pxy, xy) : 9999;
-              var hit = toks.some(function(tk) { return r2.br.indexOf(tk) > -1 || r2.addr.indexOf(tk) > -1; });
-              return { r: r2, d: d, hit: hit, score: d - (hit ? 100 : 0) };
-            }).sort(function(a, b) { return a.score - b.score; }).slice(0, 8);
-            btn.disabled = false; btn.textContent = '근처 배송 조회';
-            if (!pxy && !list.some(function(x) { return x.hit; })) {
-              res.innerHTML = '<div style="font-size:12px;color:#DC2626">위반장소 좌표를 못 찾았고 이름 일치도 없습니다. 장소를 더 구체적으로 (동 이름 + 건물명) 입력해보세요.</div>';
-              return;
-            }
-            var h = '<div style="font-size:12px;color:#334155;margin-bottom:4px"><b>근처 배송 후보</b> — 소명에 쓸 거래처를 선택하세요' + (pxy ? '' : ' <span style="color:#B45309">(장소 좌표 실패 — 이름 일치 기준)</span>') + (capped ? ' <span style="color:#B45309">(대상이 많아 400곳까지만 좌표 비교)</span>' : '') + '</div>';
-            list.forEach(function(x, k) {
-              h += '<label style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;cursor:pointer;background:' + (k % 2 ? '#FCFDFE' : '#fff') + '">' +
-                '<input type="radio" name="__wpTkC' + i + '" data-k="' + k + '">' +
-                '<span style="flex:1;font-size:12px"><b>' + esc(x.r.br) + '</b> <span style="color:#64748B">' + esc(x.r.addr) + '</span></span>' +
-                (x.hit ? '<span style="background:#DBEAFE;color:#1D4ED8;border-radius:4px;padding:0 6px;font-size:10.5px;font-weight:700">이름일치</span>' : '') +
-                '<span style="font-size:11.5px;color:' + (x.d <= 0.5 ? '#0a7d47' : '#94A3B8') + ';white-space:nowrap">' + (x.d < 9000 ? x.d.toFixed(1) + 'km' : '-') + '</span>' +
-                '<span style="font-size:11.5px;color:#64748B;white-space:nowrap">' + esc(x.r.drv) + '</span></label>';
-            });
-            if (narrowed) h += '<div style="margin-top:4px"><span class="__wpTkFull" style="font-size:11.5px;color:#1f4e78;cursor:pointer;text-decoration:underline">원하는 거래처가 없나요? 전체 착지에서 거리로 재검색 (처음이면 몇 분 소요)</span></div>';
-            h += '<div id="__wpTkOut' + i + '" style="margin-top:8px"></div>';
-            res.innerHTML = h;
-            var fl = res.querySelector('.__wpTkFull');
-            if (fl) fl.onclick = function() { tkFind(i, btn, true); };
-            [].forEach.call(res.querySelectorAll('input[name="__wpTkC' + i + '"]'), function(rd) {
-              rd.onchange = function() { tkPick(i, list[Number(rd.getAttribute('data-k'))].r); };
-            });
+        return tkGeo(keys, function(dn, tt) {
+          res.innerHTML = '<div style="font-size:12px;color:#0369A1">좌표 매칭 중… ' + dn + '/' + tt +
+            (pxy ? ' (위반장소 = ' + esc(ctx.pq) + ' · 전체 착지와 거리 비교)' : ' (장소 좌표 실패 — 이름 일치 기준)') + '</div>';
+        }).then(function(geo) {
+          return tkSched(t.date).then(function(sm) { return { geo: geo, sm: sm }; });
+        }).then(function(gs) {
+          var geo = gs.geo, sm = gs.sm;
+          var list = pool.map(function(r2) {
+            var xy = geo[tBase(r2.addr)];
+            var d = pxy ? tDist(pxy, xy) : 9999;
+            var hit = toks.some(function(tk) { return r2.br.indexOf(tk) > -1 || r2.addr.indexOf(tk) > -1; });
+            return { r: r2, d: d, hit: hit, score: (d < 9000 ? d : 9999) - (hit ? 0.3 : 0) };
+          }).sort(function(a2, b2) { return a2.score - b2.score; }).slice(0, 10);
+          btn.disabled = false; btn.textContent = '근처 배송 조회';
+          if (!pxy && !list.some(function(x) { return x.hit; })) {
+            res.innerHTML = '<div style="font-size:12px;color:#DC2626">위반장소 좌표를 못 찾았고 이름 일치도 없습니다.<br>' +
+              '시도한 검색어: ' + esc(tkPlaceQueries(place).join(' / ')) + '<br>' +
+              '카카오 지도에서 검색되는 이름(건물명·상호)으로 바꿔서 다시 시도해보세요.</div>';
+            return;
+          }
+          var h = '<div style="font-size:12px;color:#334155;margin-bottom:4px"><b>근처 배송 후보</b> — 소명에 쓸 거래처를 선택하세요' +
+            (pxy ? ' <span style="color:#0a7d47">(기준점 「' + esc(ctx.pq) + '」 · 당일 ' + rows.length + '착지 전체와 거리 비교)</span>'
+                 : ' <span style="color:#B45309">(장소 좌표 실패 — 이름 일치 기준' + (narrowed ? ' · ' + pool.length + '착지' : '') + ')</span>') + '</div>';
+          list.forEach(function(x, k) {
+            h += '<label style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;cursor:pointer;background:' + (k % 2 ? '#FCFDFE' : '#fff') + '">' +
+              '<input type="radio" name="__wpTkC' + i + '" data-k="' + k + '">' +
+              '<span style="flex:1;font-size:12px"><b>' + esc(x.r.br) + '</b> <span style="color:#64748B">' + esc(x.r.addr) + '</span></span>' +
+              (x.r.stmt ? '<span style="font-size:11px;color:#94A3B8;font-family:ui-monospace,monospace;white-space:nowrap">' + esc(x.r.stmt) + '</span>' : '') +
+              (x.hit ? '<span style="background:#DBEAFE;color:#1D4ED8;border-radius:4px;padding:0 6px;font-size:10.5px;font-weight:700">이름일치</span>' : '') +
+              '<span style="font-size:11.5px;font-weight:700;color:' + (x.d <= 0.3 ? '#0a7d47' : x.d <= 1 ? '#B45309' : '#94A3B8') + ';white-space:nowrap">' + (x.d < 9000 ? (x.d < 1 ? Math.round(x.d * 1000) + 'm' : x.d.toFixed(1) + 'km') : '-') + '</span>' +
+              '<span style="font-size:11.5px;color:#64748B;white-space:nowrap">' + esc(tkWho(sm, x.r)) + '</span></label>';
+          });
+          h += '<div id="__wpTkOut' + i + '" style="margin-top:8px"></div>';
+          res.innerHTML = h;
+          [].forEach.call(res.querySelectorAll('input[name="__wpTkC' + i + '"]'), function(rd) {
+            rd.onchange = function() { tkPick(i, list[Number(rd.getAttribute('data-k'))].r); };
           });
         });
       }).catch(function(e) {
