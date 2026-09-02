@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.01 19:05';
+  var VERSION = '26.09.02 09:50';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -3533,13 +3533,14 @@ document.getElementById('__wpSave').onclick = function() {
         });
       });
     }
-    if (it.action === '주소변경' || it.action === '거래처명변경' || it.action === '담당자변경' || it.action === '코스변경') {
+    if (it.action === '주소변경' || it.action === '거래처명변경' || it.action === '담당자변경' || it.action === '코스변경' || it.action === '피킹방법변경') {
       var d1 = detailGet(it.detail, '반영예정일') || detailGet(it.detail, 'D1반영예정일') || workdayD1Str();
       var wk = ['일', '월', '화', '수', '목', '금', '토'];
       var dp = d1.split('-');
       var dow = (dp.length === 3) ? (wk[new Date(+dp[0], +dp[1] - 1, +dp[2]).getDay()] + '요일') : '';
       var extra = '';
       if (it.action === '주소변경' && it._newCourse) extra = ' · 코스변경=' + it._newCourse;
+      if (it.action === '피킹방법변경') extra = ' · 피킹방식=' + (detailGet(it.detail, '피킹방식') || '-');
       return Promise.resolve(d1 + (dow ? ' ' + dow : '') + ' 위펀오피스 반영예정' + extra);
     }
     if (it.action === '배송시간문의') {
@@ -5814,7 +5815,7 @@ document.getElementById('__wpSave').onclick = function() {
     VIEW.innerHTML = '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155;line-height:1.7;margin-bottom:10px">' +
       '<b>배송동선 엑셀 → 타 운수사 코스 자동 배차</b><br>' +
       '위펀오피스 [판매/정산 > 우린 발주양식 > 배송동선] 엑셀을 올리면: 주간 코스(위펀본사 ' + DEXC.join('·') + ' 제외)를 ' +
-      '권역 + 고정담당 + 코스당 300만원 이하 + 같은 건물 같은 기사 규칙으로 배차하고 동선 순서까지 정렬합니다.</div>' +
+      '<b>고정담당 최우선</b> → 권역 → 코스당 300만원 이하 → 같은 건물 같은 기사(일반만) 순으로 배차하고 동선 순서까지 정렬합니다.</div>' +
       '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px;padding:12px 14px;background:#fff;border:1px solid #E2E8F0;border-radius:9px">' +
       '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#0F172A">배송일 ' +
       '<input type="date" id="__wpDpDate" style="padding:9px 12px;border:1.5px solid #CBD5E1;border-radius:8px;font-size:15px;font-weight:600;color:#0F172A;height:42px;cursor:pointer"></label>' +
@@ -6064,61 +6065,45 @@ document.getElementById('__wpSave').onclick = function() {
         if (!to2 || !byName[to2]) return;
         if (x.f) LFIX[x.k] = to2; else LPREF[x.k] = to2;
       });
-      /* 그룹핑: 같은 주소(건물) = 무조건 같은 기사 */
-      var groups = {};
+      /* ── 1차: 고정 확정 (선행조건) ──
+         고정 스팟은 다수결 없이 각자 담당기사에게 무조건 배정.
+         같은 건물이라도 고정 담당이 다르면 각자에게 간다 (건물 동반 없음). */
+      var FIXQ = [];
+      var groups = {}; /* 일반(비고정) 전용 — 같은 주소끼리만 묶음 */
       DTGT.forEach(function(t) {
         var ba = dBase(t.addr);
         var gk = dnn(ba);
-        if (!groups[gk]) groups[gk] = { stops: [], amt: 0, region: dRegion(t.addr), xy: geo[ba], fixVotes: {}, prefVotes: {} };
-        groups[gk].stops.push(t);
-        groups[gk].amt += t.amt;
         var k = dKey(t.br);
         if (t.fixed) {
           /* 우선순위: 수동지정 > 현재 코스 기사(엑셀 A열) > 러닝 > 14일 자동감지 */
           var fd = dActv(DFIX_OVR[k] || dCourseDrv(t.course) || LFIX[k] || fixAuto[k] || '');
-          if (fd) groups[gk].fixVotes[fd] = (groups[gk].fixVotes[fd] || 0) + 1;
-        } else if (LPREF[k]) {
-          groups[gk].prefVotes[LPREF[k]] = (groups[gk].prefVotes[LPREF[k]] || 0) + 1;
+          if (fd && byName[fd]) { FIXQ.push({ s: t, d: fd, ba: ba }); return; }
+          /* 담당기사를 못 찾은 고정 → 일반 배정으로 흘림 */
+          t.flag = '고정담당없음';
         }
+        if (!groups[gk]) groups[gk] = { stops: [], amt: 0, region: dRegion(t.addr), xy: geo[ba], prefVotes: {} };
+        groups[gk].stops.push(t);
+        groups[gk].amt += t.amt;
+        if (LPREF[k]) groups[gk].prefVotes[LPREF[k]] = (groups[gk].prefVotes[LPREF[k]] || 0) + 1;
+      });
+      /* 고정 확정 배정 — 용량(DCAP) 무시. 고정이 선행조건이므로 무조건 먼저 자리 차지 */
+      FIXQ.forEach(function(f) {
+        var d = byName[f.d];
+        f.s.xy = geo[f.ba];
+        d.stops.push(f.s);
+        d.load += f.s.amt;
       });
       Object.keys(groups).forEach(function(gk) {
         var g = groups[gk];
-        var best = '', bn = 0;
-        Object.keys(g.fixVotes).forEach(function(fd) { if (g.fixVotes[fd] > bn) { bn = g.fixVotes[fd]; best = fd; } });
-        g.fix = best; /* 같은 건물에 고정담당 여럿이면 다수결 */
         var bp = '', bpn = 0;
         Object.keys(g.prefVotes).forEach(function(fd) { if (g.prefVotes[fd] > bpn) { bpn = g.prefVotes[fd]; bp = fd; } });
         g.pref = bp; /* 러닝 우선배정 후보 (다수결) */
       });
       var glist = Object.keys(groups).map(function(k) { return groups[k]; });
       function centroid(d) { if (!d.stops.length) return null; var x = 0, y = 0, n = 0; d.stops.forEach(function(s) { if (s.xy) { x += s.xy.x; y += s.xy.y; n++; } }); return n ? { x: x / n, y: y / n } : null; }
-      /* 1차: 고정 — 고정 스팟만 무조건 배정. 같은 건물 일반 스팟은 용량 될 때만 동반 */
-      var spill = []; /* 용량 때문에 분리된 일반 서브그룹 (회사 단위) */
-      glist.forEach(function(g) {
-        if (!g.fix) return;
-        var d = byName[g.fix];
-        if (!d) { g.fix = ''; return; }
-        var fixStops = g.stops.filter(function(s) { return s.fixed; });
-        var rest = g.stops.filter(function(s) { return !s.fixed; });
-        fixStops.forEach(function(s) { s.xy = g.xy; d.stops.push(s); d.load += s.amt; });
-        /* 일반 동반: 회사 단위로 묶어 용량 검사 */
-        var subs = {};
-        rest.forEach(function(s) { var ck = dnn(s.br.split(' - ')[0]); if (!subs[ck]) subs[ck] = { stops: [], amt: 0 }; subs[ck].stops.push(s); subs[ck].amt += s.amt; });
-        Object.keys(subs).forEach(function(ck) {
-          var sub = subs[ck];
-          if (d.load + sub.amt <= DCAP) {
-            sub.stops.forEach(function(s) { s.xy = g.xy; s.flag = '건물동반'; d.stops.push(s); });
-            d.load += sub.amt;
-          } else {
-            /* 고정 과적 → 일반은 분리해서 일반 배정 (주소분리 표시) */
-            spill.push({ stops: sub.stops, amt: sub.amt, region: g.region, xy: g.xy, pref: g.pref, spill: true });
-          }
-        });
-        g.done = true;
-      });
       /* 2차: 일반 (금액 큰 순) — 권역 절대 유지 */
       var DUNAS = [];
-      var pool = glist.filter(function(g) { return !g.done; }).concat(spill);
+      var pool = glist;
       /* 조각 배정기: 권역 내 + 300만 이하 필수. preferred(같은 건물 먼저 받은 기사) 우선 */
       function assignPiece(stops2, amt2, g, preferred, extraFlag) {
         var inRegion = drivers.filter(function(d) { return d.regions.indexOf(g.region) > -1; });
@@ -6137,12 +6122,12 @@ document.getElementById('__wpSave').onclick = function() {
             if (score < bs) { bs = score; best = d; }
           });
         }
-        stops2.forEach(function(s2) { s2.xy = g.xy; s2.flag = [extraFlag || '', via].filter(Boolean).join('/'); best.stops.push(s2); });
+        stops2.forEach(function(s2) { s2.xy = g.xy; s2.flag = [s2.flag || '', extraFlag || '', via].filter(Boolean).join('/'); best.stops.push(s2); });
         best.load += amt2;
         return best;
       }
       pool.sort(function(a, b) { return b.amt - a.amt; }).forEach(function(g) {
-        var base = g.spill ? '주소분리' : '';
+        var base = '';
         /* ① 건물 통째로 시도 (같은 주소 같은 기사 우선) */
         var r1 = assignPiece(g.stops, g.amt, g, null, base);
         if (r1 !== false) return; /* 배정됐거나 권역없음 처리됨 */
@@ -6194,7 +6179,7 @@ document.getElementById('__wpSave').onclick = function() {
             var sc = dd + (d.load / DCAP2) * 6;
             if (sc < bs) { bs = sc; best = d; }
           });
-          g.stops.forEach(function(s2) { s2.xy = g.xy; s2.flag = '2차완화'; best.stops.push(s2); });
+          g.stops.forEach(function(s2) { s2.xy = g.xy; s2.flag = [s2.flag || '', '2차완화'].filter(Boolean).join('/'); best.stops.push(s2); });
           best.load += g.amt;
           relieved += g.stops.length;
         });
