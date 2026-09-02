@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.02 11:20';
+  var VERSION = '26.09.02 12:05';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -6925,26 +6925,53 @@ document.getElementById('__wpSave').onclick = function() {
       if (!v) return r.drv;
       return (v.driver || r.drv) + (v.course ? '(' + v.course + ')' : '') + (v.seq ? ' #' + v.seq : '') + (v.status ? ' ' + v.status : '');
     }
-    /* 좌표 조회 — 워커 1회당 25건, 동시 8줄기로 병렬 (901곳 기준 2~3분 → 20초대) */
+    /* 좌표 조회 — 브라우저 영구 캐시(localStorage) 우선, 없는 것만 워커에 물어본다.
+       워커는 요청당 25건 · D1을 한 건씩 읽어서 캐시 히트라도 느리다(901곳 = 40초).
+       한 번 받아본 주소는 브라우저에 남겨 두 번째부터는 즉시 끝난다. */
+    var TKLS = null, TKLST = null;
+    function tkLs() {
+      if (TKLS) return TKLS;
+      try { TKLS = JSON.parse(localStorage.getItem('__wpTkGeo') || '{}'); } catch (e) { TKLS = {}; }
+      return TKLS;
+    }
+    function tkLsSave() {
+      if (TKLST) return;
+      TKLST = setTimeout(function() {
+        TKLST = null;
+        try { localStorage.setItem('__wpTkGeo', JSON.stringify(TKLS || {})); } catch (e) {}
+      }, 500);
+    }
     function tkGeo(addrs, onProg) {
-      var out = {}, idx = 0, done = 0, total = addrs.length;
-      function worker() {
-        if (idx >= addrs.length) return Promise.resolve();
-        var part = addrs.slice(idx, idx + 25);
+      var C = tkLs(), out = {}, miss = [];
+      addrs.forEach(function(a) {
+        var v = C[a];
+        if (v === undefined) { miss.push(a); return; }
+        out[a] = v ? { x: v[0], y: v[1] } : null;
+      });
+      if (!miss.length) { if (onProg) onProg(addrs.length, addrs.length); return Promise.resolve(out); }
+      var idx = 0, done = addrs.length - miss.length, total = addrs.length;
+      if (onProg) onProg(done, total);
+      function lane() {
+        if (idx >= miss.length) return Promise.resolve();
+        var part = miss.slice(idx, idx + 25);
         idx += 25;
         return fetch(apiUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: 'e=geo&addrs=' + encodeURIComponent(JSON.stringify(part)) })
           .then(function(r) { return r.json(); })
           .catch(function() { return null; })
           .then(function(j) {
-            if (j && j.ok) Object.keys(j.geo || {}).forEach(function(k) { out[k] = j.geo[k]; });
+            if (j && j.ok) Object.keys(j.geo || {}).forEach(function(k) {
+              var v = j.geo[k];
+              out[k] = v;
+              C[k] = v ? [v.x, v.y] : 0;
+            });
             done += part.length;
             if (onProg) onProg(Math.min(done, total), total);
-            return worker();
+            return lane();
           });
       }
       var lanes = [];
-      for (var w = 0; w < 10; w++) lanes.push(worker());
-      return Promise.all(lanes).then(function() { return out; });
+      for (var w = 0; w < 10; w++) lanes.push(lane());
+      return Promise.all(lanes).then(function() { tkLsSave(); return out; });
     }
     /* 위반장소 문자열 → 좌표. 고지서 장소는 '○○ 주변/앞/인근' 처럼 꼬리가 붙어 그대로는 안 잡힌다.
        꼬리말 제거 → 괄호 제거 → 뒤 어절부터 하나씩 떼기 순으로 시도해 첫 성공을 쓴다. */
@@ -7035,9 +7062,35 @@ document.getElementById('__wpSave').onclick = function() {
         var uniq = {};
         pool.forEach(function(r2) { uniq[tBase(r2.addr)] = 1; });
         var keys = Object.keys(uniq);
-        return tkGeo(keys, function(dn, tt) {
-          res.innerHTML = '<div style="font-size:12px;color:#0369A1">좌표 매칭 중… ' + dn + '/' + tt +
-            (pxy ? ' (위반장소 = ' + esc(ctx.pq) + ' · 전체 착지와 거리 비교)' : ' (장소 좌표 실패 — 이름 일치 기준)') + '</div>';
+        function gkey(a) { var q = a.split(/\s+/); return q.length >= 2 ? q[0] + ' ' + q[1] : a; }
+        /* 지역 추리기 — 착지가 많으면 시군구별 대표 3곳만 먼저 찍어 12km 밖(지방 등)을 통째로 제외.
+           위반장소 반경 12km 안이면 정답이 빠질 일이 없고, 좌표 조회량이 크게 준다. */
+        var prep;
+        if (pxy && keys.length > 200) {
+          var byG = {};
+          keys.forEach(function(k) { var g = gkey(k); if (!byG[g]) byG[g] = []; byG[g].push(k); });
+          var reps = [];
+          Object.keys(byG).forEach(function(g) { reps = reps.concat(byG[g].slice(0, 3)); });
+          prep = tkGeo(reps, function(dn, tt) {
+            res.innerHTML = '<div style="font-size:12px;color:#0369A1">지역 추리는 중… ' + dn + '/' + tt + '</div>';
+          }).then(function(rg) {
+            var keep = {};
+            Object.keys(byG).forEach(function(g) {
+              var best = 9999;
+              byG[g].slice(0, 3).forEach(function(k) { var d = tDist(pxy, rg[k]); if (d < best) best = d; });
+              if (best <= 12) keep[g] = 1;
+            });
+            var ks = keys.filter(function(k) { return keep[gkey(k)]; });
+            return ks.length ? ks : keys;
+          });
+        } else {
+          prep = Promise.resolve(keys);
+        }
+        return prep.then(function(ks) {
+          return tkGeo(ks, function(dn, tt) {
+            res.innerHTML = '<div style="font-size:12px;color:#0369A1">좌표 매칭 중… ' + dn + '/' + tt +
+              (pxy ? ' (기준점 ' + esc(ctx.pq) + ' · 근처 ' + ks.length + '곳)' : ' (장소 좌표 실패 — 이름 일치 기준)') + '</div>';
+          });
         }).then(function(geo) {
           return tkSched(t.date).then(function(sm) { return { geo: geo, sm: sm }; });
         }).then(function(gs) {
