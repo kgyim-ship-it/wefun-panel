@@ -117,10 +117,42 @@
       email: ''
     };
   var MODE = localStorage.getItem('__wpMode') || 'requester'; /* ===== 설정: 배포 전에 이 두 줄만 채우세요 ===== */
-  var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
+  /* 공유 큐 API — Cloudflare Workers + D1.
+     계정 subdomain 을 바꾸면 워커 주소가 통째로 바뀐다. 그때 패널이 죽지 않도록
+     후보를 여러 개 두고 살아있는 쪽을 자동으로 잡는다. 앞에 있는 것부터 우선. */
+  var API_CANDIDATES = [
+    'https://wefun.leesangjin.workers.dev/',
+    'https://wefun-queu.leesangjin.workers.dev/',
+    'https://wefun-queu.kg-yim.workers.dev/'
+  ];
+  var API_URL = API_CANDIDATES[API_CANDIDATES.length - 1];
+  try {
+    var _pick = localStorage.getItem('__wpApiPick') || '';
+    if (_pick && API_CANDIDATES.indexOf(_pick) > -1) API_URL = _pick;
+  } catch (e) {}
+  /* 부팅 시 한 번만 후보를 훑어 살아있는 주소를 기억해둔다 */
+  (function probeApi() {
+    var i = 0;
+    function next() {
+      if (i >= API_CANDIDATES.length) return;
+      var u = API_CANDIDATES[i++];
+      fetch(u + '?e=ping', { cache: 'no-store' })
+        .then(function(r) { return r.json(); })
+        .then(function(j) {
+          if (j && j.ok) {
+            API_URL = u;
+            try { localStorage.setItem('__wpApiPick', u); } catch (e) {}
+            return;
+          }
+          next();
+        })
+        .catch(next);
+    }
+    next();
+  })();
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.04 23:30';
+  var VERSION = '26.09.05 00:20';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -375,7 +407,12 @@
     var b = (API_URL.indexOf('PASTE') === -1) ? API_URL : '';
     /* 구 앱스크립트 주소로 수동 설정해둔 경우 자동 해제 → 새 기본(워커)으로 전환 */
     var ov = localStorage.getItem('__wpApi') || '';
-    if (ov && ov.indexOf('script.google.com') > -1) { try { localStorage.removeItem('__wpApi'); } catch (e) {} ov = ''; }
+    /* 옛 주소를 손으로 박아둔 사람은 워커 주소가 바뀌면 패널이 죽는다 → 자동 해제 */
+    if (ov && (ov.indexOf('script.google.com') > -1 ||
+               (API_CANDIDATES.indexOf(ov.replace(/\/*$/, '/')) === -1 && /workers\.dev/.test(ov)))) {
+      try { localStorage.removeItem('__wpApi'); } catch (e) {}
+      ov = '';
+    }
     return ov || b;
   }
 
