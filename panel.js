@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.04 22:30';
+  var VERSION = '26.09.04 23:05';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -6778,9 +6778,15 @@ document.getElementById('__wpSave').onclick = function() {
   }
 
   /* ---------- 배송 온도관제 (WEFUN TRACK 자체관제 + 전환기 LOGISALL 비교) ---------- */
-  var TPT = null;   /* 자동새로고침 타이머는 탭 밖에 둔다 — 탭을 드나들 때마다 새 타이머가 겹쳐
-                       이전 화면(로지스올)이 현재 화면(자체관제)을 덮어쓰던 문제를 막는다 */
+  /* 자동새로고침 타이머는 window 에 둔다.
+     패널은 페이지를 새로고침하지 않아도 새 코드가 덧씌워지는 구조라, 함수 안에 타이머를 두면
+     '옛날 버전이 만든 타이머'가 페이지에 살아남아 30초마다 새 화면을 옛날 모양으로 덮어쓴다.
+     window 키로 잡아두면 어느 버전이 올라와도 이전 타이머를 확실히 죽일 수 있다. */
   function viewTemp() {
+    try { if (window.__wpTpTimer) clearInterval(window.__wpTpTimer); } catch (e) {}
+    window.__wpTpTimer = null;
+    window.__wpTpGen = (window.__wpTpGen || 0) + 1;
+    var GEN = window.__wpTpGen;
     var LIM = { '냉동': [-25, -12], '냉장': [-2, 10], '상온': [null, null] };
     var TT = { rows: [], at: '', src: 'ours', sel: '', kw: '', map: null, mk: [], key: '' };
 
@@ -6931,6 +6937,7 @@ document.getElementById('__wpSave').onclick = function() {
     }
 
     function render() {
+      if (window.__wpTpGen !== GEN) return;   /* 더 새 화면이 떠 있으면 그리지 않는다 */
       var rows = TT.rows;
       var out = 0, stale = 0, sen = 0;
       rows.forEach(function(r) {
@@ -7097,10 +7104,10 @@ document.getElementById('__wpSave').onclick = function() {
       document.getElementById('__wpTpDet').innerHTML = ''; render(); load();
     };
 
-    if (TPT) clearInterval(TPT);
-    TPT = setInterval(function() {
+    window.__wpTpTimer = setInterval(function() {
       var cb = document.getElementById('__wpTpAuto');
-      if (!cb) { clearInterval(TPT); TPT = null; return; }   /* 탭을 떠나면 스스로 멈춘다 */
+      /* 탭을 떠났거나(요소 없음) 더 새 화면이 뜨면(세대 불일치) 스스로 멈춘다 */
+      if (!cb || window.__wpTpGen !== GEN) { clearInterval(window.__wpTpTimer); return; }
       if (cb.checked) load();
     }, 30000);
 
