@@ -152,7 +152,7 @@
   })();
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.05 00:20';
+  var VERSION = '26.09.05 01:40';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -6900,6 +6900,76 @@ document.getElementById('__wpSave').onclick = function() {
       });
     }
 
+    /* ── 오늘 배송동선 (위펀오피스 배송일정) ──
+       기사 이름으로 묶어둔다. 순번·거래처·주소·완료여부가 들어 있어
+       "지금 몇 번째 하차지에 가고 있나"를 그릴 수 있다. */
+    var TCSCHED = null, TCGEO = null;
+    function tcDay() {
+      var d = new Date(Date.now() + 9 * 36e5);
+      return d.toISOString().slice(0, 10);
+    }
+    function tcSched() {
+      if (TCSCHED) return Promise.resolve(TCSCHED);
+      var day = tcDay(), by = {};
+      function page(n) {
+        if (n > 6) return Promise.resolve();
+        var u = '/office/delivery-manager/v2/schedules?searchYN=Y&size=500&page=' + n +
+                '&startDate=' + day + '&endDate=' + day + '&searchKeyword=';
+        return fetch(u).then(function(r) { return r.text(); }).then(function(html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var trs = [].slice.call(doc.querySelectorAll('table tbody tr'));
+          var got = 0;
+          trs.forEach(function(tr) {
+            var td = [].slice.call(tr.querySelectorAll('td'));
+            if (td.length < 14) return;
+            function tx(k) { return (td[k] ? (td[k].innerText || '') : '').replace(/\s+/g, ' ').trim(); }
+            var drv = tx(3);
+            if (!drv) return;
+            got++;
+            (by[drv] = by[drv] || []).push({
+              course: tx(2), seq: Number(tx(4)) || 0, br: tx(5), svc: tx(6),
+              addr: tx(7).replace(/^\(\d{5}\)\s*/, ''), stmt: tx(8),
+              status: tx(12), meridiem: tx(13)
+            });
+          });
+          if (got >= 500) return page(n + 1);
+        });
+      }
+      return page(1).then(function() {
+        Object.keys(by).forEach(function(k) { by[k].sort(function(a, b) { return a.seq - b.seq; }); });
+        TCSCHED = by;
+        return by;
+      }).catch(function() { TCSCHED = by; return by; });
+    }
+    /* 주소 → 좌표. 차량고지서 탭과 같은 브라우저 캐시를 쓴다(한 번 찍은 주소는 두 번 안 찍는다). */
+    function tcGeo(addrs) {
+      var C;
+      try { C = JSON.parse(localStorage.getItem('__wpTkGeo') || '{}'); } catch (e) { C = {}; }
+      var out = {}, miss = [];
+      addrs.forEach(function(a) {
+        var v = C[a];
+        if (v === undefined) { if (miss.indexOf(a) < 0) miss.push(a); return; }
+        out[a] = v ? { x: v[0], y: v[1] } : null;
+      });
+      if (!miss.length) return Promise.resolve(out);
+      var idx = 0;
+      function lane() {
+        if (idx >= miss.length) return Promise.resolve();
+        var part = miss.slice(idx, idx + 25); idx += 25;
+        return api({ e: 'geo', addrs: JSON.stringify(part) }).then(function(j) {
+          Object.keys(j.geo || {}).forEach(function(k) {
+            var v = j.geo[k]; out[k] = v; C[k] = v ? [v.x, v.y] : 0;
+          });
+        }).catch(function() {}).then(lane);
+      }
+      var lanes = [];
+      for (var w = 0; w < 6; w++) lanes.push(lane());
+      return Promise.all(lanes).then(function() {
+        try { localStorage.setItem('__wpTkGeo', JSON.stringify(C)); } catch (e) {}
+        return out;
+      });
+    }
+
     /* ── 카카오 지도 ── */
     function mapKey() {
       if (TT.key) return Promise.resolve(TT.key);
@@ -6946,6 +7016,44 @@ document.getElementById('__wpSave').onclick = function() {
           '<span style="font-size:11.5px;color:#94A3B8">' + esc((e && e.message) || e) + '</span></div>';
       });
     }
+    /* 선택한 기사의 실제 이동 경로와 오늘 방문지를 지도에 겹친다.
+       완료한 곳은 회색, 남은 곳은 파랑, 다음 갈 곳은 크게. */
+    var TCLAY = [];
+    function clearLayer() { TCLAY.forEach(function(o) { o.setMap(null); }); TCLAY = []; }
+    function drawRoute(pts, stops, geo, nextSeq) {
+      if (!TT.map || !window.kakao) return;
+      clearLayer();
+      var path = (pts || []).filter(function(p) { return p.x && p.y; })
+        .map(function(p) { return new kakao.maps.LatLng(p.y, p.x); });
+      if (path.length > 1) {
+        var pl = new kakao.maps.Polyline({
+          path: path, strokeWeight: 4, strokeColor: '#1f4e78',
+          strokeOpacity: 0.75, strokeStyle: 'solid'
+        });
+        pl.setMap(TT.map); TCLAY.push(pl);
+      }
+      var bounds = new kakao.maps.LatLngBounds();
+      path.forEach(function(ll) { bounds.extend(ll); });
+      (stops || []).forEach(function(st) {
+        var xy = geo[st.addr];
+        if (!xy) return;
+        var pos = new kakao.maps.LatLng(xy.y, xy.x);
+        bounds.extend(pos);
+        var done = st.status === '완료';
+        var nxt = st.seq === nextSeq;
+        var bg = done ? '#94A3B8' : nxt ? '#1D4ED8' : '#fff';
+        var fg = done || nxt ? '#fff' : '#1D4ED8';
+        var sz = nxt ? 30 : 22;
+        var html = '<div title="' + esc(st.br) + '" style="transform:translate(-50%,-50%);width:' + sz + 'px;height:' + sz + 'px;' +
+          'border-radius:50%;background:' + bg + ';color:' + fg + ';border:2px solid #1D4ED8;' +
+          'display:flex;align-items:center;justify-content:center;font-size:' + (nxt ? 13 : 11) + 'px;' +
+          'font-weight:800;font-family:system-ui,sans-serif;box-shadow:0 2px 8px rgba(2,8,20,.3)">' + (st.seq || '') + '</div>';
+        var ov = new kakao.maps.CustomOverlay({ position: pos, content: html, zIndex: nxt ? 15 : 5 });
+        ov.setMap(TT.map); TCLAY.push(ov);
+      });
+      if (!bounds.isEmpty()) TT.map.setBounds(bounds, 50, 50, 50, 50);
+    }
+
     function drawMarks() {
       if (!TT.map || !window.kakao) return;
       TT.mk.forEach(function(m) { m.setMap(null); });
@@ -7029,6 +7137,9 @@ document.getElementById('__wpSave').onclick = function() {
 
     function pick(tel) {
       TT.sel = tel;
+      clearLayer();
+      var oc = document.getElementById('__wpTcCourse');
+      if (oc) oc.remove();
       var r = TT.rows.filter(function(x) { return String(x.tel) === String(tel); })[0];
       if (r && r.x && r.y && TT.map) { TT.map.setLevel(5); TT.map.panTo(new kakao.maps.LatLng(r.y, r.x)); }
       render();
@@ -7083,7 +7194,63 @@ document.getElementById('__wpSave').onclick = function() {
           g + '<path d="' + d + '" fill="none" stroke="#1f4e78" stroke-width="2"/>' + lab + '</svg></div>';
       }).catch(function(e) {
         box.innerHTML = '<div class="wp-meta" style="color:#DC2626">이력 조회 실패: ' + esc((e && e.message) || e) + '</div>';
-      });
+      }).then(function() { return course(tel, me); });
+    }
+
+    /* 오늘 이 기사가 도는 코스 — 위펀오피스 배송일정 + 우리가 받은 실제 위치 */
+    function course(tel, me) {
+      var box = document.getElementById('__wpTcCourse');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = '__wpTcCourse';
+        box.style.marginTop = '10px';
+        document.getElementById('__wpTcDet').appendChild(box);
+      }
+      box.innerHTML = '<div style="font-size:12px;color:#0369A1">오늘 배송동선 불러오는 중…</div>';
+      var name = (me && me.name) || '';
+      return Promise.all([tcSched(), api({ e: 'trk_hist', tel: tel }).catch(function() { return { rows: [] }; })])
+        .then(function(r) {
+          var stops = (r[0][name] || []).slice();
+          var pts = (r[1].rows || []).filter(function(p) { return p.x && p.y; });
+          if (!stops.length) {
+            box.innerHTML = '<div class="wp-meta">' + esc(name || tel) + ' — 오늘 배송일정이 없습니다. ' +
+              '<span style="color:#94A3B8">(위펀오피스 기사명과 관제 이름이 다르면 안 잡힙니다)</span></div>';
+            drawRoute(pts, [], {}, 0);
+            return;
+          }
+          var addrs = [];
+          stops.forEach(function(st) { if (st.addr && addrs.indexOf(st.addr) < 0) addrs.push(st.addr); });
+          return tcGeo(addrs).then(function(geo) {
+            var done = stops.filter(function(s2) { return s2.status === '완료'; }).length;
+            var next = stops.filter(function(s2) { return s2.status !== '완료'; })[0];
+            var nextSeq = next ? next.seq : 0;
+            var h = '<div class="wp-form" style="margin-top:0">' +
+              '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:9px">' +
+              '<b style="font-size:14px">오늘 배송동선</b>' +
+              '<span style="font-size:12.5px;color:#64748B">' + esc(stops[0].course || '') + ' · ' +
+              stops.length + '곳 · 완료 ' + done + ' · 남음 ' + (stops.length - done) + '</span>' +
+              (next ? '<span style="font-size:12.5px;font-weight:700;color:#1D4ED8">다음 ' + next.seq + '. ' + esc(next.br.split(' - ').pop()) + '</span>'
+                    : '<span style="font-size:12.5px;font-weight:700;color:#0a7d47">전량 완료</span>') +
+              '</div><div class="wp-scroll" style="max-height:280px">' +
+              '<table class="wp-tbl"><thead><tr><th style="width:44px">순번</th><th>거래처</th><th style="width:96px">상태</th></tr></thead><tbody>';
+            stops.forEach(function(st) {
+              var isNext = st.seq === nextSeq;
+              var col = st.status === '완료' ? '#94A3B8' : isNext ? '#1D4ED8' : '#1E293B';
+              h += '<tr' + (isNext ? ' style="background:#EFF6FF"' : '') + '>' +
+                '<td style="font-weight:800;color:' + col + '">' + (st.seq || '') + '</td>' +
+                '<td><span style="color:' + col + ';font-weight:' + (isNext ? 800 : 600) + '">' +
+                esc(st.br.split(' - ').pop()) + '</span>' +
+                '<div style="font-size:11.5px;color:#94A3B8">' + esc(st.addr) + '</div></td>' +
+                '<td style="font-size:12.5px;font-weight:700;color:' + col + '">' +
+                esc(st.status || '대기') + (st.meridiem && st.meridiem !== '없음' ? ' · ' + esc(st.meridiem) : '') + '</td></tr>';
+            });
+            h += '</tbody></table></div></div>';
+            box.innerHTML = h;
+            drawRoute(pts, stops, geo, nextSeq);
+          });
+        }).catch(function(e) {
+          box.innerHTML = '<div class="wp-meta" style="color:#B45309">배송동선 조회 실패: ' + esc((e && e.message) || e) + '</div>';
+        });
     }
 
     function loadOurs() {
@@ -7136,11 +7303,11 @@ document.getElementById('__wpSave').onclick = function() {
     document.getElementById('__wpTcGo').onclick = load;
     document.getElementById('__wpTcKw').oninput = function() { TT.kw = this.value; render(); };
     document.getElementById('__wpTcOurs').onclick = function() {
-      TT.src = 'ours'; TT.sel = ''; TT.rows = []; srcBtn();
+      TT.src = 'ours'; TT.sel = ''; TT.rows = []; TCSCHED = null; clearLayer(); srcBtn();
       document.getElementById('__wpTcDet').innerHTML = ''; render(); load();
     };
     document.getElementById('__wpTcLat').onclick = function() {
-      TT.src = 'latos'; TT.sel = ''; TT.rows = []; srcBtn();
+      TT.src = 'latos'; TT.sel = ''; TT.rows = []; clearLayer(); srcBtn();
       document.getElementById('__wpTcDet').innerHTML = ''; render(); load();
     };
 
