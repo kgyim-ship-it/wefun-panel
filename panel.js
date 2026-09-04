@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.04 21:40';
+  var VERSION = '26.09.04 22:30';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -6777,31 +6777,40 @@ document.getElementById('__wpSave').onclick = function() {
     }
   }
 
-  /* ---------- 배송 온도관제 (우리 기사웹 + 전환기 LATOS 비교) ---------- */
+  /* ---------- 배송 온도관제 (WEFUN TRACK 자체관제 + 전환기 LOGISALL 비교) ---------- */
+  var TPT = null;   /* 자동새로고침 타이머는 탭 밖에 둔다 — 탭을 드나들 때마다 새 타이머가 겹쳐
+                       이전 화면(로지스올)이 현재 화면(자체관제)을 덮어쓰던 문제를 막는다 */
   function viewTemp() {
     var LIM = { '냉동': [-25, -12], '냉장': [-2, 10], '상온': [null, null] };
-    var TT = { rows: [], latos: [], at: '', timer: null, src: 'ours', sel: '' };
+    var TT = { rows: [], at: '', src: 'ours', sel: '', kw: '', map: null, mk: [], key: '' };
 
     VIEW.innerHTML =
-      '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155;line-height:1.7;margin-bottom:10px">' +
-      '<b>배송 온도관제</b> — 기사 휴대폰이 30초마다 올리는 적재함 온도·위치입니다.<br>' +
-      '기사웹 주소 <b id="__wpTpUrl" style="font-family:ui-monospace,monospace"></b> ' +
-      '<button id="__wpTpCp" class="wp-act" style="height:24px">주소 복사</button> ' +
-      '— 기사분 휴대폰에서 이 주소를 열고 <b>번호만</b> 넣으면 됩니다.</div>' +
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
-      '<button id="__wpTpOurs" class="wp-btn pri" style="padding:7px 14px">우리 관제</button>' +
-      '<button id="__wpTpLat" class="wp-btn gh" style="padding:7px 14px">로지스올 (비교용)</button>' +
-      '<span style="color:#cbd5e1">|</span>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
+      '<div style="display:flex;background:#0B1220;border-radius:9px;padding:3px">' +
+      '<button id="__wpTpOurs" class="wp-btn" style="padding:7px 15px;background:#38BDF8;color:#04121F;border-radius:7px">WEFUN TRACK</button>' +
+      '<button id="__wpTpLat" class="wp-btn" style="padding:7px 15px;background:transparent;color:#94A3B8;border-radius:7px">LOGISALL 비교</button>' +
+      '</div>' +
       '<button id="__wpTpGo" class="wp-btn gh" style="padding:7px 14px">↻ 새로고침</button>' +
       '<label style="font-size:12.5px;color:#475569;display:inline-flex;align-items:center;gap:5px">' +
-      '<input type="checkbox" id="__wpTpAuto" checked> 30초마다 자동</label>' +
+      '<input type="checkbox" id="__wpTpAuto" checked> 30초 자동</label>' +
+      '<span style="color:#cbd5e1">|</span>' +
+      '<span style="font-size:12px;color:#64748B">기사웹 <b id="__wpTpUrl" style="font-family:ui-monospace,monospace;color:#1f4e78"></b></span>' +
+      '<button id="__wpTpCp" class="wp-act" style="height:26px">주소 복사</button>' +
       '<span style="flex:1"></span><span id="__wpTpAt" style="font-size:12px;color:#64748B"></span></div>' +
       '<div id="__wpTpKpi" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>' +
-      '<div id="__wpTpList" class="wp-scroll">불러오는 중…</div>' +
+      '<div style="display:flex;gap:10px;align-items:stretch;min-height:460px">' +
+      '<div style="width:330px;flex:none;display:flex;flex-direction:column;border:1px solid #E2E8F0;border-radius:10px;overflow:hidden;background:#fff">' +
+      '<div style="padding:8px;border-bottom:1px solid #E2E8F0;background:#0B1220">' +
+      '<input id="__wpTpKw" class="wp-inp" placeholder="기사 · 차량 · 단말기 검색" style="width:100%;height:32px"></div>' +
+      '<div id="__wpTpList" style="flex:1;overflow:auto;max-height:560px">불러오는 중…</div></div>' +
+      '<div style="flex:1;min-width:320px;border:1px solid #E2E8F0;border-radius:10px;overflow:hidden;position:relative;background:#EEF2F6">' +
+      '<div id="__wpTpMap" style="position:absolute;inset:0"></div>' +
+      '<div id="__wpTpMapMsg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font-size:13px;color:#475569"></div>' +
+      '</div></div>' +
       '<div id="__wpTpDet" style="margin-top:10px"></div>';
 
     var base = apiUrl().replace(/\/+$/, '');
-    document.getElementById('__wpTpUrl').textContent = base + '/drv';
+    document.getElementById('__wpTpUrl').textContent = base.replace(/^https?:\/\//, '') + '/drv';
     document.getElementById('__wpTpCp').onclick = function() {
       navigator.clipboard.writeText(base + '/drv')
         .then(function() { toast('✓ 기사웹 주소 복사됨', '#0a7d47'); })
@@ -6809,8 +6818,8 @@ document.getElementById('__wpSave').onclick = function() {
     };
 
     function kpi(v, k, color) {
-      return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:10px 14px;min-width:104px">' +
-        '<div style="font-size:20px;font-weight:800;color:' + (color || '#0B1220') + '">' + v + '</div>' +
+      return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:10px 15px;min-width:106px">' +
+        '<div style="font-size:21px;font-weight:800;color:' + (color || '#0B1220') + '">' + v + '</div>' +
         '<div style="font-size:11.5px;color:#64748B">' + k + '</div></div>';
     }
     function ago(ts) {
@@ -6818,21 +6827,107 @@ document.getElementById('__wpSave').onclick = function() {
       var s = Math.floor((Date.now() - ts) / 1000);
       if (s < 60) return s + '초 전';
       if (s < 3600) return Math.floor(s / 60) + '분 전';
-      return Math.floor(s / 3600) + '시간 전';
+      if (s < 86400) return Math.floor(s / 3600) + '시간 전';
+      return Math.floor(s / 86400) + '일 전';
     }
+    function bandCol(b) { return b === '냉동' ? '#1D4ED8' : b === '냉장' ? '#0F766E' : '#B45309'; }
     function bandPill(b) {
-      var c = b === '냉동' ? '#1E3A5F;color:#7DD3FC' : b === '냉장' ? '#0F3D2E;color:#6EE7B7' : '#3F3A22;color:#FCD34D';
-      return b ? '<span class="wp-pill" style="background:#' + c.split(';')[0].slice(1) + ';' + c.split(';')[1] + '">' + esc(b) + '</span>' : '<span style="color:#94A3B8">-</span>';
+      if (!b) return '<span style="color:#CBD5E1;font-size:11.5px">미분류</span>';
+      var bg = b === '냉동' ? '#DBEAFE' : b === '냉장' ? '#CCFBF1' : '#FEF3C7';
+      return '<span class="wp-pill" style="background:' + bg + ';color:' + bandCol(b) + '">' + esc(b) + '</span>';
     }
-    /* 판정: 온도대 상·하한을 벗어나면 이탈. 상온차는 판정하지 않는다.
-       측정이 10분 넘게 끊긴 건 이탈이 아니라 '무응답'으로 따로 센다. */
+    /* 온도대 상·하한을 벗어나면 이탈. 상온차는 판정하지 않는다.
+       10분 넘게 신호가 없으면 이탈이 아니라 '무응답' — 센서 빠진 것과 온도 튄 것은 다른 사건이다. */
     function judge(r) {
       var stale = !r.ts || (Date.now() - r.ts) > 600000;
-      if (r.t === null || r.t === undefined || stale) return { k: 'stale', s: '무응답', c: '#94A3B8' };
+      if (r.t === null || r.t === undefined || stale) return { k: 'stale', s: '무응답', c: '#94A3B8', m: '#94A3B8' };
       var l = LIM[r.band] || [null, null];
-      if (l[1] !== null && r.t > l[1]) return { k: 'out', s: '이탈 (상한 ' + l[1] + '℃)', c: '#DC2626' };
-      if (l[0] !== null && r.t < l[0]) return { k: 'out', s: '이탈 (하한 ' + l[0] + '℃)', c: '#DC2626' };
-      return { k: 'ok', s: '정상', c: '#0a7d47' };
+      if (l[1] !== null && r.t > l[1]) return { k: 'out', s: '이탈 · 상한 ' + l[1] + '℃ 초과', c: '#DC2626', m: '#EF4444' };
+      if (l[0] !== null && r.t < l[0]) return { k: 'out', s: '이탈 · 하한 ' + l[0] + '℃ 미만', c: '#DC2626', m: '#EF4444' };
+      return { k: 'ok', s: '정상', c: '#0a7d47', m: '#16A34A' };
+    }
+    function shown() {
+      var kw = TT.kw.trim().toLowerCase();
+      if (!kw) return TT.rows;
+      return TT.rows.filter(function(r) {
+        return (String(r.name || '') + String(r.car || '') + String(r.dev || '') + String(r.tel || '')).toLowerCase().indexOf(kw) > -1;
+      });
+    }
+
+    /* ── 카카오 지도 ── */
+    function mapKey() {
+      if (TT.key) return Promise.resolve(TT.key);
+      return api({ e: 'cfg_get', k: 'kakao_js_key' }).then(function(j) { TT.key = (j.v || '').trim(); return TT.key; })
+        .catch(function() { return ''; });
+    }
+    function askKey() {
+      document.getElementById('__wpTpMapMsg').innerHTML =
+        '<div style="max-width:340px;line-height:1.8">지도를 켜려면 <b>카카오 JavaScript 앱키</b>가 한 번 필요합니다.<br>' +
+        '<span style="color:#64748B;font-size:12px">카카오디벨로퍼스 → 내 앱 → 앱 키 → JavaScript 키.<br>' +
+        '플랫폼 > Web 에 <b>' + esc(location.origin) + '</b> 등록해야 동작합니다.</span><br><br>' +
+        '<input id="__wpTpKey" class="wp-inp" placeholder="JavaScript 앱키" style="width:100%">' +
+        '<button id="__wpTpKeySave" class="wp-btn pri" style="margin-top:8px;padding:7px 16px">저장하고 지도 켜기</button></div>';
+      document.getElementById('__wpTpKeySave').onclick = function() {
+        var v = document.getElementById('__wpTpKey').value.trim();
+        if (!v) return;
+        api({ e: 'cfg_set', k: 'kakao_js_key', v: v }).then(function() {
+          TT.key = v; toast('✓ 지도 키 저장', '#0a7d47'); initMap();
+        }).catch(function(e) { alert('저장 실패: ' + ((e && e.message) || e)); });
+      };
+    }
+    function initMap() {
+      var msg = document.getElementById('__wpTpMapMsg');
+      if (!msg) return;
+      mapKey().then(function(k) {
+        if (!k) { askKey(); return; }
+        msg.textContent = '지도 불러오는 중…';
+        var p = (window.kakao && window.kakao.maps && window.kakao.maps.LatLng)
+          ? Promise.resolve()
+          : loadScript('https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' + encodeURIComponent(k))
+            .then(function() { return new Promise(function(rs) { kakao.maps.load(rs); }); });
+        return p.then(function() {
+          var el = document.getElementById('__wpTpMap');
+          if (!el) return;
+          msg.style.display = 'none';
+          TT.map = new kakao.maps.Map(el, { center: new kakao.maps.LatLng(37.5100, 126.9820), level: 9 });
+          TT.map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+          drawMarks();
+        });
+      }).catch(function(e) {
+        msg.style.display = 'flex';
+        msg.innerHTML = '<div style="max-width:330px;line-height:1.8;color:#B45309">지도를 못 불러왔습니다.<br>' +
+          '<span style="font-size:12px">카카오 앱키의 <b>Web 플랫폼</b>에 ' + esc(location.origin) + ' 이 등록됐는지 확인하세요.</span><br>' +
+          '<span style="font-size:11.5px;color:#94A3B8">' + esc((e && e.message) || e) + '</span></div>';
+      });
+    }
+    function drawMarks() {
+      if (!TT.map || !window.kakao) return;
+      TT.mk.forEach(function(m) { m.setMap(null); });
+      TT.mk = [];
+      var rows = shown().filter(function(r) { return r.x && r.y; });
+      if (!rows.length) return;
+      var bounds = new kakao.maps.LatLngBounds();
+      rows.forEach(function(r) {
+        var j = judge(r);
+        var pos = new kakao.maps.LatLng(r.y, r.x);
+        bounds.extend(pos);
+        var on = String(r.tel) === String(TT.sel);
+        var html = '<div class="__wpTpMk" data-tel="' + esc(r.tel) + '" style="transform:translate(-50%,-100%);cursor:pointer;white-space:nowrap;' +
+          'background:' + (on ? '#0B1220' : '#fff') + ';color:' + (on ? '#fff' : '#0B1220') + ';border:2px solid ' + j.m + ';' +
+          'border-radius:9px;padding:3px 8px;font-size:12px;font-weight:800;box-shadow:0 4px 12px rgba(2,8,20,.25);font-family:system-ui,-apple-system,\'Malgun Gothic\',sans-serif">' +
+          esc(r.name || r.tel) +
+          (r.t === null || r.t === undefined ? '' : ' <span style="color:' + j.m + '">' + Number(r.t).toFixed(1) + '℃</span>') +
+          '<div style="width:8px;height:8px;background:' + j.m + ';border-radius:50%;position:absolute;left:50%;bottom:-5px;transform:translateX(-50%)"></div></div>';
+        var ov = new kakao.maps.CustomOverlay({ position: pos, content: html, yAnchor: 1, zIndex: on ? 20 : 1 });
+        ov.setMap(TT.map);
+        TT.mk.push(ov);
+      });
+      if (!TT.sel) TT.map.setBounds(bounds, 40, 40, 40, 40);
+      setTimeout(function() {
+        [].forEach.call(document.querySelectorAll('.__wpTpMk'), function(el) {
+          el.onclick = function() { pick(el.getAttribute('data-tel')); };
+        });
+      }, 30);
     }
 
     function render() {
@@ -6844,55 +6939,62 @@ document.getElementById('__wpSave').onclick = function() {
         if (r.t !== null && r.t !== undefined) sen++;
       });
       document.getElementById('__wpTpKpi').innerHTML =
-        kpi(rows.length, '접속 기사') + kpi(sen, '온도 수신 중') +
+        kpi(rows.length, TT.src === 'ours' ? '접속 기사' : '센서 차량') + kpi(sen, '온도 수신 중') +
         kpi(out, '온도 이탈', out ? '#DC2626' : '#0B1220') +
         kpi(stale, '무응답', stale ? '#B45309' : '#0B1220');
       document.getElementById('__wpTpAt').textContent = TT.at ? '기준 ' + TT.at : '';
 
-      if (!rows.length) {
-        document.getElementById('__wpTpList').innerHTML =
-          '<div style="padding:26px 16px;text-align:center;color:#64748B;font-size:13px;background:#fff">' +
-          '아직 접속한 기사가 없습니다.<br><br>기사분 휴대폰에서 <b>' + esc(base) + '/drv</b> 를 열고<br>' +
-          '번호를 넣은 뒤 <b>운행 시작</b>을 누르면 여기에 뜹니다.</div>';
-        return;
-      }
-      rows.sort(function(a, b) {
-        var ja = judge(a).k, jb = judge(b).k;
-        var w = { out: 0, ok: 1, stale: 2 };
-        if (w[ja] !== w[jb]) return w[ja] - w[jb];
-        return String(a.name || '').localeCompare(String(b.name || ''));
-      });
-      var h = '<table class="wp-tbl"><thead><tr>' +
-        ['기사', '차량', '온도대', '현재온도', '측정', '위치', '상태'].map(function(c) { return '<th>' + c + '</th>'; }).join('') +
-        '</tr></thead><tbody>';
-      rows.forEach(function(r) {
-        var j = judge(r);
-        h += '<tr class="__wpTpRow" data-tel="' + esc(r.tel) + '" style="cursor:pointer">' +
-          '<td><b>' + esc(r.name || r.tel) + '</b></td>' +
-          '<td style="font-size:12px;color:#64748B">' + esc(r.car || '') + (r.dev ? '<br>' + esc(r.dev) : '') + '</td>' +
-          '<td>' + bandPill(r.band) + '</td>' +
-          '<td style="font-weight:800;font-size:15px;color:' + j.c + '">' + (r.t === null || r.t === undefined ? '-' : Number(r.t).toFixed(1) + '℃') + '</td>' +
-          '<td style="font-size:12px;color:#64748B">' + esc(ago(r.ts)) + '</td>' +
-          '<td>' + (r.x && r.y
-            ? '<a href="https://map.kakao.com/link/map/' + encodeURIComponent(r.name || '차량') + ',' + r.y + ',' + r.x + '" target="_blank" style="color:#1f4e78;font-size:12px">지도</a>'
-            : '<span style="color:#CBD5E1">-</span>') + '</td>' +
-          '<td style="font-size:12.5px;font-weight:700;color:' + j.c + '">' + esc(j.s) + '</td></tr>';
-      });
-      h += '</tbody></table>';
       var list = document.getElementById('__wpTpList');
-      list.innerHTML = h;
-      [].forEach.call(list.querySelectorAll('.__wpTpRow'), function(tr) {
-        tr.onclick = function() { detail(tr.getAttribute('data-tel')); };
+      var vs = shown().slice();
+      if (!TT.rows.length) {
+        list.innerHTML = '<div style="padding:26px 14px;text-align:center;color:#64748B;font-size:12.5px;line-height:1.9">' +
+          (TT.src === 'ours'
+            ? '아직 접속한 기사가 없습니다.<br><br>기사분 휴대폰에서<br><b>' + esc(base.replace(/^https?:\/\//, '')) + '/drv</b><br>를 열고 번호를 넣은 뒤<br><b>운행 시작</b>을 누르면 여기 뜹니다.'
+            : '로지스올 조회 결과가 없습니다.') + '</div>';
+        drawMarks(); return;
+      }
+      var w = { out: 0, ok: 1, stale: 2 };
+      vs.sort(function(a, b) {
+        var d = w[judge(a).k] - w[judge(b).k];
+        return d || String(a.name || '').localeCompare(String(b.name || ''));
       });
-      if (TT.sel) detail(TT.sel, true);
+      var h = '';
+      vs.forEach(function(r) {
+        var j = judge(r);
+        var on = String(r.tel) === String(TT.sel);
+        h += '<div class="__wpTpRow" data-tel="' + esc(r.tel) + '" style="display:flex;gap:9px;align-items:center;padding:9px 11px;border-bottom:1px solid #F1F5F9;cursor:pointer;background:' + (on ? '#EFF6FF' : '#fff') + '">' +
+          '<span style="width:6px;height:34px;border-radius:3px;background:' + j.m + ';flex:none"></span>' +
+          '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13.5px;font-weight:800;color:#0B1220">' + esc(r.name || r.tel) + ' ' + bandPill(r.band) + '</div>' +
+          '<div style="font-size:11px;color:#94A3B8;overflow:hidden;text-overflow:ellipsis">' + esc(r.dev || r.car || '') + ' · ' + esc(ago(r.ts) || '기록 없음') + '</div></div>' +
+          '<div style="text-align:right;flex:none">' +
+          '<div style="font-size:17px;font-weight:800;color:' + j.c + ';font-variant-numeric:tabular-nums">' +
+          (r.t === null || r.t === undefined ? '-' : Number(r.t).toFixed(1) + '℃') + '</div>' +
+          '<div style="font-size:10.5px;font-weight:700;color:' + j.c + '">' + esc(j.k === 'out' ? '이탈' : j.s) + '</div>' +
+          '</div></div>';
+      });
+      list.innerHTML = h;
+      [].forEach.call(list.querySelectorAll('.__wpTpRow'), function(el) {
+        el.onclick = function() { pick(el.getAttribute('data-tel')); };
+      });
+      drawMarks();
     }
 
-    /* 하루치 온도 그래프 — 콜드체인 증빙으로 그대로 캡처해 쓸 수 있게 SVG 로 그린다 */
-    function detail(tel, quiet) {
+    function pick(tel) {
       TT.sel = tel;
+      var r = TT.rows.filter(function(x) { return String(x.tel) === String(tel); })[0];
+      if (r && r.x && r.y && TT.map) { TT.map.setLevel(5); TT.map.panTo(new kakao.maps.LatLng(r.y, r.x)); }
+      render();
+      if (TT.src === 'ours') detail(tel);
+      else document.getElementById('__wpTpDet').innerHTML =
+        '<div class="wp-meta">LOGISALL 비교 화면에서는 이력 그래프를 제공하지 않습니다. WEFUN TRACK 으로 전환해 보세요.</div>';
+    }
+
+    /* 하루치 온도 그래프 — 그대로 캡처해 콜드체인 증빙으로 쓸 수 있게 SVG 로 그린다 */
+    function detail(tel) {
       var box = document.getElementById('__wpTpDet');
       var me = TT.rows.filter(function(r) { return String(r.tel) === String(tel); })[0] || {};
-      if (!quiet) box.innerHTML = '<div style="font-size:12px;color:#0369A1">이력 불러오는 중…</div>';
+      box.innerHTML = '<div style="font-size:12px;color:#0369A1">이력 불러오는 중…</div>';
       api({ e: 'trk_hist', tel: tel }).then(function(j) {
         var pts = (j.rows || []).filter(function(p) { return p.t !== null && p.t !== undefined; });
         if (!pts.length) { box.innerHTML = '<div class="wp-meta">' + esc(me.name || tel) + ' — 오늘 온도 기록이 없습니다.</div>'; return; }
@@ -6938,69 +7040,71 @@ document.getElementById('__wpSave').onclick = function() {
     }
 
     function loadOurs() {
-      document.getElementById('__wpTpList').innerHTML = '<div style="padding:16px;font-size:12.5px;color:#0369A1;background:#fff">불러오는 중…</div>';
       return api({ e: 'trk_now' }).then(function(j) {
+        if (TT.src !== 'ours') return;           /* 응답이 늦게 와도 다른 화면을 덮지 않는다 */
         TT.rows = (j.rows || []).map(function(r) {
-          return { tel: r.tel, name: r.name, car: r.car, dev: r.dev, band: r.band || '상온',
+          return { tel: r.tel, name: r.name, car: r.car, dev: r.dev, band: r.band || '',
                    t: r.t, x: r.x, y: r.y, ts: r.ts };
         });
         TT.at = j.at || '';
         render();
       }).catch(function(e) {
-        var m = String((e && e.message) || e);
+        if (TT.src !== 'ours') return;
         document.getElementById('__wpTpList').innerHTML =
-          '<div style="padding:20px 16px;background:#fff;font-size:13px;color:#B45309;line-height:1.8">' +
-          '우리 관제 데이터를 못 읽었습니다 — ' + esc(m) + '<br>' +
-          '워커가 아직 온도관제 버전이 아니면 <b>Cloudflare에서 worker.mjs 를 배포</b>해야 합니다.</div>';
+          '<div style="padding:18px 13px;font-size:12.5px;color:#B45309;line-height:1.8">자체관제 데이터를 못 읽었습니다.<br>' +
+          esc(String((e && e.message) || e)) + '<br><br>워커가 온도관제 버전이 아니면 <b>Cloudflare에서 worker.mjs 배포</b>가 필요합니다.</div>';
       });
     }
 
     /* 전환기 비교 — 로지스올이 보는 값. 우리 수치가 맞는지 대조하는 용도로만 쓴다. */
     function loadLatos() {
-      document.getElementById('__wpTpList').innerHTML = '<div style="padding:16px;font-size:12.5px;color:#0369A1;background:#fff">로지스올 조회 중…</div>';
       return api({ e: 'latos', path: 'atlan_Data_Srch',
                    body: JSON.stringify({ CARRIER_CD: '10068221', TREMNO: '', STATUS: '', CARCD: '' }) })
         .then(function(j) {
+          if (TT.src !== 'latos') return;
           var ds = (j.data && j.data.datas) || [];
           TT.rows = ds.filter(function(c) { return c.TEMP1 !== null && c.TEMP1 !== undefined; }).map(function(c) {
-            return { tel: String(c.DRIVER_MOBILE_NO || ''), name: c.NOW_CAR || c.CAR_CD || '',
+            return { tel: String(c.DRIVER_MOBILE_NO || c.NOW_TERMNO || ''), name: c.NOW_CAR || c.CAR_CD || '',
                      car: c.CAR_BODY_NO || '', dev: String(c.NOW_TERMNO || ''), band: '',
                      t: Number(c.TEMP1), x: Number(c.UTM_X) || null, y: Number(c.UTM_Y) || null,
                      ts: c.NOW_LOCTIME ? new Date(String(c.NOW_LOCTIME).replace(/-/g, '/')).getTime() : 0 };
           });
-          TT.at = '로지스올 · 전체 ' + ds.length + '대 중 센서 ' + TT.rows.length + '대';
+          TT.at = 'LOGISALL · 전체 ' + ds.length + '대 중 센서 ' + TT.rows.length + '대';
           render();
         }).catch(function(e) {
+          if (TT.src !== 'latos') return;
           document.getElementById('__wpTpList').innerHTML =
-            '<div style="padding:20px 16px;background:#fff;font-size:13px;color:#B45309;line-height:1.8">' +
-            '로지스올 조회 실패 — ' + esc((e && e.message) || e) + '<br>' +
-            '워커에 <b>e=latos</b> 통로가 없으면 배포가 필요합니다.</div>';
+            '<div style="padding:18px 13px;font-size:12.5px;color:#B45309;line-height:1.8">로지스올 조회 실패<br>' +
+            esc(String((e && e.message) || e)) + '</div>';
         });
     }
-
     function load() { return TT.src === 'ours' ? loadOurs() : loadLatos(); }
 
+    function srcBtn() {
+      var a = document.getElementById('__wpTpOurs'), b = document.getElementById('__wpTpLat');
+      var ours = TT.src === 'ours';
+      a.style.background = ours ? '#38BDF8' : 'transparent'; a.style.color = ours ? '#04121F' : '#94A3B8';
+      b.style.background = ours ? 'transparent' : '#38BDF8'; b.style.color = ours ? '#94A3B8' : '#04121F';
+    }
     document.getElementById('__wpTpGo').onclick = load;
+    document.getElementById('__wpTpKw').oninput = function() { TT.kw = this.value; render(); };
     document.getElementById('__wpTpOurs').onclick = function() {
-      TT.src = 'ours'; TT.sel = '';
-      this.className = 'wp-btn pri'; document.getElementById('__wpTpLat').className = 'wp-btn gh';
-      document.getElementById('__wpTpDet').innerHTML = '';
-      load();
+      TT.src = 'ours'; TT.sel = ''; TT.rows = []; srcBtn();
+      document.getElementById('__wpTpDet').innerHTML = ''; render(); load();
     };
     document.getElementById('__wpTpLat').onclick = function() {
-      TT.src = 'latos'; TT.sel = '';
-      this.className = 'wp-btn pri'; document.getElementById('__wpTpOurs').className = 'wp-btn gh';
-      document.getElementById('__wpTpDet').innerHTML = '';
-      load();
+      TT.src = 'latos'; TT.sel = ''; TT.rows = []; srcBtn();
+      document.getElementById('__wpTpDet').innerHTML = ''; render(); load();
     };
 
-    if (TT.timer) clearInterval(TT.timer);
-    TT.timer = setInterval(function() {
+    if (TPT) clearInterval(TPT);
+    TPT = setInterval(function() {
       var cb = document.getElementById('__wpTpAuto');
-      if (!cb) { clearInterval(TT.timer); return; }   /* 탭을 떠나면 스스로 멈춘다 */
+      if (!cb) { clearInterval(TPT); TPT = null; return; }   /* 탭을 떠나면 스스로 멈춘다 */
       if (cb.checked) load();
     }, 30000);
 
+    initMap();
     load();
   }
 
