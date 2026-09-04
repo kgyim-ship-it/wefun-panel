@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.04 23:05';
+  var VERSION = '26.09.04 23:30';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -6782,42 +6782,45 @@ document.getElementById('__wpSave').onclick = function() {
      패널은 페이지를 새로고침하지 않아도 새 코드가 덧씌워지는 구조라, 함수 안에 타이머를 두면
      '옛날 버전이 만든 타이머'가 페이지에 살아남아 30초마다 새 화면을 옛날 모양으로 덮어쓴다.
      window 키로 잡아두면 어느 버전이 올라와도 이전 타이머를 확실히 죽일 수 있다. */
+  /* 요소 id 를 __wpTc* 로 바꿨다.
+     옛 버전(22:30 이하)의 30초 타이머는 살아남아 있어도 __wpTpAuto 를 못 찾으면
+     스스로 clearInterval 하고 죽는다 — 페이지를 새로고침하지 않아도 화면이 섞이지 않는다. */
   function viewTemp() {
-    try { if (window.__wpTpTimer) clearInterval(window.__wpTpTimer); } catch (e) {}
-    window.__wpTpTimer = null;
-    window.__wpTpGen = (window.__wpTpGen || 0) + 1;
-    var GEN = window.__wpTpGen;
+    try { if (window.__wpTcTimer) clearInterval(window.__wpTcTimer); } catch (e) {}
+    window.__wpTcTimer = null;
+    window.__wpTcGen = (window.__wpTcGen || 0) + 1;
+    var GEN = window.__wpTcGen;
     var LIM = { '냉동': [-25, -12], '냉장': [-2, 10], '상온': [null, null] };
     var TT = { rows: [], at: '', src: 'ours', sel: '', kw: '', map: null, mk: [], key: '' };
 
     VIEW.innerHTML =
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
       '<div style="display:flex;background:#0B1220;border-radius:9px;padding:3px">' +
-      '<button id="__wpTpOurs" class="wp-btn" style="padding:7px 15px;background:#38BDF8;color:#04121F;border-radius:7px">WEFUN TRACK</button>' +
-      '<button id="__wpTpLat" class="wp-btn" style="padding:7px 15px;background:transparent;color:#94A3B8;border-radius:7px">LOGISALL 비교</button>' +
+      '<button id="__wpTcOurs" class="wp-btn" style="padding:7px 15px;background:#38BDF8;color:#04121F;border-radius:7px">WEFUN TRACK</button>' +
+      '<button id="__wpTcLat" class="wp-btn" style="padding:7px 15px;background:transparent;color:#94A3B8;border-radius:7px">LOGISALL 비교</button>' +
       '</div>' +
-      '<button id="__wpTpGo" class="wp-btn gh" style="padding:7px 14px">↻ 새로고침</button>' +
+      '<button id="__wpTcGo" class="wp-btn gh" style="padding:7px 14px">↻ 새로고침</button>' +
       '<label style="font-size:12.5px;color:#475569;display:inline-flex;align-items:center;gap:5px">' +
-      '<input type="checkbox" id="__wpTpAuto" checked> 30초 자동</label>' +
+      '<input type="checkbox" id="__wpTcAuto" checked> 30초 자동</label>' +
       '<span style="color:#cbd5e1">|</span>' +
-      '<span style="font-size:12px;color:#64748B">기사웹 <b id="__wpTpUrl" style="font-family:ui-monospace,monospace;color:#1f4e78"></b></span>' +
-      '<button id="__wpTpCp" class="wp-act" style="height:26px">주소 복사</button>' +
-      '<span style="flex:1"></span><span id="__wpTpAt" style="font-size:12px;color:#64748B"></span></div>' +
-      '<div id="__wpTpKpi" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>' +
+      '<span style="font-size:12px;color:#64748B">기사웹 <b id="__wpTcUrl" style="font-family:ui-monospace,monospace;color:#1f4e78"></b></span>' +
+      '<button id="__wpTcCp" class="wp-act" style="height:26px">주소 복사</button>' +
+      '<span style="flex:1"></span><span id="__wpTcAt" style="font-size:12px;color:#64748B"></span></div>' +
+      '<div id="__wpTcKpi" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>' +
       '<div style="display:flex;gap:10px;align-items:stretch;min-height:460px">' +
       '<div style="width:330px;flex:none;display:flex;flex-direction:column;border:1px solid #E2E8F0;border-radius:10px;overflow:hidden;background:#fff">' +
       '<div style="padding:8px;border-bottom:1px solid #E2E8F0;background:#0B1220">' +
-      '<input id="__wpTpKw" class="wp-inp" placeholder="기사 · 차량 · 단말기 검색" style="width:100%;height:32px"></div>' +
-      '<div id="__wpTpList" style="flex:1;overflow:auto;max-height:560px">불러오는 중…</div></div>' +
+      '<input id="__wpTcKw" class="wp-inp" placeholder="기사 · 차량 · 단말기 검색" style="width:100%;height:32px"></div>' +
+      '<div id="__wpTcList" style="flex:1;overflow:auto;max-height:560px">불러오는 중…</div></div>' +
       '<div style="flex:1;min-width:320px;border:1px solid #E2E8F0;border-radius:10px;overflow:hidden;position:relative;background:#EEF2F6">' +
-      '<div id="__wpTpMap" style="position:absolute;inset:0"></div>' +
-      '<div id="__wpTpMapMsg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font-size:13px;color:#475569"></div>' +
+      '<div id="__wpTcMap" style="position:absolute;inset:0"></div>' +
+      '<div id="__wpTcMapMsg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font-size:13px;color:#475569"></div>' +
       '</div></div>' +
-      '<div id="__wpTpDet" style="margin-top:10px"></div>';
+      '<div id="__wpTcDet" style="margin-top:10px"></div>';
 
     var base = apiUrl().replace(/\/+$/, '');
-    document.getElementById('__wpTpUrl').textContent = base.replace(/^https?:\/\//, '') + '/drv';
-    document.getElementById('__wpTpCp').onclick = function() {
+    document.getElementById('__wpTcUrl').textContent = base.replace(/^https?:\/\//, '') + '/drv';
+    document.getElementById('__wpTcCp').onclick = function() {
       navigator.clipboard.writeText(base + '/drv')
         .then(function() { toast('✓ 기사웹 주소 복사됨', '#0a7d47'); })
         .catch(function() { alert(base + '/drv'); });
@@ -6867,14 +6870,14 @@ document.getElementById('__wpSave').onclick = function() {
         .catch(function() { return ''; });
     }
     function askKey() {
-      document.getElementById('__wpTpMapMsg').innerHTML =
+      document.getElementById('__wpTcMapMsg').innerHTML =
         '<div style="max-width:340px;line-height:1.8">지도를 켜려면 <b>카카오 JavaScript 앱키</b>가 한 번 필요합니다.<br>' +
         '<span style="color:#64748B;font-size:12px">카카오디벨로퍼스 → 내 앱 → 앱 키 → JavaScript 키.<br>' +
         '플랫폼 > Web 에 <b>' + esc(location.origin) + '</b> 등록해야 동작합니다.</span><br><br>' +
-        '<input id="__wpTpKey" class="wp-inp" placeholder="JavaScript 앱키" style="width:100%">' +
-        '<button id="__wpTpKeySave" class="wp-btn pri" style="margin-top:8px;padding:7px 16px">저장하고 지도 켜기</button></div>';
-      document.getElementById('__wpTpKeySave').onclick = function() {
-        var v = document.getElementById('__wpTpKey').value.trim();
+        '<input id="__wpTcKey" class="wp-inp" placeholder="JavaScript 앱키" style="width:100%">' +
+        '<button id="__wpTcKeySave" class="wp-btn pri" style="margin-top:8px;padding:7px 16px">저장하고 지도 켜기</button></div>';
+      document.getElementById('__wpTcKeySave').onclick = function() {
+        var v = document.getElementById('__wpTcKey').value.trim();
         if (!v) return;
         api({ e: 'cfg_set', k: 'kakao_js_key', v: v }).then(function() {
           TT.key = v; toast('✓ 지도 키 저장', '#0a7d47'); initMap();
@@ -6882,7 +6885,7 @@ document.getElementById('__wpSave').onclick = function() {
       };
     }
     function initMap() {
-      var msg = document.getElementById('__wpTpMapMsg');
+      var msg = document.getElementById('__wpTcMapMsg');
       if (!msg) return;
       mapKey().then(function(k) {
         if (!k) { askKey(); return; }
@@ -6892,7 +6895,7 @@ document.getElementById('__wpSave').onclick = function() {
           : loadScript('https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' + encodeURIComponent(k))
             .then(function() { return new Promise(function(rs) { kakao.maps.load(rs); }); });
         return p.then(function() {
-          var el = document.getElementById('__wpTpMap');
+          var el = document.getElementById('__wpTcMap');
           if (!el) return;
           msg.style.display = 'none';
           TT.map = new kakao.maps.Map(el, { center: new kakao.maps.LatLng(37.5100, 126.9820), level: 9 });
@@ -6918,7 +6921,7 @@ document.getElementById('__wpSave').onclick = function() {
         var pos = new kakao.maps.LatLng(r.y, r.x);
         bounds.extend(pos);
         var on = String(r.tel) === String(TT.sel);
-        var html = '<div class="__wpTpMk" data-tel="' + esc(r.tel) + '" style="transform:translate(-50%,-100%);cursor:pointer;white-space:nowrap;' +
+        var html = '<div class="__wpTcMk" data-tel="' + esc(r.tel) + '" style="transform:translate(-50%,-100%);cursor:pointer;white-space:nowrap;' +
           'background:' + (on ? '#0B1220' : '#fff') + ';color:' + (on ? '#fff' : '#0B1220') + ';border:2px solid ' + j.m + ';' +
           'border-radius:9px;padding:3px 8px;font-size:12px;font-weight:800;box-shadow:0 4px 12px rgba(2,8,20,.25);font-family:system-ui,-apple-system,\'Malgun Gothic\',sans-serif">' +
           esc(r.name || r.tel) +
@@ -6930,14 +6933,14 @@ document.getElementById('__wpSave').onclick = function() {
       });
       if (!TT.sel) TT.map.setBounds(bounds, 40, 40, 40, 40);
       setTimeout(function() {
-        [].forEach.call(document.querySelectorAll('.__wpTpMk'), function(el) {
+        [].forEach.call(document.querySelectorAll('.__wpTcMk'), function(el) {
           el.onclick = function() { pick(el.getAttribute('data-tel')); };
         });
       }, 30);
     }
 
     function render() {
-      if (window.__wpTpGen !== GEN) return;   /* 더 새 화면이 떠 있으면 그리지 않는다 */
+      if (window.__wpTcGen !== GEN) return;   /* 더 새 화면이 떠 있으면 그리지 않는다 */
       var rows = TT.rows;
       var out = 0, stale = 0, sen = 0;
       rows.forEach(function(r) {
@@ -6945,13 +6948,13 @@ document.getElementById('__wpSave').onclick = function() {
         if (j.k === 'out') out++; else if (j.k === 'stale') stale++;
         if (r.t !== null && r.t !== undefined) sen++;
       });
-      document.getElementById('__wpTpKpi').innerHTML =
+      document.getElementById('__wpTcKpi').innerHTML =
         kpi(rows.length, TT.src === 'ours' ? '접속 기사' : '센서 차량') + kpi(sen, '온도 수신 중') +
         kpi(out, '온도 이탈', out ? '#DC2626' : '#0B1220') +
         kpi(stale, '무응답', stale ? '#B45309' : '#0B1220');
-      document.getElementById('__wpTpAt').textContent = TT.at ? '기준 ' + TT.at : '';
+      document.getElementById('__wpTcAt').textContent = TT.at ? '기준 ' + TT.at : '';
 
-      var list = document.getElementById('__wpTpList');
+      var list = document.getElementById('__wpTcList');
       var vs = shown().slice();
       if (!TT.rows.length) {
         list.innerHTML = '<div style="padding:26px 14px;text-align:center;color:#64748B;font-size:12.5px;line-height:1.9">' +
@@ -6969,7 +6972,7 @@ document.getElementById('__wpSave').onclick = function() {
       vs.forEach(function(r) {
         var j = judge(r);
         var on = String(r.tel) === String(TT.sel);
-        h += '<div class="__wpTpRow" data-tel="' + esc(r.tel) + '" style="display:flex;gap:9px;align-items:center;padding:9px 11px;border-bottom:1px solid #F1F5F9;cursor:pointer;background:' + (on ? '#EFF6FF' : '#fff') + '">' +
+        h += '<div class="__wpTcRow" data-tel="' + esc(r.tel) + '" style="display:flex;gap:9px;align-items:center;padding:9px 11px;border-bottom:1px solid #F1F5F9;cursor:pointer;background:' + (on ? '#EFF6FF' : '#fff') + '">' +
           '<span style="width:6px;height:34px;border-radius:3px;background:' + j.m + ';flex:none"></span>' +
           '<div style="flex:1;min-width:0">' +
           '<div style="font-size:13.5px;font-weight:800;color:#0B1220">' + esc(r.name || r.tel) + ' ' + bandPill(r.band) + '</div>' +
@@ -6981,7 +6984,7 @@ document.getElementById('__wpSave').onclick = function() {
           '</div></div>';
       });
       list.innerHTML = h;
-      [].forEach.call(list.querySelectorAll('.__wpTpRow'), function(el) {
+      [].forEach.call(list.querySelectorAll('.__wpTcRow'), function(el) {
         el.onclick = function() { pick(el.getAttribute('data-tel')); };
       });
       drawMarks();
@@ -6993,13 +6996,13 @@ document.getElementById('__wpSave').onclick = function() {
       if (r && r.x && r.y && TT.map) { TT.map.setLevel(5); TT.map.panTo(new kakao.maps.LatLng(r.y, r.x)); }
       render();
       if (TT.src === 'ours') detail(tel);
-      else document.getElementById('__wpTpDet').innerHTML =
+      else document.getElementById('__wpTcDet').innerHTML =
         '<div class="wp-meta">LOGISALL 비교 화면에서는 이력 그래프를 제공하지 않습니다. WEFUN TRACK 으로 전환해 보세요.</div>';
     }
 
     /* 하루치 온도 그래프 — 그대로 캡처해 콜드체인 증빙으로 쓸 수 있게 SVG 로 그린다 */
     function detail(tel) {
-      var box = document.getElementById('__wpTpDet');
+      var box = document.getElementById('__wpTcDet');
       var me = TT.rows.filter(function(r) { return String(r.tel) === String(tel); })[0] || {};
       box.innerHTML = '<div style="font-size:12px;color:#0369A1">이력 불러오는 중…</div>';
       api({ e: 'trk_hist', tel: tel }).then(function(j) {
@@ -7057,7 +7060,7 @@ document.getElementById('__wpSave').onclick = function() {
         render();
       }).catch(function(e) {
         if (TT.src !== 'ours') return;
-        document.getElementById('__wpTpList').innerHTML =
+        document.getElementById('__wpTcList').innerHTML =
           '<div style="padding:18px 13px;font-size:12.5px;color:#B45309;line-height:1.8">자체관제 데이터를 못 읽었습니다.<br>' +
           esc(String((e && e.message) || e)) + '<br><br>워커가 온도관제 버전이 아니면 <b>Cloudflare에서 worker.mjs 배포</b>가 필요합니다.</div>';
       });
@@ -7080,7 +7083,7 @@ document.getElementById('__wpSave').onclick = function() {
           render();
         }).catch(function(e) {
           if (TT.src !== 'latos') return;
-          document.getElementById('__wpTpList').innerHTML =
+          document.getElementById('__wpTcList').innerHTML =
             '<div style="padding:18px 13px;font-size:12.5px;color:#B45309;line-height:1.8">로지스올 조회 실패<br>' +
             esc(String((e && e.message) || e)) + '</div>';
         });
@@ -7088,26 +7091,26 @@ document.getElementById('__wpSave').onclick = function() {
     function load() { return TT.src === 'ours' ? loadOurs() : loadLatos(); }
 
     function srcBtn() {
-      var a = document.getElementById('__wpTpOurs'), b = document.getElementById('__wpTpLat');
+      var a = document.getElementById('__wpTcOurs'), b = document.getElementById('__wpTcLat');
       var ours = TT.src === 'ours';
       a.style.background = ours ? '#38BDF8' : 'transparent'; a.style.color = ours ? '#04121F' : '#94A3B8';
       b.style.background = ours ? 'transparent' : '#38BDF8'; b.style.color = ours ? '#94A3B8' : '#04121F';
     }
-    document.getElementById('__wpTpGo').onclick = load;
-    document.getElementById('__wpTpKw').oninput = function() { TT.kw = this.value; render(); };
-    document.getElementById('__wpTpOurs').onclick = function() {
+    document.getElementById('__wpTcGo').onclick = load;
+    document.getElementById('__wpTcKw').oninput = function() { TT.kw = this.value; render(); };
+    document.getElementById('__wpTcOurs').onclick = function() {
       TT.src = 'ours'; TT.sel = ''; TT.rows = []; srcBtn();
-      document.getElementById('__wpTpDet').innerHTML = ''; render(); load();
+      document.getElementById('__wpTcDet').innerHTML = ''; render(); load();
     };
-    document.getElementById('__wpTpLat').onclick = function() {
+    document.getElementById('__wpTcLat').onclick = function() {
       TT.src = 'latos'; TT.sel = ''; TT.rows = []; srcBtn();
-      document.getElementById('__wpTpDet').innerHTML = ''; render(); load();
+      document.getElementById('__wpTcDet').innerHTML = ''; render(); load();
     };
 
-    window.__wpTpTimer = setInterval(function() {
-      var cb = document.getElementById('__wpTpAuto');
+    window.__wpTcTimer = setInterval(function() {
+      var cb = document.getElementById('__wpTcAuto');
       /* 탭을 떠났거나(요소 없음) 더 새 화면이 뜨면(세대 불일치) 스스로 멈춘다 */
-      if (!cb || window.__wpTpGen !== GEN) { clearInterval(window.__wpTpTimer); return; }
+      if (!cb || window.__wpTcGen !== GEN) { clearInterval(window.__wpTcTimer); return; }
       if (cb.checked) load();
     }, 30000);
 
