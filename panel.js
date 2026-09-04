@@ -120,7 +120,7 @@
   var API_URL = 'https://wefun-queu.kg-yim.workers.dev/'; /* 공유 큐 API — Cloudflare Workers + D1 */
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.02 12:05';
+  var VERSION = '26.09.04 21:40';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -865,6 +865,7 @@
       ['stats', '배송통계'],
       ['kstats', '기사통계'],
       ['dispatch', '배차'],
+      ['temp', '온도관제'],
       ['ticket', '차량고지서'],
       ['visits', '접속 이력'],
       ['board_update', '업데이트 이력'],
@@ -903,6 +904,7 @@
     else if (t === 'stats') viewStats();
     else if (t === 'kstats') viewKStats();
     else if (t === 'dispatch') viewDispatch();
+    else if (t === 'temp') viewTemp();
     else if (t === 'ticket') viewTicket();
     else if (t === 'visits') viewVisits();
     else if (t === 'voc') viewVoc();
@@ -6773,6 +6775,233 @@ document.getElementById('__wpSave').onclick = function() {
         });
       });
     }
+  }
+
+  /* ---------- 배송 온도관제 (우리 기사웹 + 전환기 LATOS 비교) ---------- */
+  function viewTemp() {
+    var LIM = { '냉동': [-25, -12], '냉장': [-2, 10], '상온': [null, null] };
+    var TT = { rows: [], latos: [], at: '', timer: null, src: 'ours', sel: '' };
+
+    VIEW.innerHTML =
+      '<div style="padding:9px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#334155;line-height:1.7;margin-bottom:10px">' +
+      '<b>배송 온도관제</b> — 기사 휴대폰이 30초마다 올리는 적재함 온도·위치입니다.<br>' +
+      '기사웹 주소 <b id="__wpTpUrl" style="font-family:ui-monospace,monospace"></b> ' +
+      '<button id="__wpTpCp" class="wp-act" style="height:24px">주소 복사</button> ' +
+      '— 기사분 휴대폰에서 이 주소를 열고 <b>번호만</b> 넣으면 됩니다.</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
+      '<button id="__wpTpOurs" class="wp-btn pri" style="padding:7px 14px">우리 관제</button>' +
+      '<button id="__wpTpLat" class="wp-btn gh" style="padding:7px 14px">로지스올 (비교용)</button>' +
+      '<span style="color:#cbd5e1">|</span>' +
+      '<button id="__wpTpGo" class="wp-btn gh" style="padding:7px 14px">↻ 새로고침</button>' +
+      '<label style="font-size:12.5px;color:#475569;display:inline-flex;align-items:center;gap:5px">' +
+      '<input type="checkbox" id="__wpTpAuto" checked> 30초마다 자동</label>' +
+      '<span style="flex:1"></span><span id="__wpTpAt" style="font-size:12px;color:#64748B"></span></div>' +
+      '<div id="__wpTpKpi" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>' +
+      '<div id="__wpTpList" class="wp-scroll">불러오는 중…</div>' +
+      '<div id="__wpTpDet" style="margin-top:10px"></div>';
+
+    var base = apiUrl().replace(/\/+$/, '');
+    document.getElementById('__wpTpUrl').textContent = base + '/drv';
+    document.getElementById('__wpTpCp').onclick = function() {
+      navigator.clipboard.writeText(base + '/drv')
+        .then(function() { toast('✓ 기사웹 주소 복사됨', '#0a7d47'); })
+        .catch(function() { alert(base + '/drv'); });
+    };
+
+    function kpi(v, k, color) {
+      return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:10px 14px;min-width:104px">' +
+        '<div style="font-size:20px;font-weight:800;color:' + (color || '#0B1220') + '">' + v + '</div>' +
+        '<div style="font-size:11.5px;color:#64748B">' + k + '</div></div>';
+    }
+    function ago(ts) {
+      if (!ts) return '';
+      var s = Math.floor((Date.now() - ts) / 1000);
+      if (s < 60) return s + '초 전';
+      if (s < 3600) return Math.floor(s / 60) + '분 전';
+      return Math.floor(s / 3600) + '시간 전';
+    }
+    function bandPill(b) {
+      var c = b === '냉동' ? '#1E3A5F;color:#7DD3FC' : b === '냉장' ? '#0F3D2E;color:#6EE7B7' : '#3F3A22;color:#FCD34D';
+      return b ? '<span class="wp-pill" style="background:#' + c.split(';')[0].slice(1) + ';' + c.split(';')[1] + '">' + esc(b) + '</span>' : '<span style="color:#94A3B8">-</span>';
+    }
+    /* 판정: 온도대 상·하한을 벗어나면 이탈. 상온차는 판정하지 않는다.
+       측정이 10분 넘게 끊긴 건 이탈이 아니라 '무응답'으로 따로 센다. */
+    function judge(r) {
+      var stale = !r.ts || (Date.now() - r.ts) > 600000;
+      if (r.t === null || r.t === undefined || stale) return { k: 'stale', s: '무응답', c: '#94A3B8' };
+      var l = LIM[r.band] || [null, null];
+      if (l[1] !== null && r.t > l[1]) return { k: 'out', s: '이탈 (상한 ' + l[1] + '℃)', c: '#DC2626' };
+      if (l[0] !== null && r.t < l[0]) return { k: 'out', s: '이탈 (하한 ' + l[0] + '℃)', c: '#DC2626' };
+      return { k: 'ok', s: '정상', c: '#0a7d47' };
+    }
+
+    function render() {
+      var rows = TT.rows;
+      var out = 0, stale = 0, sen = 0;
+      rows.forEach(function(r) {
+        var j = judge(r);
+        if (j.k === 'out') out++; else if (j.k === 'stale') stale++;
+        if (r.t !== null && r.t !== undefined) sen++;
+      });
+      document.getElementById('__wpTpKpi').innerHTML =
+        kpi(rows.length, '접속 기사') + kpi(sen, '온도 수신 중') +
+        kpi(out, '온도 이탈', out ? '#DC2626' : '#0B1220') +
+        kpi(stale, '무응답', stale ? '#B45309' : '#0B1220');
+      document.getElementById('__wpTpAt').textContent = TT.at ? '기준 ' + TT.at : '';
+
+      if (!rows.length) {
+        document.getElementById('__wpTpList').innerHTML =
+          '<div style="padding:26px 16px;text-align:center;color:#64748B;font-size:13px;background:#fff">' +
+          '아직 접속한 기사가 없습니다.<br><br>기사분 휴대폰에서 <b>' + esc(base) + '/drv</b> 를 열고<br>' +
+          '번호를 넣은 뒤 <b>운행 시작</b>을 누르면 여기에 뜹니다.</div>';
+        return;
+      }
+      rows.sort(function(a, b) {
+        var ja = judge(a).k, jb = judge(b).k;
+        var w = { out: 0, ok: 1, stale: 2 };
+        if (w[ja] !== w[jb]) return w[ja] - w[jb];
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
+      var h = '<table class="wp-tbl"><thead><tr>' +
+        ['기사', '차량', '온도대', '현재온도', '측정', '위치', '상태'].map(function(c) { return '<th>' + c + '</th>'; }).join('') +
+        '</tr></thead><tbody>';
+      rows.forEach(function(r) {
+        var j = judge(r);
+        h += '<tr class="__wpTpRow" data-tel="' + esc(r.tel) + '" style="cursor:pointer">' +
+          '<td><b>' + esc(r.name || r.tel) + '</b></td>' +
+          '<td style="font-size:12px;color:#64748B">' + esc(r.car || '') + (r.dev ? '<br>' + esc(r.dev) : '') + '</td>' +
+          '<td>' + bandPill(r.band) + '</td>' +
+          '<td style="font-weight:800;font-size:15px;color:' + j.c + '">' + (r.t === null || r.t === undefined ? '-' : Number(r.t).toFixed(1) + '℃') + '</td>' +
+          '<td style="font-size:12px;color:#64748B">' + esc(ago(r.ts)) + '</td>' +
+          '<td>' + (r.x && r.y
+            ? '<a href="https://map.kakao.com/link/map/' + encodeURIComponent(r.name || '차량') + ',' + r.y + ',' + r.x + '" target="_blank" style="color:#1f4e78;font-size:12px">지도</a>'
+            : '<span style="color:#CBD5E1">-</span>') + '</td>' +
+          '<td style="font-size:12.5px;font-weight:700;color:' + j.c + '">' + esc(j.s) + '</td></tr>';
+      });
+      h += '</tbody></table>';
+      var list = document.getElementById('__wpTpList');
+      list.innerHTML = h;
+      [].forEach.call(list.querySelectorAll('.__wpTpRow'), function(tr) {
+        tr.onclick = function() { detail(tr.getAttribute('data-tel')); };
+      });
+      if (TT.sel) detail(TT.sel, true);
+    }
+
+    /* 하루치 온도 그래프 — 콜드체인 증빙으로 그대로 캡처해 쓸 수 있게 SVG 로 그린다 */
+    function detail(tel, quiet) {
+      TT.sel = tel;
+      var box = document.getElementById('__wpTpDet');
+      var me = TT.rows.filter(function(r) { return String(r.tel) === String(tel); })[0] || {};
+      if (!quiet) box.innerHTML = '<div style="font-size:12px;color:#0369A1">이력 불러오는 중…</div>';
+      api({ e: 'trk_hist', tel: tel }).then(function(j) {
+        var pts = (j.rows || []).filter(function(p) { return p.t !== null && p.t !== undefined; });
+        if (!pts.length) { box.innerHTML = '<div class="wp-meta">' + esc(me.name || tel) + ' — 오늘 온도 기록이 없습니다.</div>'; return; }
+        var vs = pts.map(function(p) { return Number(p.t); });
+        var mn = Math.min.apply(null, vs), mx = Math.max.apply(null, vs);
+        var l = LIM[me.band] || [null, null];
+        if (l[1] !== null) { mn = Math.min(mn, l[1] - 1); mx = Math.max(mx, l[1] + 1); }
+        if (mx - mn < 4) { var c = (mx + mn) / 2; mn = c - 2; mx = c + 2; }
+        var W = 900, H = 210, PL = 46, PR = 12, PT = 12, PB = 26;
+        function X(i) { return PL + (W - PL - PR) * i / Math.max(1, pts.length - 1); }
+        function Y(v) { return PT + (H - PT - PB) * (1 - (v - mn) / (mx - mn)); }
+        var d = pts.map(function(p, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(Number(p.t)).toFixed(1); }).join(' ');
+        var g = '';
+        for (var k = 0; k <= 4; k++) {
+          var vv = mn + (mx - mn) * k / 4, yy = Y(vv);
+          g += '<line x1="' + PL + '" y1="' + yy.toFixed(1) + '" x2="' + (W - PR) + '" y2="' + yy.toFixed(1) + '" stroke="#E2E8F0"/>' +
+            '<text x="' + (PL - 6) + '" y="' + (yy + 4).toFixed(1) + '" text-anchor="end" font-size="11" fill="#94A3B8">' + vv.toFixed(1) + '</text>';
+        }
+        if (l[1] !== null && l[1] >= mn && l[1] <= mx) {
+          g += '<line x1="' + PL + '" y1="' + Y(l[1]).toFixed(1) + '" x2="' + (W - PR) + '" y2="' + Y(l[1]).toFixed(1) +
+            '" stroke="#EF4444" stroke-dasharray="5 4"/><text x="' + (W - PR) + '" y="' + (Y(l[1]) - 5).toFixed(1) +
+            '" text-anchor="end" font-size="11" fill="#EF4444">기준 상한 ' + l[1] + '℃</text>';
+        }
+        var lab = '';
+        [0, Math.floor(pts.length / 2), pts.length - 1].forEach(function(i) {
+          var t = new Date(pts[i].ts);
+          lab += '<text x="' + X(i).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="#94A3B8">' +
+            ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2) + '</text>';
+        });
+        var over = l[1] === null ? 0 : vs.filter(function(v) { return v > l[1]; }).length;
+        box.innerHTML = '<div class="wp-form" style="margin-top:0">' +
+          '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">' +
+          '<b style="font-size:14px">' + esc(me.name || tel) + '</b>' + bandPill(me.band) +
+          '<span style="font-size:12.5px;color:#64748B">오늘 ' + pts.length + '건 · 최저 ' + Math.min.apply(null, vs).toFixed(1) +
+          '℃ / 최고 ' + Math.max.apply(null, vs).toFixed(1) + '℃</span>' +
+          (over ? '<span style="font-size:12.5px;font-weight:700;color:#DC2626">기준 초과 ' + over + '건 (' +
+            (over * 100 / pts.length).toFixed(1) + '%)</span>' : '<span style="font-size:12.5px;font-weight:700;color:#0a7d47">기준 내 100%</span>') +
+          '</div><svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;background:#fff;border:1px solid #E2E8F0;border-radius:8px">' +
+          g + '<path d="' + d + '" fill="none" stroke="#1f4e78" stroke-width="2"/>' + lab + '</svg></div>';
+      }).catch(function(e) {
+        box.innerHTML = '<div class="wp-meta" style="color:#DC2626">이력 조회 실패: ' + esc((e && e.message) || e) + '</div>';
+      });
+    }
+
+    function loadOurs() {
+      document.getElementById('__wpTpList').innerHTML = '<div style="padding:16px;font-size:12.5px;color:#0369A1;background:#fff">불러오는 중…</div>';
+      return api({ e: 'trk_now' }).then(function(j) {
+        TT.rows = (j.rows || []).map(function(r) {
+          return { tel: r.tel, name: r.name, car: r.car, dev: r.dev, band: r.band || '상온',
+                   t: r.t, x: r.x, y: r.y, ts: r.ts };
+        });
+        TT.at = j.at || '';
+        render();
+      }).catch(function(e) {
+        var m = String((e && e.message) || e);
+        document.getElementById('__wpTpList').innerHTML =
+          '<div style="padding:20px 16px;background:#fff;font-size:13px;color:#B45309;line-height:1.8">' +
+          '우리 관제 데이터를 못 읽었습니다 — ' + esc(m) + '<br>' +
+          '워커가 아직 온도관제 버전이 아니면 <b>Cloudflare에서 worker.mjs 를 배포</b>해야 합니다.</div>';
+      });
+    }
+
+    /* 전환기 비교 — 로지스올이 보는 값. 우리 수치가 맞는지 대조하는 용도로만 쓴다. */
+    function loadLatos() {
+      document.getElementById('__wpTpList').innerHTML = '<div style="padding:16px;font-size:12.5px;color:#0369A1;background:#fff">로지스올 조회 중…</div>';
+      return api({ e: 'latos', path: 'atlan_Data_Srch',
+                   body: JSON.stringify({ CARRIER_CD: '10068221', TREMNO: '', STATUS: '', CARCD: '' }) })
+        .then(function(j) {
+          var ds = (j.data && j.data.datas) || [];
+          TT.rows = ds.filter(function(c) { return c.TEMP1 !== null && c.TEMP1 !== undefined; }).map(function(c) {
+            return { tel: String(c.DRIVER_MOBILE_NO || ''), name: c.NOW_CAR || c.CAR_CD || '',
+                     car: c.CAR_BODY_NO || '', dev: String(c.NOW_TERMNO || ''), band: '',
+                     t: Number(c.TEMP1), x: Number(c.UTM_X) || null, y: Number(c.UTM_Y) || null,
+                     ts: c.NOW_LOCTIME ? new Date(String(c.NOW_LOCTIME).replace(/-/g, '/')).getTime() : 0 };
+          });
+          TT.at = '로지스올 · 전체 ' + ds.length + '대 중 센서 ' + TT.rows.length + '대';
+          render();
+        }).catch(function(e) {
+          document.getElementById('__wpTpList').innerHTML =
+            '<div style="padding:20px 16px;background:#fff;font-size:13px;color:#B45309;line-height:1.8">' +
+            '로지스올 조회 실패 — ' + esc((e && e.message) || e) + '<br>' +
+            '워커에 <b>e=latos</b> 통로가 없으면 배포가 필요합니다.</div>';
+        });
+    }
+
+    function load() { return TT.src === 'ours' ? loadOurs() : loadLatos(); }
+
+    document.getElementById('__wpTpGo').onclick = load;
+    document.getElementById('__wpTpOurs').onclick = function() {
+      TT.src = 'ours'; TT.sel = '';
+      this.className = 'wp-btn pri'; document.getElementById('__wpTpLat').className = 'wp-btn gh';
+      document.getElementById('__wpTpDet').innerHTML = '';
+      load();
+    };
+    document.getElementById('__wpTpLat').onclick = function() {
+      TT.src = 'latos'; TT.sel = '';
+      this.className = 'wp-btn pri'; document.getElementById('__wpTpOurs').className = 'wp-btn gh';
+      document.getElementById('__wpTpDet').innerHTML = '';
+      load();
+    };
+
+    if (TT.timer) clearInterval(TT.timer);
+    TT.timer = setInterval(function() {
+      var cb = document.getElementById('__wpTpAuto');
+      if (!cb) { clearInterval(TT.timer); return; }   /* 탭을 떠나면 스스로 멈춘다 */
+      if (cb.checked) load();
+    }, 30000);
+
+    load();
   }
 
   /* ---------- 차량고지서 (주정차위반 소명 자동화) ---------- */
