@@ -115,8 +115,12 @@
     '신규': 1,
     '코스변경': 1,
     '주소변경': 1,
-    '거래처명': 1
+    '거래처명': 1,
+    '담당자변경': 1,     /* 오피스 반영 항목은 없다(택배사 측) — 인식만 하고 스킵 */
+    '피킹방법변경': 1    /* 같음 */
   };
+  /* 오피스에 실제로 반영되는 구분. 나머지(담당자·피킹방법)는 인식은 하되 반영 없음으로 스킵 */
+  var APPLY_PARTS = { '신규': 1, '코스변경': 1, '주소변경': 1, '거래처명': 1 };
   var PART_ALIAS = {
     '신규': '신규',
     '신규코드발급': '신규',
@@ -127,9 +131,14 @@
     '상호변경': '거래처명'
   };
 
+  /* '코스,주소,거래처명 변경' 처럼 마지막에만 '변경'이 붙거나, '거래처명변경'·'담당자' 같이 오는 것도 전부 받는다 */
+  var PART_BASE = { '코스': '코스변경', '주소': '주소변경', '거래처명': '거래처명', '상호': '거래처명',
+    '담당자': '담당자변경', '피킹방법': '피킹방법변경', '피킹': '피킹방법변경', '신규': '신규', '신규코드발급': '신규', '신규코드': '신규' };
   function normPart(p) {
     p = String(p || '').replace(/\s+/g, '');
-    return PART_ALIAS[p] || p;
+    if (PART_ALIAS[p]) return PART_ALIAS[p];
+    var b = p.replace(/변경$/, '');
+    return PART_BASE[b] || PART_BASE[p] || p;
   }
   var DAYS = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
   var rows = [],
@@ -176,7 +185,7 @@
   })();
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.16 발주차단';
+  var VERSION = '26.09.16 발주차단·코드전달';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -2160,7 +2169,7 @@ document.getElementById('__wpSave').onclick = function() {
         if (spec.passthru) {
           var preP = [];
           if (!vals['반영예정일']) { preP.push('반영예정일: ' + workdayD1Str()); }
-          if (action === '주소변경' || action === '코스변경') preP.push('기존코스: ' + (br.course || '-'));
+          if (action === '주소변경' || action === '코스변경' || action === '담당자변경') preP.push('기존코스: ' + (br.course || '-'));   /* 담당자변경: 택배 여부 판별용 */
           if (action === '주소변경') {
             return getForm(br.id).then(function(f) {
               var a1 = (getVal(f, 'address1') || '').trim() || (br.addr || '-');
@@ -2908,8 +2917,8 @@ document.getElementById('__wpSave').onclick = function() {
       var selM = selPick();
       var pool = selM ? cache.filter(function(it) { return selM[it.id]; }) : cache;
       /* 승인 완료된 건만 내보낸다 — 예전엔 '대기' 건까지 섞여 나갔다 */
-      var ok = pool.filter(function(it) { return codeGubun(it.action) && it.status === '완료'; });
-      var notYet = pool.filter(function(it) { return codeGubun(it.action) && it.status !== '완료'; }).length;
+      var ok = pool.filter(function(it) { return codeTarget(it) && it.status === '완료'; });
+      var notYet = pool.filter(function(it) { return codeTarget(it) && it.status !== '완료'; }).length;
       if (!ok.length) { toast(selM ? '선택한 건 중 코드전달 대상(완료)이 없습니다' : '코드전달 대상(승인 완료된 건)이 없습니다', '#c0392b'); return; }
       if (selM) { toast('선택한 ' + ok.length + '건만 담습니다', '#1f4e78'); }
       if (notYet && !confirm('아직 승인되지 않은 ' + notYet + '건은 빼고 뽑습니다.\n\n계속할까요?')) return;
@@ -2931,6 +2940,22 @@ document.getElementById('__wpSave').onclick = function() {
 
   function codeGubun(action) {
     return action === '신규코드발급' ? '신규' : action === '주소변경' ? '주소변경' : action === '거래처명변경' ? '거래처명변경' : action === '담당자변경' ? '담당자변경' : action === '코스변경' ? '코스변경' : action === '피킹방법변경' ? '피킹방법변경' : '';
+  }
+  /* 택배 건인가 — 서비스구분·배송형태·담당코스 어디에든 '택배'가 있으면 */
+  function isParcel(it) {
+    var d = it && it.detail || '';
+    var s = [detailGet(d, '서비스구분'), detailGet(d, '배송형태'), detailGet(d, '담당코스'), detailGet(d, '기존코스'), detailGet(d, '배송방법'),
+      (/코스변경=([^·]+)/.exec(it && it.adminNote || '') || [])[1] || ''].join(' ');
+    return /택배/.test(s);
+  }
+  /* 코드전달 엑셀에 실제로 담을 건인가.
+     - 피킹방법변경: 자회사 코드전달 대상 아님 → 제외
+     - 담당자변경: 택배 건만 (택배사 수령인 변경). 방문 배송의 담당자변경은 코드전달과 무관 → 제외 */
+  function codeTarget(it) {
+    if (!it || !codeGubun(it.action)) return false;
+    if (it.action === '피킹방법변경') return false;
+    if (it.action === '담당자변경') return isParcel(it);
+    return true;
   }
 
   function codeRow(it) {
@@ -2988,9 +3013,7 @@ document.getElementById('__wpSave').onclick = function() {
   }
 
   function buildCodeXlsx(items, fname, markSent, onDone) {
-    var all0 = (items || []).filter(function(it) {
-      return codeGubun(it.action);
-    });
+    var all0 = (items || []).filter(codeTarget);
     /* 반영예정일이 다음 영업일보다 뒤인 건은 이번 엑셀에서 뺀다.
        자회사는 받은 다음 영업일에 반영하므로, 그때가 반영일인 건까지만 담으면 딱 맞는다.
        빠진 건은 미전달 큐에 그대로 남아 날짜가 되면 저절로 담긴다. */
@@ -3008,7 +3031,7 @@ document.getElementById('__wpSave').onclick = function() {
           '\n\n각 반영일 전 영업일에 다시 눌러주세요. 그때 자동으로 담깁니다.');
         return;
       }
-      toast('코드전달 대상(신규·주소·거래처명·담당자·코스·피킹방법변경)이 없습니다', '#c0392b');
+      toast('코드전달 대상(신규·주소·거래처명·코스변경, 택배 담당자변경)이 없습니다', '#c0392b');
       return;
     }
     if (held.length && !confirm('예약 ' + held.length + '건은 반영일이 아직 남아 제외합니다.\n' +
@@ -3246,7 +3269,7 @@ document.getElementById('__wpSave').onclick = function() {
       var doneInfo = it.admin ? ('<div style="font-size:12px;line-height:1.55"><b style="color:#334155">' + esc(it.admin) + '</b>' + (it.decidedTs ? ' <span style="color:#94a3b8">' + esc(fmtTs(it.decidedTs)) + '</span>' : '') + (it.adminNote ? '<div style="color:#64748b;margin-top:1px">' + addDow(esc(it.adminNote)).split(' · ').join('<br>') + '</div>' : '') + '</div>') : '';
       /* 코드전달 대상(시너지) 완료건은 전달 여부를 눈에 보이게 — 놓친 건이 목록에서 티나게 */
       var sentInfo = '';
-      if (admin && opt.codeSent && it.status === '완료' && (codeGubun(it.action) || it.action === '수기피킹')) {
+      if (admin && opt.codeSent && it.status === '완료' && (codeTarget(it) || it.action === '수기피킹')) {
         sentInfo = it.sent ?
           ('<div style="font-size:11.5px;color:#0a7d47;margin-top:3px">📤 전달 ' + esc(it.sent) + ' <button class="wp-act __wpUnsent" data-id="' + esc(it.id) + '" style="height:21px;font-size:11px;padding:0 6px;margin:0 0 0 3px;border-color:#cbd5e1;color:#94a3b8">취소</button></div>') :
           ((dayGap(d1Of(it)) > 0) ?
@@ -4183,6 +4206,9 @@ document.getElementById('__wpSave').onclick = function() {
 
   function processRow(r) {
     if (r.invalid) return Promise.resolve(fail(r, r.err || '구분 인식 실패'));
+    if (!r.parts.some(function(x) { return APPLY_PARTS[x]; })) {
+      return Promise.resolve(skip(r, '오피스 반영 항목 없음 (' + r.parts.join(',') + '은 자회사/택배사 측 처리)'));
+    }
     if (r.kind === '신규') {
       return searchBranch(r.name).then(function(list) {
         var m = list.filter(function(x) {
