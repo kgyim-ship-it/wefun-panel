@@ -63,6 +63,30 @@
     return f.getFullYear() + '-' + p(f.getMonth() + 1) + '-' + p(f.getDate());
   }
 
+  /* ── 기일반영 ──
+     거래처명·주소 변경이 "언제부터"인 경우가 있다(예: 9/29부터 8층).
+     반영예정일을 요청서에 담아두고, 그날이 오기 전에는 코드전달 엑셀에 담지 않는다.
+     자회사가 엑셀을 받은 날 바로 반영해버리면 그 사이 배송이 엉뚱한 곳으로 간다. */
+  function d1Of(it) {
+    var v = detailGet(it && it.detail, '반영예정일') || detailGet(it && it.detail, 'D1반영예정일') || '';
+    v = String(v).trim().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+  }
+  function dayGap(ymd) {   /* 오늘까지 남은 일수. 오늘이면 0, 지났으면 음수 */
+    if (!ymd) return 0;
+    var a = Date.parse(ymd + 'T00:00:00+09:00'), b = Date.parse(todayStr() + 'T00:00:00+09:00');
+    if (isNaN(a) || isNaN(b)) return 0;
+    return Math.round((a - b) / 864e5);
+  }
+  function d1Badge(it) {   /* 목록에 붙는 '9-29 반영 (D-19)' 배지 */
+    var d = d1Of(it);
+    if (!d) return '';
+    var g = dayGap(d);
+    if (g <= 0) return '';
+    return '<div style="margin-top:3px;display:inline-block;padding:1px 7px;border-radius:999px;background:#EEF2FF;color:#3730A3;' +
+      'font-size:11px;font-weight:800;letter-spacing:-.2px">' + d.slice(5).replace('-', '/') + ' 반영 · D-' + g + '</div>';
+  }
+
   function fmtTs(v) {
     if (!v) return '';
     var s = String(v);
@@ -152,7 +176,7 @@
   })();
   var ADMINS = ['kg_yim@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
-  var VERSION = '26.09.07 21:10';
+  var VERSION = '26.09.16 발주차단';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
   function eqRange(name, n) {
@@ -387,6 +411,14 @@
       }]
     }
   };
+  /* 코드전달(자회사 일괄입력)로 나가는 작업엔 '반영 희망일'을 공통으로 붙인다.
+     기본값은 지금까지와 같은 평일 D+1 이라 아무것도 안 고르면 동작이 안 바뀐다. */
+  Object.keys(ACTIONS).forEach(function(_ak) {
+    var _sp = ACTIONS[_ak];
+    if (_sp && _sp.d1 && _sp.fields) {
+      _sp.fields.push({ k: '반영예정일', label: '반영 희망일 (이 날짜부터 적용)', type: 'date', dmin: true, req: true });
+    }
+  });
 
   function actionKeys() {
     var ks = Object.keys(ACTIONS);
@@ -1202,16 +1234,39 @@
     return fetch('/office/order/schedule/service/' + serviceId).then(function(r) {
       return r.text();
     }).then(function(html) {
+      /* 오피스 일정 페이지의 orderScheduleList JSON에는 orderId·orderStatus가 같이 들어있다.
+         발주가 이미 생성된 배송일(= orderId 있음)은 변경·삭제하면 안 되므로 그 정보를 버리지 않고 가져온다. */
+      var jm = html.match(/orderScheduleList\s*=\s*(\[[\s\S]*?\]);/);
+      if (jm) {
+        try {
+          var arr = JSON.parse(jm[1]);
+          return arr.filter(function(e) { return e && e.deliveryDate && e.orderScheduleId; }).map(function(e) {
+            return {
+              deliveryDate: String(e.deliveryDate),
+              orderScheduleId: String(e.orderScheduleId),
+              orderId: e.orderId ? String(e.orderId) : '',
+              orderStatus: e.orderStatus ? String(e.orderStatus) : ''
+            };
+          });
+        } catch (_) {}
+      }
       var re = /deliveryDate["'\s:]+["']?(\d{4}-\d{2}-\d{2})["']?[\s\S]{0,40}?orderScheduleId["'\s:]+(\d+)/g,
         m, out = [];
       while ((m = re.exec(html))) {
         out.push({
           deliveryDate: m[1],
-          orderScheduleId: m[2]
+          orderScheduleId: m[2],
+          orderId: '',
+          orderStatus: ''
         });
       }
       return out;
     });
+  }
+  /* 발주가 이미 생성된 배송일이면 사유 문자열, 아니면 '' */
+  function orderedMsg(ev, d) {
+    if (!ev || !ev.orderId) return '';
+    return d + ' 배송건은 이미 발주가 생성되어(' + (ev.orderStatus || '주문 ' + ev.orderId) + ') 변경·삭제할 수 없습니다. 출고 취소·회수는 CS/개발팀 경로로 처리해 주세요.';
   }
 
   function createDelivery(serviceId, date) {
@@ -1966,7 +2021,7 @@
     }
     var fh = (spec.fields || []).map(fieldHtml).join('');
     if (spec.d1) {
-      fh = '<div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:9px 11px;font-size:12.5px;margin:2px 0 4px">ℹ️ 변경 내용은 <b>평일 기준 D+1(' + esc(workdayD1Str()) + ')</b>에 반영됩니다. (자회사 코드전달 일괄입력)</div>' + fh;
+      fh = '<div id="__wpD1Note" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:9px 11px;font-size:12.5px;margin:2px 0 4px;line-height:1.6"></div>' + fh;
     }
     box.innerHTML = shell(fh, '요청 제출');
     bind();
@@ -1995,12 +2050,28 @@
         var el = document.getElementById('__wpf_' + f.k);
         if (el) {
           if (f.min3) { el.min = firstDeliveryStr(); }
+          if (f.dmin) { el.min = workdayD1Str(); if (!el.value) { el.value = workdayD1Str(); } }
           var dowEl = document.getElementById('__wpf_' + f.k + '_dow');
           if (dowEl) {
             var upd = function() { dowEl.textContent = el.value ? ('(' + DOWK[new Date(el.value.slice(0,4), +el.value.slice(5,7) - 1, +el.value.slice(8,10)).getDay()] + ')') : ''; };
             el.addEventListener('change', upd);
             el.addEventListener('input', upd);
             upd();
+          }
+          if (f.dmin) {
+            var noteEl = document.getElementById('__wpD1Note');
+            var upd2 = function() {
+              if (!noteEl) return;
+              var v = el.value || workdayD1Str(), g = dayGap(v);
+              noteEl.innerHTML = g > 0 ?
+                ('📅 <b>' + esc(v) + '부터</b> 적용됩니다. 그 전까지는 기존 정보 그대로 배송됩니다.<br>' +
+                 '<span style="color:#B45309">그날이 다가오면(하루 전) 자동으로 코드전달 엑셀에 담깁니다 — 그때까지 미전달 목록에 남아 있는 게 정상입니다.</span>') :
+                ('ℹ️ 변경 내용은 <b>' + esc(v) + '</b>에 반영됩니다. (자회사 코드전달 일괄입력)<br>' +
+                 '<span style="color:#B45309">나중부터 바뀌는 건이면 위 <b>반영 희망일</b>을 그 날짜로 바꿔주세요.</span>');
+            };
+            el.addEventListener('change', upd2);
+            el.addEventListener('input', upd2);
+            upd2();
           }
         }
       }
@@ -2087,7 +2158,8 @@ document.getElementById('__wpSave').onclick = function() {
           });
         }
         if (spec.passthru) {
-          var preP = ['반영예정일: ' + workdayD1Str()];
+          var preP = [];
+          if (!vals['반영예정일']) { preP.push('반영예정일: ' + workdayD1Str()); }
           if (action === '주소변경' || action === '코스변경') preP.push('기존코스: ' + (br.course || '-'));
           if (action === '주소변경') {
             return getForm(br.id).then(function(f) {
@@ -2445,9 +2517,10 @@ document.getElementById('__wpSave').onclick = function() {
   }
   function preValidateEvents(action, sid0, vals) {
     return getScheduleEvents(sid0).then(function(evs) {
-        var set = {};
+        var set = {}, byDate = {};
         evs.forEach(function(e) {
           set[e.deliveryDate] = 1;
+          byDate[e.deliveryDate] = e;
         });
         if (action === '배송일정생성') {
           var ds = String(vals['배송일'] || '').split(',').filter(Boolean);
@@ -2460,6 +2533,10 @@ document.getElementById('__wpSave').onclick = function() {
           if (!xs.length) return { ok: false, msg: '삭제할 배송일을 1개 이상 추가하세요.' };
           var miss = xs.filter(function(x) { return !set[x]; });
           if (miss.length) return { ok: false, msg: miss.join(', ') + ' 에 배송일정이 없습니다 (삭제 불가)' };
+          for (var xi = 0; xi < xs.length; xi++) {
+            var om = orderedMsg(byDate[xs[xi]], xs[xi]);
+            if (om) return { ok: false, alert: true, msg: '⛔ ' + om };
+          }
         }
         if (action === '배송일정변경') {
           var od = vals['기존배송일'],
@@ -2472,6 +2549,8 @@ document.getElementById('__wpSave').onclick = function() {
             ok: false,
             msg: '기존 배송일(' + od + ')에 일정이 없습니다'
           };
+          var omv = orderedMsg(byDate[od], od);
+          if (omv) return { ok: false, alert: true, msg: '⛔ ' + omv };
           if (set[nd]) return {
             ok: false,
             msg: '변경할 날짜(' + nd + ')에 이미 배송일정이 있습니다'
@@ -2909,13 +2988,33 @@ document.getElementById('__wpSave').onclick = function() {
   }
 
   function buildCodeXlsx(items, fname, markSent, onDone) {
-    var targets = (items || []).filter(function(it) {
+    var all0 = (items || []).filter(function(it) {
       return codeGubun(it.action);
     });
+    /* 반영예정일이 다음 영업일보다 뒤인 건은 이번 엑셀에서 뺀다.
+       자회사는 받은 다음 영업일에 반영하므로, 그때가 반영일인 건까지만 담으면 딱 맞는다.
+       빠진 건은 미전달 큐에 그대로 남아 날짜가 되면 저절로 담긴다. */
+    var nextWd = workdayD1Str();
+    var held = [], targets = [];
+    all0.forEach(function(it) {
+      var d = d1Of(it);
+      if (d && d > nextWd) { held.push(it); } else { targets.push(it); }
+    });
     if (!targets.length) {
+      if (held.length) {
+        alert('지금 담을 건이 없습니다.\n\n예약 ' + held.length + '건은 반영일이 아직 남아 있어 제외했습니다.\n' +
+          held.slice(0, 12).map(function(x) { return ' · ' + d1Of(x) + '  ' + (x.branchName || '') + ' (' + x.action + ')'; }).join('\n') +
+          (held.length > 12 ? '\n · … 외 ' + (held.length - 12) + '건' : '') +
+          '\n\n각 반영일 전 영업일에 다시 눌러주세요. 그때 자동으로 담깁니다.');
+        return;
+      }
       toast('코드전달 대상(신규·주소·거래처명·담당자·코스·피킹방법변경)이 없습니다', '#c0392b');
       return;
     }
+    if (held.length && !confirm('예약 ' + held.length + '건은 반영일이 아직 남아 제외합니다.\n' +
+        held.slice(0, 10).map(function(x) { return ' · ' + d1Of(x) + '  ' + (x.branchName || '') + ' (' + x.action + ')'; }).join('\n') +
+        (held.length > 10 ? '\n · … 외 ' + (held.length - 10) + '건' : '') +
+        '\n\n나머지 ' + targets.length + '건으로 엑셀을 만들까요?')) { return; }
     /* codeRow 는 신규건일 때 오피스 거래처 페이지를 통째로 받아온다.
        전부 동시에 던지면 서로 밀려 더 느려지므로 4개씩 끊어서 돌린다. */
     var btnP = document.getElementById('__wpRCode');
@@ -2928,10 +3027,11 @@ document.getElementById('__wpSave').onclick = function() {
       if (btnP) { btnP.textContent = btnP0; }
       var changeData = [], newData = [];
       targets.forEach(function(it, i) {
-        if (it.action === '신규코드발급') { newData.push(all[i]); } else { changeData.push(all[i]); }
+        var row = all[i].concat([d1Of(it) || nextWd]);   /* 8열: 자회사가 언제부터 적용할지 */
+        if (it.action === '신규코드발급') { newData.push(row); } else { changeData.push(row); }
       });
-      var head1 = ['거래처명', '주소', '코스', '구분', '피킹방법 / 택배수령인', '상온코드', '저온코드'];
-      var head2 = ['거래처명', '주소', '코스', '구분', '피킹방법 / 택배수령인', '상온코드', '저온코드'];
+      var head1 = ['거래처명', '주소', '코스', '구분', '피킹방법 / 택배수령인', '상온코드', '저온코드', '반영일'];
+      var head2 = ['거래처명', '주소', '코스', '구분', '피킹방법 / 택배수령인', '상온코드', '저온코드', '반영일'];
       var rows = [];
       if (changeData.length) {
         rows.push(head1);
@@ -2941,8 +3041,8 @@ document.getElementById('__wpSave').onclick = function() {
         rows.push(head2); // 신규 섹션 머릿글 재삽입
         rows = rows.concat(newData);
       }
-      return xlsxDownload(rows, [{ wch: 40 }, { wch: 52 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 11 }, { wch: 11 }], '코드전달', fname).then(function() {
-        toast('✓ 코드전달 엑셀 변경 ' + changeData.length + ' · 신규 ' + newData.length + '건 생성', '#0a7d47');
+      return xlsxDownload(rows, [{ wch: 40 }, { wch: 52 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 11 }, { wch: 11 }, { wch: 12 }], '코드전달', fname).then(function() {
+        toast('✓ 코드전달 엑셀 변경 ' + changeData.length + ' · 신규 ' + newData.length + '건 생성' + (held.length ? ' (예약 ' + held.length + '건 제외)' : ''), '#0a7d47');
         if (!markSent) return;
         /* 엑셀에 담긴 건에 전달일을 찍어 미전달 큐에서 뺀다 */
         return api({ e: 'sent', ids: targets.map(function(t) { return t.id; }).join(','), val: todayStr() }).then(function() {
@@ -3149,7 +3249,9 @@ document.getElementById('__wpSave').onclick = function() {
       if (admin && opt.codeSent && it.status === '완료' && (codeGubun(it.action) || it.action === '수기피킹')) {
         sentInfo = it.sent ?
           ('<div style="font-size:11.5px;color:#0a7d47;margin-top:3px">📤 전달 ' + esc(it.sent) + ' <button class="wp-act __wpUnsent" data-id="' + esc(it.id) + '" style="height:21px;font-size:11px;padding:0 6px;margin:0 0 0 3px;border-color:#cbd5e1;color:#94a3b8">취소</button></div>') :
-          '<div style="font-size:11.5px;color:#b45309;margin-top:3px;font-weight:700">⚠ 코드 미전달</div>';
+          ((dayGap(d1Of(it)) > 0) ?
+            ('<div style="font-size:11.5px;color:#3730A3;margin-top:3px;font-weight:700">🗓 예약 · ' + esc(d1Of(it)) + '부터 (D-' + dayGap(d1Of(it)) + ')</div>') :
+            '<div style="font-size:11.5px;color:#b45309;margin-top:3px;font-weight:700">⚠ 코드 미전달</div>');
       }
       var last;
       if (admin) {
@@ -3179,7 +3281,7 @@ document.getElementById('__wpSave').onclick = function() {
         last = '<td style="white-space:normal">' + _lastInner + '</td>';
       }
       var bn = it.branchId ? ('<a href="/office/sales/branch/' + esc(it.branchId) + '" target="_blank" style="color:#1f4e78;text-decoration:none">' + esc(it.branchName) + '</a>') : esc(it.branchName);
-      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill(it.status) + '</td>' + last + '</tr>';
+      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + (codeGubun(it.action) ? d1Badge(it) : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill(it.status) + '</td>' + last + '</tr>';
     });
     h += '</tbody></table>';
     box.innerHTML = h;
@@ -3429,6 +3531,8 @@ document.getElementById('__wpSave').onclick = function() {
               return e.deliveryDate === od;
             });
             if (!ev.length) throw new Error(od + ' 배송 없음');
+            var omr = orderedMsg(ev[0], od);
+            if (omr) throw new Error('⛔ 발주 생성 후 변경 차단 — ' + omr);
             return moveDelivery(sid, ev[0].orderScheduleId, nd).then(function() {
               return od + '→' + nd + ' 변경';
             });
@@ -3439,11 +3543,15 @@ document.getElementById('__wpSave').onclick = function() {
           if (!xds.length) throw new Error('삭제일 없음');
           var ch = Promise.resolve();
           var done = [];
+          var blocked = [];
           xds.forEach(function(dv) {
             var ev = evs.filter(function(e) { return e.deliveryDate === dv; });
+            var bl = ev.filter(function(e) { return !!e.orderId; });
+            if (bl.length) { blocked.push(dv + '(' + (bl[0].orderStatus || '발주생성') + ')'); return; }
             ev.forEach(function(e) { ch = ch.then(function() { return deleteDelivery(sid, e.orderScheduleId, dv); }); });
             if (ev.length) done.push(dv);
           });
+          if (blocked.length) throw new Error('⛔ 발주 생성 후 삭제 차단 — ' + blocked.join(', ') + ' · 출고 취소는 CS/개발팀 경로로');
           return ch.then(function() { return (done.length ? done.join(', ') : '(대상 없음)') + ' 삭제'; });
         });
       });
@@ -3627,7 +3735,7 @@ document.getElementById('__wpSave').onclick = function() {
     }
     var pick = (it.action === '수기피킹');
     var dtq = (it.action === '배송시간문의');
-    var cfmMsg = dtq ? ('[배송시간문의] 확인 회신\n' + (it.branchName || '') + '\n\n금일 배송 배정·완료시각·진열사진을 조회해 요청자에게 회신합니다.\n(오피스에 반영되는 것은 없습니다)\n\n진행할까요?') : pick ? ('[수기피킹] 완료 처리\n' + (it.branchName || '') + '\n\n피킹팀 처리 완료로 표시하고 요청자에게 알립니다.\n진행할까요?') : passthru ? ('[' + it.action + '] 검토 승인(접수)\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + (it._newCourse ? '\n코스변경 → ' + it._newCourse : '') + '\n\n승인하면 자회사 코드전달로 접수됩니다. (평일 D+1(' + workdayD1Str() + ') 반영 예정)\n진행할까요?') : ('[' + it.action + '] 승인 · 위펀 오피스에 반영\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + '\n\n진행할까요?');
+    var cfmMsg = dtq ? ('[배송시간문의] 확인 회신\n' + (it.branchName || '') + '\n\n금일 배송 배정·완료시각·진열사진을 조회해 요청자에게 회신합니다.\n(오피스에 반영되는 것은 없습니다)\n\n진행할까요?') : pick ? ('[수기피킹] 완료 처리\n' + (it.branchName || '') + '\n\n피킹팀 처리 완료로 표시하고 요청자에게 알립니다.\n진행할까요?') : passthru ? ('[' + it.action + '] 검토 승인(접수)\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + (it._newCourse ? '\n코스변경 → ' + it._newCourse : '') + '\n\n승인하면 자회사 코드전달로 접수됩니다.\n반영예정일: ' + (d1Of(it) || workdayD1Str()) + (dayGap(d1Of(it)) > 0 ? ' (D-' + dayGap(d1Of(it)) + ' · 그날 전날까지 코드전달 엑셀에 안 담깁니다)' : '') + '\n진행할까요?') : ('[' + it.action + '] 승인 · 위펀 오피스에 반영\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + '\n\n진행할까요?');
     if (!confirm(cfmMsg)) return;
     btn.disabled = true;
     var orig = btn.textContent;
@@ -3637,7 +3745,7 @@ document.getElementById('__wpSave').onclick = function() {
     runActionCore(it).then(function(note) {
       return decideReq(it.id, '완료', note || '', it.slackTs);
     }).then(function() {
-      toast(dtq ? '✓ 배송시간 확인 회신됐습니다' : pick ? '✓ 수기피킹 완료 처리됐습니다' : (passthru ? ('✓ ' + it.action + ' 접수 · D+1 반영 예정') : ('✓ ' + it.action + ' 완료 처리됐습니다')), '#0a7d47');
+      toast(dtq ? '✓ 배송시간 확인 회신됐습니다' : pick ? '✓ 수기피킹 완료 처리됐습니다' : (passthru ? ('✓ ' + it.action + ' 접수 · ' + (d1Of(it) || workdayD1Str()) + ' 반영 예정') : ('✓ ' + it.action + ' 완료 처리됐습니다')), '#0a7d47');
       afterDecide(it.id);
     }).catch(function(e) {
       btn.textContent = '확인 중…';
