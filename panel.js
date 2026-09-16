@@ -2949,11 +2949,10 @@ document.getElementById('__wpSave').onclick = function() {
     return /택배/.test(s);
   }
   /* 코드전달 엑셀에 실제로 담을 건인가.
-     - 피킹방법변경: 자회사 코드전달 대상 아님 → 제외
+     - 피킹방법변경: 자회사가 받아야 한다(5열 보냉백/빵박스) → 담음. 일괄입력 업로드 때는 오피스 반영 없이 스킵.
      - 담당자변경: 택배 건만 (택배사 수령인 변경). 방문 배송의 담당자변경은 코드전달과 무관 → 제외 */
   function codeTarget(it) {
     if (!it || !codeGubun(it.action)) return false;
-    if (it.action === '피킹방법변경') return false;
     if (it.action === '담당자변경') return isParcel(it);
     return true;
   }
@@ -3031,7 +3030,7 @@ document.getElementById('__wpSave').onclick = function() {
           '\n\n각 반영일 전 영업일에 다시 눌러주세요. 그때 자동으로 담깁니다.');
         return;
       }
-      toast('코드전달 대상(신규·주소·거래처명·코스변경, 택배 담당자변경)이 없습니다', '#c0392b');
+      toast('코드전달 대상(신규·주소·거래처명·코스·피킹방법변경, 택배 담당자변경)이 없습니다', '#c0392b');
       return;
     }
     if (held.length && !confirm('예약 ' + held.length + '건은 반영일이 아직 남아 제외합니다.\n' +
