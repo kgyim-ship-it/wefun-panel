@@ -1671,7 +1671,7 @@
     box.id = '__wpWdCal';
     box.setAttribute('data-for', el.id);
     var r = el.getBoundingClientRect();
-    box.style.cssText = 'position:fixed;z-index:2147483646;left:' + Math.round(Math.min(r.left, window.innerWidth - 276)) + 'px;top:' +
+    box.style.cssText = 'position:fixed;z-index:2147483647;left:' + Math.round(Math.min(r.left, window.innerWidth - 276)) + 'px;top:' +
       Math.round(Math.min(r.bottom + 4, window.innerHeight - 330)) + 'px;width:268px;background:#fff;border:1px solid #cbd5e1;' +
       'border-radius:12px;padding:12px;box-shadow:0 16px 44px rgba(15,23,42,.22);font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif';
     function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -1715,7 +1715,8 @@
       el.dispatchEvent(new Event('change', { bubbles: true }));
       box.remove();
     });
-    document.body.appendChild(box);
+    /* 패널 오버레이(#__wp)가 z-index 최대값이라 body에 붙이면 달력이 그 뒤로 깔려 안 보인다 */
+    (document.getElementById('__wp') || document.body).appendChild(box);
   }
   document.addEventListener('mousedown', function(e) {
     var box = document.getElementById('__wpWdCal');
