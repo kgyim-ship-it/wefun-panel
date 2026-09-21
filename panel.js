@@ -711,6 +711,10 @@
   /* 배경(바깥) 클릭으로는 닫히지 않음 — 실수로 꺼짐 방지 */ /* 날짜칸 아무 곳이나 클릭/포커스하면 달력 바로 열림 */
   function popDate(e) {
     var t = e.target;
+    if (t && t.getAttribute && t.getAttribute('data-wdcal') === '1') {
+      openWorkdayCal(t);
+      return;
+    }
     if (t && t.tagName === 'INPUT' && t.type === 'date') {
       try {
         t.showPicker();
@@ -1636,6 +1640,74 @@
     draw();
   }
 
+  /* ── 영업일 달력 ──
+     브라우저 기본 달력은 특정 날짜만 회색 처리할 방법이 없다(min/max는 연속 구간만 막는다).
+     그래서 반영 희망일·첫배송일은 이 달력을 쓴다 — 주말·공휴일은 눌러도 반응하지 않는다. */
+  function openWorkdayCal(el) {
+    var old = document.getElementById('__wpWdCal');
+    if (old) { old.remove(); if (old.getAttribute('data-for') === el.id) { return; } }
+    var minY = el.getAttribute('data-min') || todayStr();
+    var curV = el.value || minY;
+    var mp = curV.split('-');
+    var cur = { y: +mp[0], m: +mp[1] - 1 };
+    var box = document.createElement('div');
+    box.id = '__wpWdCal';
+    box.setAttribute('data-for', el.id);
+    var r = el.getBoundingClientRect();
+    box.style.cssText = 'position:fixed;z-index:2147483646;left:' + Math.round(Math.min(r.left, window.innerWidth - 276)) + 'px;top:' +
+      Math.round(Math.min(r.bottom + 4, window.innerHeight - 330)) + 'px;width:268px;background:#fff;border:1px solid #cbd5e1;' +
+      'border-radius:12px;padding:12px;box-shadow:0 16px 44px rgba(15,23,42,.22);font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif';
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    var BTN = 'width:28px;height:28px;border:1px solid #e2e8f0;background:#fff;border-radius:8px;cursor:pointer;color:#475569;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center';
+    function draw() {
+      var startDow = new Date(cur.y, cur.m, 1).getDay();
+      var dim = new Date(cur.y, cur.m + 1, 0).getDate();
+      var h = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+        '<button type="button" class="__wpWdP" style="' + BTN + '">‹</button>' +
+        '<b style="font-size:14px;color:#0f172a">' + cur.y + '. ' + pad(cur.m + 1) + '</b>' +
+        '<button type="button" class="__wpWdN" style="' + BTN + '">›</button></div>';
+      h += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px">';
+      ['일', '월', '화', '수', '목', '금', '토'].forEach(function(w, i) {
+        h += '<div style="text-align:center;font-size:10.5px;font-weight:700;padding:2px 0;color:' + (i === 0 ? '#ef4444' : (i === 6 ? '#3b82f6' : '#94a3b8')) + '">' + w + '</div>';
+      });
+      h += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">';
+      var b;
+      for (b = 0; b < startDow; b++) { h += '<div></div>'; }
+      for (var d = 1; d <= dim; d++) {
+        var ds = cur.y + '-' + pad(cur.m + 1) + '-' + pad(d);
+        var dt = new Date(cur.y, cur.m, d);
+        var off = isOffDay(dt) || ds < minY;
+        var sel = (ds === el.value);
+        var st = 'height:33px;display:flex;align-items:center;justify-content:center;font-size:12.5px;border-radius:8px;';
+        if (off) { st += 'color:#cbd5e1;background:#f8fafc;cursor:not-allowed'; }
+        else if (sel) { st += 'background:#1f4e78;color:#fff;font-weight:800;cursor:pointer'; }
+        else { st += 'color:#1e293b;background:#eef2f7;cursor:pointer;font-weight:600'; }
+        h += '<div style="' + st + '"' + (off ? '' : ' data-d="' + ds + '"') + '>' + d + '</div>';
+      }
+      h += '</div><div style="margin-top:9px;font-size:11px;color:#94a3b8;text-align:center">회색 날짜(주말·공휴일)는 선택할 수 없습니다</div>';
+      box.innerHTML = h;
+      box.querySelector('.__wpWdP').onclick = function() { cur.m--; if (cur.m < 0) { cur.m = 11; cur.y--; } draw(); };
+      box.querySelector('.__wpWdN').onclick = function() { cur.m++; if (cur.m > 11) { cur.m = 0; cur.y++; } draw(); };
+    }
+    draw();
+    box.addEventListener('click', function(e) {
+      var t = e.target;
+      var ds = t && t.getAttribute && t.getAttribute('data-d');
+      if (!ds) { return; }
+      el.value = ds;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      box.remove();
+    });
+    document.body.appendChild(box);
+  }
+  document.addEventListener('mousedown', function(e) {
+    var box = document.getElementById('__wpWdCal');
+    if (!box) { return; }
+    if (box.contains(e.target)) { return; }
+    if (e.target && e.target.getAttribute && e.target.getAttribute('data-wdcal') === '1') { return; }
+    box.remove();
+  }, true);
+
   function bindDates(key) {
     var pick = document.getElementById('__wpf_' + key + '_pick');
     var addb = document.getElementById('__wpf_' + key + '_add');
@@ -1691,7 +1763,11 @@
     if (f.type === 'textarea') return '<div style="margin:10px 0"><div style="color:#475569;font-size:13px;margin-bottom:4px">' + flab(f) + '</div><textarea id="' + id + '" class="wp-inp" style="width:100%;height:130px;font-family:inherit"></textarea></div>';
     if (f.type === 'addr') return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;gap:6px"><input id="' + id + '" class="wp-inp" type="text" readonly style="flex:1;background:#F8FAFC;cursor:pointer" placeholder="🔍 주소검색으로만 입력 가능 (클릭) · 동/호/층은 상세주소에"><button type="button" id="' + id + '_btn" class="wp-btn pri" style="padding:7px 12px;white-space:nowrap">주소검색</button></div></div>';
     if (f.type === 'date') {
-      /* 날짜 고르면 옆에 요일이 바로 뜬다 — 잘못된 요일 선택을 입력 시점에 잡기 위함 */
+      /* 날짜 고르면 옆에 요일이 바로 뜬다 — 잘못된 요일 선택을 입력 시점에 잡기 위함.
+         반영 희망일·첫배송일은 주말·공휴일을 눌러도 안 되는 자체 달력을 쓴다. */
+      if (f.dmin || f.min3) {
+        return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="text" readonly data-wdcal="1" placeholder="날짜 선택" style="flex:1;cursor:pointer;background:#fff"><span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span></div></div>';
+      }
       return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="date" style="flex:1"><span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span></div></div>';
     }
     return '<div class="wp-fld"><span>' + flab(f) + '</span><input id="' + id + '" class="wp-inp" type="text"' + (f.ro ? ' readonly style="background:#f1f5f9;color:#475569"' : '') + '></div>';
@@ -2103,8 +2179,8 @@
       if (f.type === 'date') {
         var el = document.getElementById('__wpf_' + f.k);
         if (el) {
-          if (f.min3) { el.min = firstDeliveryStr(); }
-          if (f.dmin) { el.min = workdayD1Str(); if (!el.value) { el.value = workdayD1Str(); } }
+          if (f.min3) { el.min = firstDeliveryStr(); el.setAttribute('data-min', firstDeliveryStr()); if (!el.value) { el.value = firstDeliveryStr(); } }
+          if (f.dmin) { el.min = workdayD1Str(); el.setAttribute('data-min', workdayD1Str()); if (!el.value) { el.value = workdayD1Str(); } }
           if (f.dmin || f.min3) {
             /* 주말·공휴일은 배송이 없다. 달력에서 개별 날짜를 막을 방법이 없으니 고르는 즉시 다음 영업일로 맞춘다. */
             el.addEventListener('change', function() {
