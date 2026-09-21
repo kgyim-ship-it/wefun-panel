@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20260921-1250';
+  var PANEL_BUILD = '20260921-1420';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -143,6 +143,9 @@
       };
     return f.getFullYear() + '-' + p(f.getMonth() + 1) + '-' + p(f.getDate());
   }
+
+  /* 오늘 — 휴무일이면 다음 영업일. 오피스에 직접 반영하는 작업의 최소 반영일. */
+  function workdayTodayStr() { return pushOffDay(todayStr()); }
 
   /* ── 기일반영 ──
      거래처명·주소 변경이 "언제부터"인 경우가 있다(예: 9/29부터 8층).
@@ -523,7 +526,10 @@
   Object.keys(ACTIONS).forEach(function(_ak) {
     var _sp = ACTIONS[_ak];
     if (_sp && _sp.d1 && _sp.fields) {
-      _sp.fields.push({ k: '반영예정일', label: '반영 희망일', sub: '이 날짜부터 적용 · 영업일만', type: 'date', dmin: true, req: true });
+      /* 코드전달 건은 전날 엑셀로 나가야 해서 빨라야 D+1.
+         배송주기변경처럼 오피스에 직접 반영하는 건은 오늘도 가능하다. */
+      var _d0 = !_sp.passthru;
+      _sp.fields.push({ k: '반영예정일', label: '반영 희망일', sub: '이 날짜부터 적용 · 영업일만', type: 'date', dmin: true, d0: _d0, req: true });
     }
   });
 
@@ -2265,7 +2271,11 @@
         var el = document.getElementById('__wpf_' + f.k);
         if (el) {
           if (f.min3) { el.min = firstDeliveryStr(); el.setAttribute('data-min', firstDeliveryStr()); if (!el.value) { el.value = firstDeliveryStr(); } }
-          if (f.dmin) { el.min = workdayD1Str(); el.setAttribute('data-min', workdayD1Str()); if (!el.value) { el.value = workdayD1Str(); } }
+          if (f.dmin) {
+            var _mn = f.d0 ? workdayTodayStr() : workdayD1Str();
+            el.min = _mn; el.setAttribute('data-min', _mn);
+            if (!el.value) { el.value = _mn; }
+          }
           if (f.dmin || f.min3) {
             /* 주말·공휴일은 배송이 없다. 달력에서 개별 날짜를 막을 방법이 없으니 고르는 즉시 다음 영업일로 맞춘다. */
             el.addEventListener('change', function() {
@@ -2289,11 +2299,14 @@
             var noteEl = document.getElementById('__wpD1Note');
             var upd2 = function() {
               if (!noteEl) return;
-              var v = el.value || workdayD1Str(), g = dayGap(v);
+              var v = el.value || (f.d0 ? workdayTodayStr() : workdayD1Str()), g = dayGap(v);
               noteEl.innerHTML = g > 0 ?
                 ('📅 <b>' + esc(v) + '부터</b> 적용됩니다. 그 전까지는 기존 정보 그대로 배송됩니다.') :
-                ('ℹ️ 변경 내용은 <b>' + esc(v) + '</b>에 반영됩니다. (자회사 코드전달 일괄입력)<br>' +
-                 '<span style="color:#B45309">나중부터 바뀌는 건이면 위 <b>반영 희망일</b>을 그 날짜로 바꿔주세요.</span>');
+                (f.d0 ?
+                  ('ℹ️ <b>오늘(' + esc(v) + ')</b>부터 적용됩니다. 승인되는 즉시 위펀 오피스에 반영됩니다.<br>' +
+                   '<span style="color:#B45309">나중부터 바뀌는 건이면 위 <b>반영 희망일</b>을 그 날짜로 바꿔주세요.</span>') :
+                  ('ℹ️ 변경 내용은 <b>' + esc(v) + '</b>에 반영됩니다. (자회사 코드전달 일괄입력)<br>' +
+                   '<span style="color:#B45309">나중부터 바뀌는 건이면 위 <b>반영 희망일</b>을 그 날짜로 바꿔주세요.</span>'));
             };
             el.addEventListener('change', upd2);
             el.addEventListener('input', upd2);
