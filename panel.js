@@ -7,6 +7,39 @@
     document.getElementById('__wp').remove();
   }
 
+  /* ── 자동 최신화 ──
+     부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
+     그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
+     여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
+  var PANEL_BUILD = '20260921-1127';
+  try {
+    if (!window.__wpSelfUpd) {
+      window.__wpSelfUpd = 1;
+      setTimeout(function () {
+        var SRC = ['https://wefun-boot.kg-yim.workers.dev/panel.js?v=',
+          'https://raw.githubusercontent.com/kgyim-ship-it/wefun-panel/main/panel.js?v='];
+        var i = 0;
+        function tryNext() {
+          if (i >= SRC.length) { return; }
+          fetch(SRC[i++] + Date.now(), { cache: 'no-store' }).then(function (r) {
+            if (!r.ok) { throw 0; }
+            return r.text();
+          }).then(function (t) {
+            if (!t || t.charAt(0) === '<' || t.indexOf('wefunPanel') < 0) { throw 0; }
+            var m = /PANEL_BUILD\s*=\s*'([0-9]{8}-[0-9]{4})'/.exec(t);
+            if (!m || m[1] <= PANEL_BUILD) { return; }       /* 같거나 더 오래된 빌드는 무시 */
+            try { new Function(t); } catch (_s) { return; }   /* 문법 깨진 코드는 버린다 */
+            try { localStorage.setItem('__wpPanelV2', t); } catch (_l) {}
+            var fm = document.getElementById('__wpForm');
+            if (fm && fm.innerHTML) { return; }               /* 뭔가 작성 중이면 건드리지 않는다 */
+            (0, eval)(t);
+          }).catch(tryNext);
+        }
+        tryNext();
+      }, 900);
+    }
+  } catch (_u) {}
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   }
