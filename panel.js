@@ -36,13 +36,41 @@
     return new Date(d.getTime() + (d.getTimezoneOffset() * 60000) + (9 * 3600000));
   }
 
+  /* ── 휴무일 ──
+     배송이 돌지 않는 날. 영업일 계산(반영 희망일·첫배송일)이 이 날짜를 건너뛴다.
+     주말만 건너뛰던 때는 연휴가 끼면 코드전달이 하루 늦게 나갔다.
+     (예: 추석 연휴 직후 9/28 반영 건이 9/23에 안 담기고 9/28에야 담겨 자회사 반영이 9/29로 밀림)
+     아래 날짜는 위펀오피스 배송동선 실측으로 검증했다 — 평일은 주간 47코스, 이 날짜들은 0~4코스.
+     ※ 매년 말 다음 해 날짜를 추가할 것. 목록이 끝나갈 때쯤 관리자 화면에 안내가 뜬다. */
+  var HOLIDAYS = {
+    /* 2026 — 신정·설날·삼일절대체·근로자의날·어린이날·부처님오신날대체·지방선거·제헌절·광복절대체·추석·개천절대체·한글날·성탄절 */
+    '2026-01-01': 1, '2026-02-16': 1, '2026-02-17': 1, '2026-02-18': 1, '2026-03-02': 1,
+    '2026-05-01': 1, '2026-05-05': 1, '2026-05-25': 1, '2026-06-03': 1, '2026-07-17': 1,
+    '2026-08-17': 1, '2026-09-24': 1, '2026-09-25': 1, '2026-10-05': 1, '2026-10-09': 1,
+    '2026-12-25': 1,
+    /* 2027 */
+    '2027-01-01': 1, '2027-02-08': 1, '2027-02-09': 1, '2027-03-01': 1, '2027-05-05': 1,
+    '2027-05-13': 1, '2027-08-16': 1, '2027-09-14': 1, '2027-09-15': 1, '2027-09-16': 1,
+    '2027-10-04': 1, '2027-10-11': 1, '2027-12-27': 1
+  };
+  var HOLIDAY_UNTIL = '2027-12-31';   /* 위 목록이 커버하는 마지막 날 */
+
+  function ymdOf(d) {
+    var p = function(n) { return ('0' + n).slice(-2); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+
+  function isOffDay(d) {          /* 주말이거나 공휴일 */
+    var w = d.getDay();
+    return w === 0 || w === 6 || !!HOLIDAYS[ymdOf(d)];
+  }
+
   function addWorkdays(d, num) {
     var r = new Date(d.getTime()),
       a = 0;
     while (a < num) {
       r.setDate(r.getDate() + 1);
-      var w = r.getDay();
-      if (w !== 0 && w !== 6) a++;
+      if (!isOffDay(r)) a++;
     }
     return r;
   }
@@ -2855,6 +2883,13 @@ document.getElementById('__wpSave').onclick = function() {
           (a.length > k ? ' 외 ' + (a.length - k) + '건' : '');
       }
       var h = '';
+      /* 휴무일 목록이 끝나가면 알려준다 — 그냥 두면 연휴를 못 건너뛰어 코드전달이 하루씩 밀린다 */
+      var hoWarn = addWorkdays(kstDate(), 40);
+      if (ymdOf(hoWarn) > HOLIDAY_UNTIL) {
+        h += '<div style="margin:8px 0;padding:10px 14px;background:#FEF9C3;border:1px solid #FDE047;border-radius:8px;font-size:12.5px;color:#854D0E;line-height:1.7">' +
+          '<b>휴무일 목록 갱신 필요</b> — 현재 <b>' + HOLIDAY_UNTIL + '</b>까지만 등록돼 있습니다. ' +
+          '그 이후 연휴는 건너뛰지 못해 코드전달이 하루 늦게 나갈 수 있습니다.</div>';
+      }
       if (over.length) {
         h += '<div style="margin:8px 0;padding:11px 14px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;font-size:13px;color:#991B1B;line-height:1.7">' +
           '<b>⚠ 반영일이 지났는데 아직 전달 안 된 건 ' + over.length + '건</b><br>' +
