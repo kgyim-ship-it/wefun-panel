@@ -490,7 +490,7 @@
   Object.keys(ACTIONS).forEach(function(_ak) {
     var _sp = ACTIONS[_ak];
     if (_sp && _sp.d1 && _sp.fields) {
-      _sp.fields.push({ k: '반영예정일', label: '반영 희망일 (이 날짜부터 적용 · 영업일만)', type: 'date', dmin: true, req: true });
+      _sp.fields.push({ k: '반영예정일', label: '반영 희망일', sub: '이 날짜부터 적용 · 영업일만', type: 'date', dmin: true, req: true });
     }
   });
 
@@ -1661,7 +1661,8 @@
      그래서 반영 희망일·첫배송일은 이 달력을 쓴다 — 주말·공휴일은 눌러도 반응하지 않는다. */
   function openWorkdayCal(el) {
     var old = document.getElementById('__wpWdCal');
-    if (old) { old.remove(); if (old.getAttribute('data-for') === el.id) { return; } }
+    /* 같은 칸이면 그대로 둔다 — focusin·click이 연달아 들어와 열자마자 닫히던 문제 */
+    if (old) { if (old.getAttribute('data-for') === el.id) { return; } old.remove(); }
     var minY = el.getAttribute('data-min') || todayStr();
     var curV = el.value || minY;
     var mp = curV.split('-');
@@ -1762,7 +1763,7 @@
       };
     });
   } /* ---------- 요청 폼 ---------- */
-  function flab(f) { return esc(f.label) + (f.req ? ' <span style="color:#dc2626" title="필수">*</span>' : ''); }
+  function flab(f) { return esc(f.label) + (f.req ? ' <span style="color:#dc2626" title="필수">*</span>' : '') + (f.sub ? '<div style="font-weight:400;color:#94a3b8;font-size:11px;line-height:1.4;margin-top:2px">' + esc(f.sub) + '</div>' : ''); }
 
   function fieldHtml(f) {
     var id = '__wpf_' + f.k;
@@ -1782,7 +1783,7 @@
       /* 날짜 고르면 옆에 요일이 바로 뜬다 — 잘못된 요일 선택을 입력 시점에 잡기 위함.
          반영 희망일·첫배송일은 주말·공휴일을 눌러도 안 되는 자체 달력을 쓴다. */
       if (f.dmin || f.min3) {
-        return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="text" readonly data-wdcal="1" placeholder="날짜 선택" style="flex:1;cursor:pointer;background:#fff"><span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span></div></div>';
+        return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="text" readonly data-wdcal="1" placeholder="날짜 선택" style="flex:1;cursor:pointer;background:#fff">' + (f.dmin ? '' : '<span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span>') + '</div></div>';
       }
       return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="date" style="flex:1"><span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span></div></div>';
     }
@@ -2186,6 +2187,22 @@
           buildSchedCal(_sbx.querySelector('.__wpCalHost'), _dl);
         });
       }).catch(function() { _sbx.textContent = '기존 배송일정: 불러오기 실패'; });
+    }
+    /* 바꾸기 전에 지금 뭘로 돌고 있는지 보여준다 — 오피스를 따로 안 열어봐도 되게 */
+    if (action === '배송주기변경') {
+      var _cyEl = document.getElementById('__wpf_변경주기');
+      if (_cyEl && _cyEl.parentNode) {
+        var _cbx = document.createElement('div');
+        _cbx.style.cssText = 'background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:9px 12px;font-size:12.5px;color:#64748b;margin:2px 0 6px;line-height:1.6';
+        _cbx.textContent = '현재 배송주기 불러오는 중…';
+        _cyEl.parentNode.parentNode.insertBefore(_cbx, _cyEl.parentNode);
+        getCurrentCycle(br.id).then(function(cur) {
+          if (!cur || !cur.cyc) { _cbx.innerHTML = '<b style="color:#0f172a">현재 배송주기</b> <span style="color:#94a3b8">확인되지 않음</span>'; return; }
+          var _ds = (cur.days && cur.days.length) ? cur.days.map(function(x) { return String(x).trim().replace(/요일$/, ''); }).join('·') : '';
+          _cbx.innerHTML = '<b style="color:#0f172a">현재 배송주기</b> &nbsp;<span style="font-weight:800;color:#1f4e78;font-size:13.5px">' + esc(cur.cyc) + '</span>' +
+            (_ds ? (' <span style="color:#cbd5e1">|</span> <span style="font-weight:800;color:#1f4e78;font-size:13.5px">' + esc(_ds) + '</span>') : '');
+        }).catch(function() { _cbx.innerHTML = '<b style="color:#0f172a">현재 배송주기</b> <span style="color:#b45309">불러오기 실패</span>'; });
+      }
     }
     (spec.fields || []).forEach(function(f) {
       if (f.type === 'days') bindDays(f.k);
