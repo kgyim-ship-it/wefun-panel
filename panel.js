@@ -2783,7 +2783,7 @@ document.getElementById('__wpSave').onclick = function() {
     }).join('') + '</select>';
     VIEW.innerHTML = '<div style="margin-bottom:10px"><div style="margin-bottom:8px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">' + filters.map(function(f) {
       return '<button class="wp-btn ' + (f === REV_STATUS ? 'pri' : 'gh') + ' __wpFt" data-f="' + f + '" style="padding:7px 13px">' + f + '</button>';
-    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 ' + (group === 'pick' ? '수기피킹' : '코드전달') + ' 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + (ALLW ? '<div style="margin-top:7px;padding:9px 12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E;line-height:1.65"><b>대기 — 아직 처리 안 된 요청 전부입니다.</b><br>기간과 상관없이 나옵니다. 어제·지난주에 들어온 건도 처리할 때까지 계속 보입니다.</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' + (ALLW ? '<button id="__wpBulkAp" class="wp-btn ok" style="padding:7px 13px">✓ 일괄승인</button><button id="__wpBulkRj" class="wp-btn dg" style="padding:7px 13px">일괄반려</button><span style="color:#cbd5e1">|</span>' : '') + '<button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스·피킹방법변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
+    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 ' + (group === 'pick' ? '수기피킹' : '코드전달') + ' 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + (ALLW ? '<div style="margin-top:7px;padding:9px 12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E;line-height:1.65"><b>대기 — 아직 처리 안 된 요청 전부입니다.</b><br>기간과 상관없이 나옵니다. 어제·지난주에 들어온 건도 처리할 때까지 계속 보입니다.</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' + (ALLW ? '<button id="__wpBulkAp" class="wp-btn ok" style="padding:7px 13px">✓ 일괄승인</button><button id="__wpBulkRj" class="wp-btn dg" style="padding:7px 13px">일괄반려</button><span style="color:#cbd5e1">|</span>' : '') + '<button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스·피킹방법변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpD1Alert"></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
     document.getElementById('__wpRF').value = REV_DR.from;
     document.getElementById('__wpRT').value = REV_DR.to;
     if (NODATE) {  /* 대기·미전달은 기간 개념이 없다 — 날짜칸 잠금 */
@@ -2822,11 +2822,64 @@ document.getElementById('__wpSave').onclick = function() {
         cache.sort(function(x, y) { return String(x.ts || '').localeCompare(String(y.ts || '')); });
         REV_CACHE = cache;
         renderReqTable('__wpRevList', cache, true, { codeSent: PENDOK, selectable: PEND || ALLW });
+        loadD1();
       }).catch(function(e) {
         document.getElementById('__wpRevList').innerHTML = '<div style="color:#b00;padding:10px">' + esc(e.message) + '</div>';
       });
     }
     document.getElementById('__wpRGo').onclick = load;
+    /* ── 반영예정일 알림 ──
+       기일반영 건은 반영일 전날까지 코드전달 엑셀에 안 담긴다.
+       그래서 '그날이 왔는데 아무도 엑셀을 안 뽑는' 구멍이 생긴다.
+       미전달 큐를 훑어 지금 담아야 할 건·지나버린 건을 화면 맨 위에 띄운다. */
+    function paintD1(items) {
+      var box = document.getElementById('__wpD1Alert');
+      if (!box) { return; }
+      var t = todayStr(), nw = workdayD1Str();
+      var over = [], due = [], soon = [];
+      (items || []).forEach(function(it) {
+        if (!codeTarget(it) || it.status !== '완료') { return; }
+        var d = d1Of(it);
+        if (!d) { due.push(it); return; }
+        if (d < t) { over.push(it); }
+        else if (d <= nw) { due.push(it); }
+        else { soon.push(it); }
+      });
+      var btn = document.getElementById('__wpRCode');
+      if (btn) {
+        var n = over.length + due.length;
+        btn.textContent = '⬇ 코드전달 엑셀' + (n ? ' (' + n + '건)' : '');
+        if (n) { btn.className = 'wp-btn pri'; }
+      }
+      function names(a, k) {
+        return a.slice(0, k).map(function(x) { return (d1Of(x) ? d1Of(x).slice(5).replace('-', '/') + ' ' : '') + (x.branchName || '') + '(' + x.action + ')'; }).join(' · ') +
+          (a.length > k ? ' 외 ' + (a.length - k) + '건' : '');
+      }
+      var h = '';
+      if (over.length) {
+        h += '<div style="margin:8px 0;padding:11px 14px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;font-size:13px;color:#991B1B;line-height:1.7">' +
+          '<b>⚠ 반영일이 지났는데 아직 전달 안 된 건 ' + over.length + '건</b><br>' +
+          '<span style="font-size:12.5px">' + esc(names(over, 6)) + '</span><br>' +
+          '<span style="color:#B91C1C;font-weight:700">지금 [코드전달 엑셀]을 뽑아 자회사에 전달해야 합니다.</span></div>';
+      }
+      if (due.length) {
+        h += '<div style="margin:8px 0;padding:11px 14px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;font-size:13px;color:#9A3412;line-height:1.7">' +
+          '<b>📤 오늘 담아야 할 건 ' + due.length + '건</b> <span style="font-size:12px;opacity:.8">(반영일 ' + nw + ' 이하)</span><br>' +
+          '<span style="font-size:12.5px">' + esc(names(due, 6)) + '</span></div>';
+      }
+      if (soon.length) {
+        soon.sort(function(x, y) { return d1Of(x).localeCompare(d1Of(y)); });
+        h += '<div style="margin:8px 0;padding:10px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;font-size:12.5px;color:#475569;line-height:1.7">' +
+          '<b>🗓 예약 ' + soon.length + '건</b> — 반영일 전날 자동으로 담깁니다. 가장 이른 건 <b>' + esc(d1Of(soon[0])) + '</b> (D-' + dayGap(d1Of(soon[0])) + ')<br>' +
+          '<span style="font-size:12px;opacity:.85">' + esc(names(soon, 5)) + '</span></div>';
+      }
+      box.innerHTML = h;
+    }
+    function loadD1() {
+      if (group !== 'syn') { return; }
+      if (PEND) { paintD1(cache); return; }
+      listReq({ pending: 'code' }).then(paintD1).catch(function() {});
+    }
     /* ---- 일괄 승인/반려 (대기 화면 전용) ----
        신규코드발급은 건별로 우린담당 입력이 필요해 일괄에서 제외한다.
        주소변경의 '코스도 바꿀까요?' 질문은 일괄에선 건너뛴다(코스 유지). */
