@@ -65,6 +65,26 @@
     return w === 0 || w === 6 || !!HOLIDAYS[ymdOf(d)];
   }
 
+  /* 휴무일이면 다음 영업일로 밀어준다 (YYYY-MM-DD 문자열) */
+  function pushOffDay(ymd) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd || '')) { return ymd; }
+    var p = ymd.split('-');
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    var n = 0;
+    while (isOffDay(d) && n++ < 40) { d.setDate(d.getDate() + 1); }
+    return ymdOf(d);
+  }
+
+  function offDayLabel(ymd) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd || '')) { return ''; }
+    var p = ymd.split('-');
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    var w = d.getDay();
+    if (w === 0 || w === 6) { return '주말'; }
+    if (HOLIDAYS[ymd]) { return '휴무일'; }
+    return '';
+  }
+
   function addWorkdays(d, num) {
     var r = new Date(d.getTime()),
       a = 0;
@@ -225,6 +245,7 @@
   var ACTIONS = {
     '배송주기변경': {
       auto: 'cycle',
+      d1: true,          /* 반영 희망일 — 승인(=오피스 반영)을 그날 하도록 안내한다 */
       fields: [{
         k: '변경주기',
         label: '변경 배송주기',
@@ -453,7 +474,7 @@
   Object.keys(ACTIONS).forEach(function(_ak) {
     var _sp = ACTIONS[_ak];
     if (_sp && _sp.d1 && _sp.fields) {
-      _sp.fields.push({ k: '반영예정일', label: '반영 희망일 (이 날짜부터 적용)', type: 'date', dmin: true, req: true });
+      _sp.fields.push({ k: '반영예정일', label: '반영 희망일 (이 날짜부터 적용 · 영업일만)', type: 'date', dmin: true, req: true });
     }
   });
 
@@ -2084,6 +2105,18 @@
         if (el) {
           if (f.min3) { el.min = firstDeliveryStr(); }
           if (f.dmin) { el.min = workdayD1Str(); if (!el.value) { el.value = workdayD1Str(); } }
+          if (f.dmin || f.min3) {
+            /* 주말·공휴일은 배송이 없다. 달력에서 개별 날짜를 막을 방법이 없으니 고르는 즉시 다음 영업일로 맞춘다. */
+            el.addEventListener('change', function() {
+              var v = el.value;
+              if (!v) { return; }
+              var lb = offDayLabel(v);
+              if (!lb) { return; }
+              var nv = pushOffDay(v);
+              el.value = nv;
+              toast(v.slice(5).replace('-', '/') + '은 ' + lb + '이라 ' + nv.slice(5).replace('-', '/') + '로 맞췄습니다', '#B45309');
+            });
+          }
           var dowEl = document.getElementById('__wpf_' + f.k + '_dow');
           if (dowEl) {
             var upd = function() { dowEl.textContent = el.value ? ('(' + DOWK[new Date(el.value.slice(0,4), +el.value.slice(5,7) - 1, +el.value.slice(8,10)).getDay()] + ')') : ''; };
@@ -2909,10 +2942,47 @@ document.getElementById('__wpSave').onclick = function() {
       }
       box.innerHTML = h;
     }
+    /* 배송주기변경은 승인=오피스 즉시 반영이라 '그날 승인'이 곧 기일반영이다.
+       반영 희망일이 오늘 이하인데 아직 대기인 건을 놓치지 않게 맨 위에 띄운다. */
+    function paintCyc(items) {
+      var box = document.getElementById('__wpD1Alert');
+      if (!box) { return; }
+      var t = todayStr();
+      var due = [], soon = [];
+      (items || []).forEach(function(it) {
+        if (it.action !== '배송주기변경' || it.status !== '대기') { return; }
+        var d = d1Of(it);
+        if (!d || d <= t) { due.push(it); } else { soon.push(it); }
+      });
+      function names(a, k) {
+        return a.slice(0, k).map(function(x) { return (d1Of(x) ? d1Of(x).slice(5).replace('-', '/') + ' ' : '') + (x.branchName || ''); }).join(' · ') +
+          (a.length > k ? ' 외 ' + (a.length - k) + '건' : '');
+      }
+      var h = '';
+      if (due.length) {
+        h += '<div style="margin:8px 0;padding:11px 14px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;font-size:13px;color:#9A3412;line-height:1.7">' +
+          '<b>📌 오늘 반영할 배송주기변경 ' + due.length + '건</b> <span style="font-size:12px;opacity:.8">(반영 희망일 도래)</span><br>' +
+          '<span style="font-size:12.5px">' + esc(names(due, 6)) + '</span></div>';
+      }
+      if (soon.length) {
+        soon.sort(function(x, y) { return d1Of(x).localeCompare(d1Of(y)); });
+        h += '<div style="margin:8px 0;padding:10px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;font-size:12.5px;color:#475569;line-height:1.7">' +
+          '<b>🗓 예약 ' + soon.length + '건</b> — 반영 희망일에 승인하면 그날부터 적용됩니다. 가장 이른 건 <b>' + esc(d1Of(soon[0])) + '</b> (D-' + dayGap(d1Of(soon[0])) + ')<br>' +
+          '<span style="font-size:12px;opacity:.85">' + esc(names(soon, 5)) + '</span></div>';
+      }
+      box.innerHTML = h;
+    }
     function loadD1() {
-      if (group !== 'syn') { return; }
-      if (PEND) { paintD1(cache); return; }
-      listReq({ pending: 'code' }).then(paintD1).catch(function() {});
+      if (group === 'syn') {
+        if (PEND) { paintD1(cache); return; }
+        listReq({ pending: 'code' }).then(paintD1).catch(function() {});
+        return;
+      }
+      if (group === 'deliv') {
+        if (ALLW) { paintCyc(cache); return; }
+        listReq({ status: '대기' }).then(paintCyc).catch(function() {});
+        return;
+      }
     }
     /* ---- 일괄 승인/반려 (대기 화면 전용) ----
        신규코드발급은 건별로 우린담당 입력이 필요해 일괄에서 제외한다.
@@ -3386,7 +3456,7 @@ document.getElementById('__wpSave').onclick = function() {
         last = '<td style="white-space:normal">' + _lastInner + '</td>';
       }
       var bn = it.branchId ? ('<a href="/office/sales/branch/' + esc(it.branchId) + '" target="_blank" style="color:#1f4e78;text-decoration:none">' + esc(it.branchName) + '</a>') : esc(it.branchName);
-      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + (codeGubun(it.action) ? d1Badge(it) : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill(it.status) + '</td>' + last + '</tr>';
+      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + ((codeGubun(it.action) || it.action === '배송주기변경') ? d1Badge(it) : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill(it.status) + '</td>' + last + '</tr>';
     });
     h += '</tbody></table>';
     box.innerHTML = h;
@@ -3840,6 +3910,14 @@ document.getElementById('__wpSave').onclick = function() {
     }
     var pick = (it.action === '수기피킹');
     var dtq = (it.action === '배송시간문의');
+    /* 배송주기변경은 승인하는 순간 오피스에 반영된다 → 반영 희망일이 남았으면 그날 승인해야 한다 */
+    if (it.action === '배송주기변경') {
+      var cg = dayGap(d1Of(it));
+      if (cg > 0 && !confirm('⚠ 반영 희망일이 아직 ' + cg + '일 남았습니다 (' + d1Of(it) + ')\n\n' +
+          '배송주기변경은 승인하는 즉시 위펀 오피스에 반영됩니다.\n' +
+          '지금 승인하면 그 전 배송부터 주기가 바뀝니다.\n\n' +
+          '그대로 진행할까요? (보통은 ' + d1Of(it) + '에 승인합니다)')) { return; }
+    }
     var cfmMsg = dtq ? ('[배송시간문의] 확인 회신\n' + (it.branchName || '') + '\n\n금일 배송 배정·완료시각·진열사진을 조회해 요청자에게 회신합니다.\n(오피스에 반영되는 것은 없습니다)\n\n진행할까요?') : pick ? ('[수기피킹] 완료 처리\n' + (it.branchName || '') + '\n\n피킹팀 처리 완료로 표시하고 요청자에게 알립니다.\n진행할까요?') : passthru ? ('[' + it.action + '] 검토 승인(접수)\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + (it._newCourse ? '\n코스변경 → ' + it._newCourse : '') + '\n\n승인하면 자회사 코드전달로 접수됩니다.\n반영예정일: ' + (d1Of(it) || workdayD1Str()) + (dayGap(d1Of(it)) > 0 ? ' (D-' + dayGap(d1Of(it)) + ' · 그날 전날까지 코드전달 엑셀에 안 담깁니다)' : '') + '\n진행할까요?') : ('[' + it.action + '] 승인 · 위펀 오피스에 반영\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + '\n\n진행할까요?');
     if (!confirm(cfmMsg)) return;
     btn.disabled = true;
