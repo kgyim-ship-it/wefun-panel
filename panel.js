@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20260921-1127';
+  var PANEL_BUILD = '20260921-1250';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -2037,15 +2037,31 @@
 
     function shell(inner, saveLabel) {
       var lbl = IS_ADMIN ? '바로 반영' : '요청 제출';
-      var note = IS_ADMIN ? '* 물류팀 계정이라 승인 없이 위펀 오피스에 바로 반영됩니다.' : '* 제출하면 물류팀 승인 후 위펀 오피스에 반영됩니다.';
-      return '<div class="wp-form"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">' + esc(action) + '</b><button id="__wpBack" class="wp-btn gh" style="padding:6px 12px">← 목록</button></div>' + meta + inner + '<div style="margin-top:12px;display:flex;gap:8px;align-items:center"><button id="__wpSave" class="wp-btn ok">' + lbl + '</button></div><div style="font-size:11.5px;color:#94a3b8;margin-top:6px">' + note + '</div></div>';
+      var note = IS_ADMIN ?
+        '* <b>반영요청</b> — 일반 요청자와 똑같이 큐에 올립니다. 관리자용 검토 화면에서 승인해야 오피스에 반영됩니다.<br>* <b>바로 반영</b> — 승인 절차 없이 위펀 오피스에 즉시 반영합니다.' :
+        '* 제출하면 물류팀 승인 후 위펀 오피스에 반영됩니다.';
+      var btns = (IS_ADMIN ? '<button id="__wpAsk" class="wp-btn gh">반영요청</button>' : '') + '<button id="__wpSave" class="wp-btn ok">' + lbl + '</button>';
+      return '<div class="wp-form"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">' + esc(action) + '</b><button id="__wpBack" class="wp-btn gh" style="padding:6px 12px">← 목록</button></div>' + meta + inner + '<div style="margin-top:12px;display:flex;gap:8px;align-items:center">' + btns + '</div><div style="font-size:11.5px;color:#94a3b8;margin-top:6px;line-height:1.7">' + note + '</div></div>';
     }
+    /* 관리자가 [반영요청]을 눌렀는가 — true면 바로 반영하지 않고 일반 요청처럼 큐에 올린다 */
+    var ASK = false;
 
     function bind() {
       document.getElementById('__wpBack').onclick = function() {
         box.innerHTML = '';
         document.getElementById('__wpQr').style.display = 'block';
       };
+      var _sv = document.getElementById('__wpSave');
+      var _ak = document.getElementById('__wpAsk');
+      if (_sv) { _sv.addEventListener('mousedown', function() { ASK = false; }); }   /* 바로 반영을 직접 누르면 항상 즉시반영 */
+      if (_ak && _sv) {
+        _ak.onclick = function() {
+          ASK = true;
+          _ak.disabled = true;
+          _sv.click();                       /* 저장 로직은 한 곳(__wpSave)만 두고 모드만 바꾼다 */
+          setTimeout(function() { if (_ak) { _ak.disabled = false; } }, 1500);
+        };
+      }
       if (spec.deeplink) {
         var ob = document.getElementById('__wpOpen');
         if (ob) ob.onclick = function() {
@@ -2133,7 +2149,7 @@
         });
         return;
       }
-      if (IS_ADMIN) {
+      if (IS_ADMIN && !ASK) {
         /* 물류팀 = 승인 없이 바로 반영 */
         if (action === '주소변경') {
           if (confirm('코스를 바꾸시겠습니까? (주소 변경으로 배송코스가 달라지면 새 코스를 입력하세요)')) {
@@ -2164,10 +2180,12 @@
       sb.textContent = '제출 중…';
       submitReq(o).then(function() {
         toast('✓ ' + action + ' 요청이 제출됐습니다', '#0a7d47');
-        successScreen('✓ 요청이 제출됐습니다. 관리자 승인 대기 중입니다.');
+        successScreen(IS_ADMIN ?
+          '✓ 반영요청으로 접수됐습니다. 관리자용 검토 화면에서 승인해야 오피스에 반영됩니다.' :
+          '✓ 요청이 제출됐습니다. 관리자 승인 대기 중입니다.');
       }).catch(function(e) {
         sb.disabled = false;
-        sb.textContent = '요청 제출';
+        sb.textContent = (IS_ADMIN ? '바로 반영' : '요청 제출');
         alert('제출 실패: ' + e.message);
       });
     }
