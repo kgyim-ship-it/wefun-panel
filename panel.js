@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20260923-1124';
+  var PANEL_BUILD = '20260923-1138';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -2400,6 +2400,7 @@ document.getElementById('__wpSave').onclick = function() {
           var preP = [];
           if (!vals['반영예정일']) { preP.push('반영예정일: ' + workdayD1Str()); }
           if (action === '주소변경' || action === '코스변경' || action === '담당자변경') preP.push('기존코스: ' + (br.course || '-'));   /* 담당자변경: 택배 여부 판별용 */
+          if (action === '담당자변경' && br.method) preP.push('배송형태: ' + br.method);   /* 코스가 비어 있어도 택배 판정이 되게 */
           if (action === '주소변경') {
             return getForm(br.id).then(function(f) {
               var a1 = (getVal(f, 'address1') || '').trim() || (br.addr || '-');
@@ -3317,13 +3318,33 @@ document.getElementById('__wpSave').onclick = function() {
     return action === '신규코드발급' ? '신규' : action === '주소변경' ? '주소변경' : action === '거래처명변경' ? '거래처명변경' : action === '담당자변경' ? '담당자변경' : action === '코스변경' ? '코스변경' : action === '피킹방법변경' ? '피킹방법변경' : '';
   }
   /* 택배 건인가 — 서비스구분·배송형태·담당코스 어디에든 '택배'가 있으면 */
+  /* 배송코스(=우린배송담당) 관련 값만 모은다. 담당자변경의 택배 판정은 '코스가 스낵택배인가'다. */
+  function courseOf(it) {
+    var d = it && it.detail || '';
+    return [detailGet(d, '담당코스'), detailGet(d, '기존코스'), detailGet(d, '변경코스'), detailGet(d, '배송방법'), detailGet(d, '배송형태'),
+      (it && it._course) || ''].join(' ').replace(/-/g, ' ').trim();
+  }
+  /* 요청에 코스 정보가 아예 없으면 택배인지 판정할 수 없다 → 오피스에서 채워야 한다 */
+  function courseKnown(it) { return !!courseOf(it); }
+
   function isParcel(it) {
     var d = it && it.detail || '';
-    var s = [detailGet(d, '서비스구분'), detailGet(d, '배송형태'), detailGet(d, '담당코스'), detailGet(d, '기존코스'), detailGet(d, '배송방법'),
-      /* 스낵택배 담당자변경처럼 코스·구분엔 '택배'가 없고 사유에만 적히는 건이 있다 */
-      detailGet(d, '사유'), detailGet(d, '변경사유'), detailGet(d, '비고'), detailGet(d, '요청사유'),
+    var s = [courseOf(it), detailGet(d, '서비스구분'),
       (/코스변경=([^·]+)/.exec(it && it.adminNote || '') || [])[1] || ''].join(' ');
     return /택배/.test(s);
+  }
+  /* 코스 정보가 빠진 담당자변경 건을 거래처 조회로 메운다 (보통 0~2건) */
+  function fillCourse(list) {
+    return mapLimit(list, 3, function(it) {
+      var kw = it.hot || it.branchName || '';
+      if (!kw) { return Promise.resolve(null); }
+      return searchRich(kw).then(function(rs) {
+        rs = rs || [];
+        var hit = rs.filter(function(r) { return String(r.hot) === String(it.hot) || String(r.id) === String(it.branchId); })[0] || rs[0];
+        if (hit) { it._course = (hit.course || '') + ' ' + (hit.method || ''); }
+        return null;
+      }).catch(function() { return null; });
+    });
   }
   /* 코드전달 엑셀에 실제로 담을 건인가.
      - 피킹방법변경: 자회사가 받아야 한다(5열 보냉백/빵박스) → 담음. 일괄입력 업로드 때는 오피스 반영 없이 스킵.
@@ -3389,6 +3410,20 @@ document.getElementById('__wpSave').onclick = function() {
   }
 
   function buildCodeXlsx(items, fname, markSent, onDone) {
+    /* 담당자변경인데 코스 정보가 요청에 없는 건 → 거래처를 조회해 코스를 채운 뒤 판정한다 */
+    var unk = (items || []).filter(function(it) { return it && it.action === '담당자변경' && it.status === '완료' && !courseKnown(it); });
+    if (unk.length && !buildCodeXlsx._f) {
+      buildCodeXlsx._f = 1;
+      toast('담당자변경 ' + unk.length + '건 코스 확인 중…', '#1f4e78');
+      fillCourse(unk).then(function() {
+        buildCodeXlsx._f = 0;
+        buildCodeXlsx(items, fname, markSent, onDone);
+      }).catch(function() {
+        buildCodeXlsx._f = 0;
+        buildCodeXlsx(items, fname, markSent, onDone);
+      });
+      return;
+    }
     var all0 = (items || []).filter(codeTarget);
     /* 반영예정일이 다음 영업일보다 뒤인 건은 이번 엑셀에서 뺀다.
        자회사는 받은 다음 영업일에 반영하므로, 그때가 반영일인 건까지만 담으면 딱 맞는다.
