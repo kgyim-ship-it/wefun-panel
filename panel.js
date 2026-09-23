@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20260923-1138';
+  var PANEL_BUILD = '20260923-1148';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -3292,6 +3292,22 @@ document.getElementById('__wpSave').onclick = function() {
     document.getElementById('__wpRCode').onclick = function() {
       var selM = selPick();
       var pool = selM ? cache.filter(function(it) { return selM[it.id]; }) : cache;
+      /* 담당자변경은 '코스가 택배인가'로 대상 여부가 갈린다.
+         요청에 코스가 안 담겨 있으면 여기서 거래처를 조회해 채운 뒤 다시 판정한다. */
+      var _need = pool.filter(needCourse);
+      if (_need.length) {
+        var _b = this, _t0 = _b.textContent;
+        _b.disabled = true;
+        _b.textContent = '코스 확인 중… ' + _need.length + '건';
+        fillCourse(_need).then(function() {
+          _b.disabled = false; _b.textContent = _t0;
+          _b.onclick();
+        }).catch(function() {
+          _b.disabled = false; _b.textContent = _t0;
+          _b.onclick();
+        });
+        return;
+      }
       /* 승인 완료된 건만 내보낸다 — 예전엔 '대기' 건까지 섞여 나갔다 */
       var ok = pool.filter(function(it) { return codeTarget(it) && it.status === '완료'; });
       var notYet = pool.filter(function(it) { return codeTarget(it) && it.status !== '완료'; }).length;
@@ -3326,6 +3342,10 @@ document.getElementById('__wpSave').onclick = function() {
   }
   /* 요청에 코스 정보가 아예 없으면 택배인지 판정할 수 없다 → 오피스에서 채워야 한다 */
   function courseKnown(it) { return !!courseOf(it); }
+  /* 코스를 모르는 담당자변경 건 — 엑셀을 뽑기 전에 오피스에서 채워야 한다 */
+  function needCourse(it) {
+    return it && it.action === '담당자변경' && it.status === '완료' && !courseKnown(it) && !it._courseTried;
+  }
 
   function isParcel(it) {
     var d = it && it.detail || '';
@@ -3336,11 +3356,17 @@ document.getElementById('__wpSave').onclick = function() {
   /* 코스 정보가 빠진 담당자변경 건을 거래처 조회로 메운다 (보통 0~2건) */
   function fillCourse(list) {
     return mapLimit(list, 3, function(it) {
+      it._courseTried = 1;                       /* 한 번 조회하면 다시 돌지 않는다 */
       var kw = it.hot || it.branchName || '';
       if (!kw) { return Promise.resolve(null); }
       return searchRich(kw).then(function(rs) {
         rs = rs || [];
-        var hit = rs.filter(function(r) { return String(r.hot) === String(it.hot) || String(r.id) === String(it.branchId); })[0] || rs[0];
+        /* 엉뚱한 거래처를 잡지 않게 코드·ID가 정확히 맞는 건만 쓴다 (fallback 없음) */
+        var hit = rs.filter(function(r) {
+          return (it.hot && String(r.hot) === String(it.hot)) ||
+            (it.cold && String(r.cold) === String(it.cold)) ||
+            (it.branchId && String(r.id) === String(it.branchId));
+        })[0];
         if (hit) { it._course = (hit.course || '') + ' ' + (hit.method || ''); }
         return null;
       }).catch(function() { return null; });
@@ -3410,20 +3436,6 @@ document.getElementById('__wpSave').onclick = function() {
   }
 
   function buildCodeXlsx(items, fname, markSent, onDone) {
-    /* 담당자변경인데 코스 정보가 요청에 없는 건 → 거래처를 조회해 코스를 채운 뒤 판정한다 */
-    var unk = (items || []).filter(function(it) { return it && it.action === '담당자변경' && it.status === '완료' && !courseKnown(it); });
-    if (unk.length && !buildCodeXlsx._f) {
-      buildCodeXlsx._f = 1;
-      toast('담당자변경 ' + unk.length + '건 코스 확인 중…', '#1f4e78');
-      fillCourse(unk).then(function() {
-        buildCodeXlsx._f = 0;
-        buildCodeXlsx(items, fname, markSent, onDone);
-      }).catch(function() {
-        buildCodeXlsx._f = 0;
-        buildCodeXlsx(items, fname, markSent, onDone);
-      });
-      return;
-    }
     var all0 = (items || []).filter(codeTarget);
     /* 반영예정일이 다음 영업일보다 뒤인 건은 이번 엑셀에서 뺀다.
        자회사는 받은 다음 영업일에 반영하므로, 그때가 반영일인 건까지만 담으면 딱 맞는다.
