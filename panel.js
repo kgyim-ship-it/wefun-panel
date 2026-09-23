@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20260921-1420';
+  var PANEL_BUILD = '20260923-1124';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -3320,6 +3320,8 @@ document.getElementById('__wpSave').onclick = function() {
   function isParcel(it) {
     var d = it && it.detail || '';
     var s = [detailGet(d, '서비스구분'), detailGet(d, '배송형태'), detailGet(d, '담당코스'), detailGet(d, '기존코스'), detailGet(d, '배송방법'),
+      /* 스낵택배 담당자변경처럼 코스·구분엔 '택배'가 없고 사유에만 적히는 건이 있다 */
+      detailGet(d, '사유'), detailGet(d, '변경사유'), detailGet(d, '비고'), detailGet(d, '요청사유'),
       (/코스변경=([^·]+)/.exec(it && it.adminNote || '') || [])[1] || ''].join(' ');
     return /택배/.test(s);
   }
