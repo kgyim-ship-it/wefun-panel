@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20260923-1148';
+  var PANEL_BUILD = '20260930-0949';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -3056,8 +3056,26 @@ document.getElementById('__wpSave').onclick = function() {
            (서버는 최근순으로 내려주므로 여기서 뒤집는다) */
         cache.sort(function(x, y) { return String(x.ts || '').localeCompare(String(y.ts || '')); });
         REV_CACHE = cache;
-        renderReqTable('__wpRevList', cache, true, { codeSent: PENDOK, selectable: PEND || ALLW });
-        loadD1();
+        function paint() {
+          REV_CACHE = cache;
+          renderReqTable('__wpRevList', cache, true, { codeSent: PENDOK, selectable: PEND || ALLW });
+          loadD1();
+        }
+        /* 미전달 큐에는 '자회사에 보낼 게 없는 건'(방문 담당자변경 등)이 섞여 들어온다.
+           코스를 모르는 건은 먼저 조회해 판정한 뒤, 대상이 아니면 화면과 서버에서 바로 뺀다. */
+        if (PEND && group === 'syn') {
+          var _need = cache.filter(needCourse);
+          (_need.length ? fillCourse(_need) : Promise.resolve()).then(function() {
+            var _skip = cache.filter(notTargetPend);
+            if (_skip.length) {
+              cache = cache.filter(function(it) { return !notTargetPend(it); });
+              clearNotTarget(_skip);
+            }
+            paint();
+          }).catch(paint);
+          return;
+        }
+        paint();
       }).catch(function(e) {
         document.getElementById('__wpRevList').innerHTML = '<div style="color:#b00;padding:10px">' + esc(e.message) + '</div>';
       });
@@ -3257,7 +3275,7 @@ document.getElementById('__wpSave').onclick = function() {
         bulkRun(sel, function(it) {
           return runActionCore(it).then(function(note) {
             return decideReq(it.id, '완료', note || '', it.slackTs);
-          });
+          }).then(function(r) { autoSentIfNotTarget(it); return r; });
         }, '일괄승인', this);
       };
     }
@@ -3311,6 +3329,9 @@ document.getElementById('__wpSave').onclick = function() {
       /* 승인 완료된 건만 내보낸다 — 예전엔 '대기' 건까지 섞여 나갔다 */
       var ok = pool.filter(function(it) { return codeTarget(it) && it.status === '완료'; });
       var notYet = pool.filter(function(it) { return codeTarget(it) && it.status !== '완료'; }).length;
+      /* 안전망 — 목록 로드 때 이미 치웠지만 혹시 남아 있으면 조용히 정리한다 */
+      var _skip = pool.filter(notTargetPend);
+      if (_skip.length) { clearNotTarget(_skip); }
       if (!ok.length) { toast(selM ? '선택한 건 중 코드전달 대상(완료)이 없습니다' : '코드전달 대상(승인 완료된 건)이 없습니다', '#c0392b'); return; }
       if (selM) { toast('선택한 ' + ok.length + '건만 담습니다', '#1f4e78'); }
       if (notYet && !confirm('아직 승인되지 않은 ' + notYet + '건은 빼고 뽑습니다.\n\n계속할까요?')) return;
@@ -3375,6 +3396,28 @@ document.getElementById('__wpSave').onclick = function() {
   /* 코드전달 엑셀에 실제로 담을 건인가.
      - 피킹방법변경: 자회사가 받아야 한다(5열 보냉백/빵박스) → 담음. 일괄입력 업로드 때는 오피스 반영 없이 스킵.
      - 담당자변경: 택배 건만 (택배사 수령인 변경). 방문 배송의 담당자변경은 코드전달과 무관 → 제외 */
+  /* 코드전달 계열이지만 실제 전달 대상이 아닌 건(방문 담당자변경 등)은
+     자회사에 보낼 게 없는데도 미전달 큐에 남아 화면을 어지럽힌다 → 전달완료로 정리한다 */
+  function notTargetPend(it) {
+    return !!it && it.status === '완료' && !!codeGubun(it.action) && !codeTarget(it);
+  }
+  function clearNotTarget(list, onDone) {
+    return api({ e: 'sent', ids: list.map(function(x) { return x.id; }).join(','), val: todayStr() }).then(function() {
+      _pendCache = { n: 0, t: 0 };
+      toast('✓ 전달 대상이 아닌 ' + list.length + '건 정리', '#64748b');
+      if (onDone) { onDone(); }
+    }).catch(function(e) {
+      alert('정리 실패: ' + ((e && e.message) || e));
+    });
+  }
+  /* 승인 직후 호출 — 애초에 미전달 큐에 쌓이지 않게 한다 */
+  function autoSentIfNotTarget(it) {
+    try {
+      if (!it || !it.id || !codeGubun(it.action) || codeTarget(it)) { return; }
+      api({ e: 'sent', ids: it.id, val: todayStr() }).catch(function() {});
+    } catch (_as) {}
+  }
+
   function codeTarget(it) {
     if (!it || !codeGubun(it.action)) return false;
     if (it.action === '담당자변경') return isParcel(it);
@@ -4219,6 +4262,7 @@ document.getElementById('__wpSave').onclick = function() {
     runActionCore(it).then(function(note) {
       return decideReq(it.id, '완료', note || '', it.slackTs);
     }).then(function() {
+      autoSentIfNotTarget(it);
       toast(dtq ? '✓ 배송시간 확인 회신됐습니다' : pick ? '✓ 수기피킹 완료 처리됐습니다' : (passthru ? ('✓ ' + it.action + ' 접수 · ' + (d1Of(it) || workdayD1Str()) + ' 반영 예정') : ('✓ ' + it.action + ' 완료 처리됐습니다')), '#0a7d47');
       afterDecide(it.id);
     }).catch(function(e) {
