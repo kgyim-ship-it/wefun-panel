@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261001-1137';
+  var PANEL_BUILD = '20261001-1158';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -8984,33 +8984,47 @@ document.getElementById('__wpSave').onclick = function() {
   function openTrkModal(inv) {
     var old = document.getElementById('__wpTkModal');
     if (old) { old.remove(); }
-    /* 롯데 페이지는 1100px 고정폭(좌우 50px 여백)으로 그려진다. 1200으로 띄우고 좌 48px·상단 530px을 잘라 본문만 보이게 */
-    var W = 1200, CROP = 530, CROPL = 48, VIEW_W = 1104;
+    /* 롯데 페이지 실측: 본문은 1100px 고정폭으로 가운데 정렬, 제목은 y≈557부터.
+       1600px 뷰포트로 띄우면 본문이 x 250~1350 에 오고, 우측 플로팅 버튼(1:1상담 등)은 1410 밖으로 밀려나
+       본문과 겹치지 않는다. 그 영역만 잘라 모달 크기에 맞게 통째로 축소한다 → 스크롤 없이 한 화면. */
+    var FW = 1600, CX = 250, CY = 530, CW = 1100, CH = 920, HEAD = 48;
     var m = document.createElement('div');
     m.id = '__wpTkModal';
-    m.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(4,12,20,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+    m.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(4,12,20,.55);display:flex;align-items:center;justify-content:center;padding:14px';
     m.innerHTML =
-      '<div style="width:' + (VIEW_W + 2) + 'px;max-width:98vw;height:min(960px,94vh);background:#fff;border-radius:12px;box-shadow:0 30px 80px rgba(2,8,20,.5);display:flex;flex-direction:column;overflow:hidden;border:1px solid #0B1220">' +
-        '<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;background:#0B1220;color:#F1F5F9;flex:none">' +
-          '<b style="font-size:14.5px">롯데택배 배송조회</b>' +
+      '<div id="__wpTkMCard" style="background:#fff;border-radius:12px;box-shadow:0 30px 80px rgba(2,8,20,.5);display:flex;flex-direction:column;overflow:hidden;border:1px solid #0B1220">' +
+        '<div style="display:flex;align-items:center;gap:10px;padding:0 14px;height:' + HEAD + 'px;background:#0B1220;color:#F1F5F9;flex:none">' +
+          '<b style="font-size:14px">롯데택배 배송조회</b>' +
           '<span style="font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:15px;color:#38BDF8">' + esc(inv) + '</span>' +
-          '<button class="wp-hbtn" id="__wpTkMCp" style="height:30px;font-size:12.5px;margin-left:4px">복사</button>' +
-          '<a href="' + trkUrl(inv) + '" target="_blank" rel="noopener" class="wp-hbtn" style="height:30px;font-size:12.5px;text-decoration:none">새 창 ↗</a>' +
+          '<button class="wp-hbtn" id="__wpTkMCp" style="height:28px;font-size:12.5px;margin-left:4px">복사</button>' +
+          '<a href="' + trkUrl(inv) + '" target="_blank" rel="noopener" class="wp-hbtn" style="height:28px;font-size:12.5px;text-decoration:none">새 창 ↗</a>' +
           '<span style="flex:1"></span>' +
-          '<button class="wp-hbtn wp-ico" id="__wpTkMX" title="닫기" style="height:30px;width:30px">✕</button>' +
+          '<button class="wp-hbtn wp-ico" id="__wpTkMX" title="닫기" style="height:28px;width:28px">✕</button>' +
         '</div>' +
-        '<div id="__wpTkMBody" style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;background:#fff;position:relative">' +
-          '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:13px" id="__wpTkMLd">불러오는 중…</div>' +
-          '<iframe src="' + trkUrl(inv) + '" style="display:block;width:' + W + 'px;height:2200px;border:0;margin-top:-' + CROP + 'px;margin-left:-' + CROPL + 'px;position:relative;background:#fff" referrerpolicy="no-referrer"></iframe>' +
+        '<div id="__wpTkMBody" style="position:relative;overflow:hidden;background:#fff">' +
+          '<div id="__wpTkMLd" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:13px">불러오는 중…</div>' +
+          '<iframe src="' + trkUrl(inv) + '" style="position:absolute;left:0;top:0;width:' + FW + 'px;height:' + (CY + CH + 300) + 'px;border:0;background:#fff;transform-origin:0 0" referrerpolicy="no-referrer"></iframe>' +
         '</div>' +
       '</div>';
     (document.getElementById('__wp') || document.body).appendChild(m);
-    var fr = m.querySelector('iframe');
+    var card = document.getElementById('__wpTkMCard'), body = document.getElementById('__wpTkMBody'), fr = m.querySelector('iframe');
+    function fit() {
+      var availW = Math.min(window.innerWidth - 28, 1100), availH = window.innerHeight - 28 - HEAD;
+      var k = Math.min(availW / CW, availH / CH, 1);
+      var w = Math.round(CW * k), h = Math.round(CH * k);
+      card.style.width = (w + 2) + 'px';
+      body.style.width = w + 'px';
+      body.style.height = h + 'px';
+      fr.style.transform = 'scale(' + k + ') translate(-' + CX + 'px,-' + CY + 'px)';
+    }
+    fit();
+    window.addEventListener('resize', fit);
     fr.onload = function() { var ld = document.getElementById('__wpTkMLd'); if (ld) { ld.remove(); } };
-    document.getElementById('__wpTkMX').onclick = function() { m.remove(); };
+    function close() { window.removeEventListener('resize', fit); m.remove(); }
+    document.getElementById('__wpTkMX').onclick = close;
     document.getElementById('__wpTkMCp').onclick = function() { trkCopy(inv); };
-    m.addEventListener('mousedown', function(e) { if (e.target === m) { m.remove(); } });
-    document.addEventListener('keydown', function esc_(e) { if (e.key === 'Escape') { m.remove(); document.removeEventListener('keydown', esc_, true); } }, true);
+    m.addEventListener('mousedown', function(e) { if (e.target === m) { close(); } });
+    document.addEventListener('keydown', function esc_(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc_, true); } }, true);
   }
 
   function trkCopy(v) {
