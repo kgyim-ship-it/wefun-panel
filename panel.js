@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261001-1113';
+  var PANEL_BUILD = '20261001-1118';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -8975,6 +8975,43 @@ document.getElementById('__wpSave').onclick = function() {
       }).catch(function() { return []; });
   }
 
+  function trkUrl(inv) {
+    return 'https://www.lotteglogis.com/home/reservation/tracking/linkView?InvNo=' + encodeURIComponent(inv);
+  }
+  /* 롯데택배 조회 페이지를 패널 안 모달에 iframe으로 띄운다.
+     X-Frame-Options·CSP가 없어 임베드가 된다(실측). 상단 메뉴·히어로(~540px)는 잘라내고
+     '택배조회' 제목부터 보이게 한다. 레이아웃이 바뀌면 [새 창]으로 빠질 수 있게 둔다. */
+  function openTrkModal(inv) {
+    var old = document.getElementById('__wpTkModal');
+    if (old) { old.remove(); }
+    var W = 960, CROP = 505;
+    var m = document.createElement('div');
+    m.id = '__wpTkModal';
+    m.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(4,12,20,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+    m.innerHTML =
+      '<div style="width:' + (W + 2) + 'px;max-width:98vw;height:min(880px,92vh);background:#fff;border-radius:12px;box-shadow:0 30px 80px rgba(2,8,20,.5);display:flex;flex-direction:column;overflow:hidden;border:1px solid #0B1220">' +
+        '<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;background:#0B1220;color:#F1F5F9;flex:none">' +
+          '<b style="font-size:14.5px">롯데택배 배송조회</b>' +
+          '<span style="font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:15px;color:#38BDF8">' + esc(inv) + '</span>' +
+          '<button class="wp-hbtn" id="__wpTkMCp" style="height:30px;font-size:12.5px;margin-left:4px">복사</button>' +
+          '<a href="' + trkUrl(inv) + '" target="_blank" rel="noopener" class="wp-hbtn" style="height:30px;font-size:12.5px;text-decoration:none">새 창 ↗</a>' +
+          '<span style="flex:1"></span>' +
+          '<button class="wp-hbtn wp-ico" id="__wpTkMX" title="닫기" style="height:30px;width:30px">✕</button>' +
+        '</div>' +
+        '<div id="__wpTkMBody" style="flex:1;min-height:0;overflow:auto;background:#fff;position:relative">' +
+          '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:13px" id="__wpTkMLd">불러오는 중…</div>' +
+          '<iframe src="' + trkUrl(inv) + '" style="display:block;width:' + W + 'px;height:2200px;border:0;margin-top:-' + CROP + 'px;position:relative;background:#fff" referrerpolicy="no-referrer"></iframe>' +
+        '</div>' +
+      '</div>';
+    (document.getElementById('__wp') || document.body).appendChild(m);
+    var fr = m.querySelector('iframe');
+    fr.onload = function() { var ld = document.getElementById('__wpTkMLd'); if (ld) { ld.remove(); } };
+    document.getElementById('__wpTkMX').onclick = function() { m.remove(); };
+    document.getElementById('__wpTkMCp').onclick = function() { trkCopy(inv); };
+    m.addEventListener('mousedown', function(e) { if (e.target === m) { m.remove(); } });
+    document.addEventListener('keydown', function esc_(e) { if (e.key === 'Escape') { m.remove(); document.removeEventListener('keydown', esc_, true); } }, true);
+  }
+
   function trkCopy(v) {
     try {
       var ta = document.createElement('textarea');
@@ -9022,7 +9059,8 @@ document.getElementById('__wpSave').onclick = function() {
             '<td>' + (i ? '' : esc(r.branch)) + '</td>' +
             '<td style="white-space:nowrap">' + (i ? '' : esc(r.hot)) + '</td>' +
             '<td>' + (i ? '' : pill(r.status)) + '</td>' +
-            '<td><a href="https://www.lotteglogis.com/home/reservation/tracking/linkView?InvNo=' + encodeURIComponent(b.inv) + '" target="_blank" rel="noopener" style="font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:14px;color:#1f4e78;text-decoration:none">' + esc(b.inv) + ' ↗</a>' +
+            '<td><a href="#" class="__wpTkOpen" data-v="' + esc(b.inv) + '" style="font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:14.5px;color:#1f4e78;text-decoration:underline;text-underline-offset:3px">' + esc(b.inv) + '</a>' +
+            ' <a href="' + trkUrl(b.inv) + '" target="_blank" rel="noopener" title="롯데택배 새 창" style="font-size:11.5px;color:#94a3b8;text-decoration:none;margin-left:4px">새 창 ↗</a>' +
             (b.info ? '<div style="font-size:11.5px;color:#94a3b8;margin-top:2px">' + esc(b.info) + '</div>' : '') + '</td>' +
             '<td style="white-space:nowrap"><button class="wp-act __wpTkCp" data-v="' + esc(b.inv) + '">복사</button></td></tr>';
         });
@@ -9031,6 +9069,9 @@ document.getElementById('__wpSave').onclick = function() {
       box.innerHTML = h;
       [].forEach.call(box.querySelectorAll('.__wpTkCp'), function(b) {
         b.onclick = function() { trkCopy(b.getAttribute('data-v')); };
+      });
+      [].forEach.call(box.querySelectorAll('.__wpTkOpen'), function(a) {
+        a.onclick = function(e) { e.preventDefault(); openTrkModal(a.getAttribute('data-v')); };
       });
     }
 
