@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261001-1118';
+  var PANEL_BUILD = '20261001-1134';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -8984,12 +8984,13 @@ document.getElementById('__wpSave').onclick = function() {
   function openTrkModal(inv) {
     var old = document.getElementById('__wpTkModal');
     if (old) { old.remove(); }
-    var W = 960, CROP = 505;
+    /* 롯데 페이지는 1100px 고정폭(좌우 50px 여백)으로 그려진다. 1200으로 띄우고 좌 48px·상단 530px을 잘라 본문만 보이게 */
+    var W = 1200, CROP = 530, CROPL = 48, VIEW_W = 1104;
     var m = document.createElement('div');
     m.id = '__wpTkModal';
     m.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(4,12,20,.55);display:flex;align-items:center;justify-content:center;padding:16px';
     m.innerHTML =
-      '<div style="width:' + (W + 2) + 'px;max-width:98vw;height:min(880px,92vh);background:#fff;border-radius:12px;box-shadow:0 30px 80px rgba(2,8,20,.5);display:flex;flex-direction:column;overflow:hidden;border:1px solid #0B1220">' +
+      '<div style="width:' + (VIEW_W + 2) + 'px;max-width:98vw;height:min(960px,94vh);background:#fff;border-radius:12px;box-shadow:0 30px 80px rgba(2,8,20,.5);display:flex;flex-direction:column;overflow:hidden;border:1px solid #0B1220">' +
         '<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;background:#0B1220;color:#F1F5F9;flex:none">' +
           '<b style="font-size:14.5px">롯데택배 배송조회</b>' +
           '<span style="font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:15px;color:#38BDF8">' + esc(inv) + '</span>' +
@@ -8998,9 +8999,9 @@ document.getElementById('__wpSave').onclick = function() {
           '<span style="flex:1"></span>' +
           '<button class="wp-hbtn wp-ico" id="__wpTkMX" title="닫기" style="height:30px;width:30px">✕</button>' +
         '</div>' +
-        '<div id="__wpTkMBody" style="flex:1;min-height:0;overflow:auto;background:#fff;position:relative">' +
+        '<div id="__wpTkMBody" style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;background:#fff;position:relative">' +
           '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:13px" id="__wpTkMLd">불러오는 중…</div>' +
-          '<iframe src="' + trkUrl(inv) + '" style="display:block;width:' + W + 'px;height:2200px;border:0;margin-top:-' + CROP + 'px;position:relative;background:#fff" referrerpolicy="no-referrer"></iframe>' +
+          '<iframe src="' + trkUrl(inv) + '" style="display:block;width:' + W + 'px;height:2200px;border:0;margin-top:-' + CROP + 'px;margin-left:-' + CROPL + 'px;position:relative;background:#fff" referrerpolicy="no-referrer"></iframe>' +
         '</div>' +
       '</div>';
     (document.getElementById('__wp') || document.body).appendChild(m);
