@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20260930-0949';
+  var PANEL_BUILD = '20261001-1038';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -1037,6 +1037,7 @@
       ['find', '거래처 조회 · 요청'],
       ['newcode', '신규코드'],
       ['voc', '배송 VOC'],
+      ['tracking', '운송장조회'],
       ['mine', '내 요청 상태']
     ],
     admin: [
@@ -1044,6 +1045,7 @@
       ['review_syn', '시너지요청검토'],
       ['review_pick', '수기피킹검토'],
       ['find', '거래처 조회'],
+      ['tracking', '운송장조회'],
       ['bulk', '배송정보 일괄입력'],
       ['sched_bulk', '배송일정 일괄'],
       ['stats', '배송통계'],
@@ -1088,6 +1090,7 @@
     else if (t === 'dispatch') viewDispatch();
     else if (t === 'temp') viewTemp();
     else if (t === 'ticket') viewTicket();
+    else if (t === 'tracking') viewTracking();
     else if (t === 'visits') viewVisits();
     else if (t === 'voc') viewVoc();
     else if (t === 'newcode') viewNewCode();
@@ -8918,6 +8921,160 @@ document.getElementById('__wpSave').onclick = function() {
           alert('접수 실패: ' + ((e && e.message) || e));
         });
     };
+  }
+
+  /* ---------- 운송장(택배 송장) 조회 ----------
+     "출고됐다는데 아직 안 왔대요, 송장번호 좀" 문의가 반복된다.
+     오피스에선 거래명세 → 택배 버튼 → 팝업을 건건이 눌러야 보인다.
+     여기서는 기간·거래처로 한 번에 긁어 송장번호까지 붙여 보여준다. 택배사는 롯데 고정. */
+  var TRK_DR = { from: '', to: '' };
+  var TRK_CACHE = [];
+
+  function trkOrders(kw, from, to) {
+    var u = '/office/order/order?searchYN=Y&size=200&page=1&deliveryDateBegin=' + from +
+      '&deliveryDateEnd=' + to + '&searchKeyword=' + encodeURIComponent(kw);
+    return fetch(u).then(function(r) { return r.text(); }).then(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var out = [];
+      [].forEach.call(doc.querySelectorAll('table.orderSearchTable tbody tr'), function(tr) {
+        var td = tr.querySelectorAll('td');
+        if (td.length < 15) { return; }
+        var btn = td[10] ? td[10].querySelector('button,a') : null;
+        var oc = btn ? (btn.getAttribute('onclick') || '') : '';
+        var m = /openDeliBoxNumPopup\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]/.exec(oc);
+        if (!m) { return; }                                  /* 택배 건만 — 방문배송엔 송장이 없다 */
+        var codes = td[7].textContent.replace(/\s+/g, ' ').trim().split(' ');
+        out.push({
+          no: td[1].textContent.trim(),
+          company: td[2].textContent.replace(/\s+/g, ' ').trim(),
+          branch: td[3].textContent.replace(/\s+/g, ' ').trim(),
+          hot: codes[0] || '', cold: codes[1] || '',
+          date: m[1], code: m[2],
+          deliDate: td[12].textContent.trim(),
+          status: td[14].textContent.trim()
+        });
+      });
+      return out;
+    });
+  }
+
+  function trkBoxNum(date, code) {
+    return fetch('/office/order/deliBoxNum/popup/' + encodeURIComponent(date) + '/' + encodeURIComponent(code))
+      .then(function(r) { return r.text(); })
+      .then(function(html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var out = [];
+        [].forEach.call(doc.querySelectorAll('tbody tr'), function(tr) {
+          var td = tr.querySelectorAll('td');
+          if (td.length < 4) { return; }
+          var inv = td[3].textContent.replace(/[^0-9]/g, '');
+          if (!inv) { return; }
+          out.push({ info: td[2].textContent.replace(/\s+/g, ' ').trim(), inv: inv });
+        });
+        return out;
+      }).catch(function() { return []; });
+  }
+
+  function trkCopy(v) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = v;
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+      (document.getElementById('__wp') || document.body).appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      toast('✓ 복사됨 · ' + v, '#0a7d47');
+    } catch (e) { toast('복사 실패 — 직접 선택해 주세요', '#c0392b'); }
+  }
+
+  function viewTracking() {
+    if (!TRK_DR.from) {
+      TRK_DR.to = todayStr();
+      TRK_DR.from = ymdOf(new Date(kstDate().getTime() - 13 * 86400000));
+    }
+    VIEW.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:9px">' +
+      '<input id="__wpTkKw" class="wp-inp" placeholder="거래처명 또는 점포코드" style="width:300px">' +
+      '<input id="__wpTkF" class="wp-inp" type="date" style="width:150px"><span style="color:#94a3b8">~</span>' +
+      '<input id="__wpTkT" class="wp-inp" type="date" style="width:150px">' +
+      '<button id="__wpTkGo" class="wp-btn pri">조회</button>' +
+      '<button id="__wpTkCsv" class="wp-btn gh">⬇ 엑셀</button></div>' +
+      '<div style="padding:9px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:7px;font-size:12.5px;color:#475569;line-height:1.65;margin-bottom:9px">' +
+      '<b>택배 건만 나옵니다.</b> 방문배송은 송장이 없습니다.<br>' +
+      '송장번호를 누르면 롯데택배 배송조회가 새 창으로 열립니다. 번호만 필요하면 [복사]를 쓰세요.</div>' +
+      '<div id="__wpTkList" class="wp-scroll" style="padding:14px;color:#94a3b8">거래처명이나 점포코드를 넣고 조회하세요.</div>';
+    document.getElementById('__wpTkF').value = TRK_DR.from;
+    document.getElementById('__wpTkT').value = TRK_DR.to;
+
+    function render(rows) {
+      var box = document.getElementById('__wpTkList');
+      var h = '<table class="wp-tbl"><thead><tr><th>배송일</th><th>거래처</th><th>점포코드</th><th>주문상태</th><th>송장번호 (롯데택배)</th><th></th></tr></thead><tbody>';
+      rows.forEach(function(r) {
+        var bs = r.boxes || [];
+        if (!bs.length) {
+          h += '<tr><td style="white-space:nowrap">' + esc(r.deliDate) + '</td><td>' + esc(r.branch) + '</td><td style="white-space:nowrap">' + esc(r.hot) + '</td><td>' + pill(r.status) + '</td>' +
+            '<td colspan="2" style="color:#94a3b8">송장번호 없음 — 아직 집하 전이거나 송장이 등록되지 않았습니다.</td></tr>';
+          return;
+        }
+        bs.forEach(function(b, i) {
+          h += '<tr>' +
+            '<td style="white-space:nowrap">' + (i ? '' : esc(r.deliDate)) + '</td>' +
+            '<td>' + (i ? '' : esc(r.branch)) + '</td>' +
+            '<td style="white-space:nowrap">' + (i ? '' : esc(r.hot)) + '</td>' +
+            '<td>' + (i ? '' : pill(r.status)) + '</td>' +
+            '<td><a href="https://www.lotteglogis.com/home/reservation/tracking/linkView?InvNo=' + encodeURIComponent(b.inv) + '" target="_blank" rel="noopener" style="font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:14px;color:#1f4e78;text-decoration:none">' + esc(b.inv) + ' ↗</a>' +
+            (b.info ? '<div style="font-size:11.5px;color:#94a3b8;margin-top:2px">' + esc(b.info) + '</div>' : '') + '</td>' +
+            '<td style="white-space:nowrap"><button class="wp-act __wpTkCp" data-v="' + esc(b.inv) + '">복사</button></td></tr>';
+        });
+      });
+      h += '</tbody></table>';
+      box.innerHTML = h;
+      [].forEach.call(box.querySelectorAll('.__wpTkCp'), function(b) {
+        b.onclick = function() { trkCopy(b.getAttribute('data-v')); };
+      });
+    }
+
+    function run() {
+      var kw = document.getElementById('__wpTkKw').value.trim();
+      var box = document.getElementById('__wpTkList');
+      if (!kw) { toast('거래처명이나 점포코드를 입력하세요', '#c0392b'); return; }
+      TRK_DR.from = document.getElementById('__wpTkF').value;
+      TRK_DR.to = document.getElementById('__wpTkT').value;
+      box.style.padding = '14px';
+      box.innerHTML = '<span style="color:#94a3b8">거래명세 조회 중…</span>';
+      trkOrders(kw, TRK_DR.from, TRK_DR.to).then(function(rows) {
+        if (!rows.length) {
+          TRK_CACHE = [];
+          box.innerHTML = '<span style="color:#94a3b8">해당 기간에 <b>택배 출고 건</b>이 없습니다. 기간을 넓히거나 거래처명을 확인해 주세요.</span>';
+          return;
+        }
+        return mapLimit(rows, 4, function(r) {
+          return trkBoxNum(r.date, r.code).then(function(bs) { r.boxes = bs; return r; });
+        }, function(d, t) {
+          box.innerHTML = '<span style="color:#94a3b8">송장번호 불러오는 중… ' + d + '/' + t + '</span>';
+        }).then(function() {
+          TRK_CACHE = rows;
+          box.style.padding = '0';
+          render(rows);
+        });
+      }).catch(function(e) {
+        box.innerHTML = '<span style="color:#b00">조회 실패: ' + esc((e && e.message) || e) + '</span>';
+      });
+    }
+
+    document.getElementById('__wpTkGo').onclick = run;
+    document.getElementById('__wpTkKw').onkeydown = function(e) { if (e.key === 'Enter') { run(); } };
+    document.getElementById('__wpTkCsv').onclick = function() {
+      if (!TRK_CACHE.length) { toast('먼저 조회해 주세요', '#c0392b'); return; }
+      var rows = [['배송일', '거래처', '상온코드', '저온코드', '주문상태', '송장번호', '배송정보']];
+      TRK_CACHE.forEach(function(r) {
+        var bs = r.boxes || [];
+        if (!bs.length) { rows.push([r.deliDate, r.branch, r.hot, r.cold, r.status, '', '']); return; }
+        bs.forEach(function(b) { rows.push([r.deliDate, r.branch, r.hot, r.cold, r.status, b.inv, b.info]); });
+      });
+      xlsxDownload(rows, [{ wch: 12 }, { wch: 40 }, { wch: 11 }, { wch: 11 }, { wch: 12 }, { wch: 18 }, { wch: 28 }], '운송장', '운송장조회_' + todayStr() + '.xlsx');
+    };
+    document.getElementById('__wpTkKw').focus();
   }
 
   function viewVisits() {
