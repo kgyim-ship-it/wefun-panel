@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261001-1158';
+  var PANEL_BUILD = '20261002-0952';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -173,6 +173,18 @@
     var v = bookedOf(it);
     var m = /(\d{4}-\d{2}-\d{2})/.exec(v);
     return m ? m[1] : '';
+  }
+  /* 반영 희망일이 남은 주기변경은 '그날 반영'이 유일한 정답이다.
+     오피스 주기 재생성은 오늘부터 전체를 다시 그리기 때문에, 미리 돌리면 희망일 이전 배송까지 바뀐다.
+     → 어느 경로(승인·일괄승인·수정승인·바로 반영)로 오든 희망일이 남았으면 예약으로 돌린다. */
+  function withBooking(detail, d, who) {
+    var nd = String(detail || '');
+    return (nd ? nd + ' · ' : '') + '예약승인: ' + d + '(' + (who || '물류') + ')';
+  }
+  function mustBook(action, detail) {
+    if (action !== '배송주기변경') return '';
+    var d = String(detailGet(detail, '반영예정일') || '').trim().slice(0, 10);
+    return (/^\d{4}-\d{2}-\d{2}$/.test(d) && dayGap(d) > 0) ? d : '';
   }
   function canBook(it) {   /* 예약 대상 = 승인 즉시 오피스에 반영되는 주기변경 */
     return it && it.action === '배송주기변경';
@@ -2137,6 +2149,20 @@
         return;
       }
       if (edit && edit.adminEdit) {
+        var _bk2 = mustBook(action, o.detail);
+        if (_bk2) {
+          if (!confirm('[배송주기변경] 반영 희망일이 ' + _bk2 + '(D-' + dayGap(_bk2) + ')입니다.\n수정 내용을 저장하고 예약 승인으로 둡니다. 오피스 반영은 그날 [지금 반영]으로 합니다.\n\n진행할까요?')) return;
+          sb.disabled = true;
+          sb.textContent = '예약 중…';
+          editDetail(edit.id, withBooking(o.detail, _bk2, REQ.name), REQ.name).then(function() {
+            toast('✓ 수정 저장 · ' + _bk2 + ' 반영 예약', '#0a7d47');
+            if (typeof viewReview === 'function') { try { viewReview(); } catch (ve) {} } else { successScreen('✓ 수정 저장 · ' + _bk2 + ' 반영으로 예약됐습니다.'); }
+          }).catch(function(e) {
+            sb.disabled = false; sb.textContent = (IS_ADMIN ? '바로 반영' : '요청 제출');
+            alert('저장 실패: ' + (e && e.message || e));
+          });
+          return;
+        }
         if (!confirm('[' + action + '] 수정 후 승인 · 위펀 오피스 반영 — ' + (br.name || '') + ' 진행할까요?')) return;
         sb.disabled = true;
         sb.textContent = '반영 중…';
@@ -2159,6 +2185,23 @@
         return;
       }
       if (IS_ADMIN && !ASK) {
+        var _bk = mustBook(action, o.detail);
+        if (_bk) {
+          if (!confirm('[배송주기변경] 반영 희망일이 ' + _bk + '(D-' + dayGap(_bk) + ')입니다.\n' +
+              '오피스 주기 재생성은 오늘부터 전체를 다시 만들기 때문에 지금 반영하면 그 전 배송까지 바뀝니다.\n\n' +
+              '예약으로 등록하고 ' + _bk + '에 반영할까요?\n(검토 화면 맨 위에 그날 [지금 반영] 버튼이 뜹니다)')) { return; }
+          o.detail = withBooking(o.detail, _bk, REQ.name);
+          sb.disabled = true;
+          sb.textContent = '예약 중…';
+          submitReq(o).then(function() {
+            toast('✓ 예약 등록 · ' + _bk + ' 반영 예정', '#0a7d47');
+            successScreen('✓ ' + _bk + ' 반영으로 예약됐습니다. 그날 관리자용 검토 화면 맨 위 [지금 반영]을 누르면 오피스에 반영됩니다.');
+          }).catch(function(e) {
+            sb.disabled = false; sb.textContent = '바로 반영';
+            alert('예약 등록 실패: ' + (e && e.message || e));
+          });
+          return;
+        }
         /* 물류팀 = 승인 없이 바로 반영 */
         if (action === '주소변경') {
           if (confirm('코스를 바꾸시겠습니까? (주소 변경으로 배송코스가 달라지면 새 코스를 입력하세요)')) {
@@ -3237,7 +3280,7 @@ document.getElementById('__wpSave').onclick = function() {
       [].forEach.call(bx ? bx.querySelectorAll('.__wpSel:checked') : [], function(c) { m[c.getAttribute('data-id')] = 1; });
       return m;
     }
-    function bulkRun(items, worker, label, btn) {
+    function bulkRun(items, worker, label, btn, onDone) {
       var o0 = btn.textContent, i = 0, ok = 0, fails = [];
       btn.disabled = true;
       var other = document.getElementById(btn.id === '__wpBulkAp' ? '__wpBulkRj' : '__wpBulkAp');
@@ -3247,13 +3290,14 @@ document.getElementById('__wpSave').onclick = function() {
         if (other) { other.disabled = false; }
         toast(label + ' 완료 · 성공 ' + ok + (fails.length ? ' / 실패 ' + fails.length : ''), fails.length ? '#b45309' : '#0a7d47');
         if (fails.length) { alert(label + ' 실패 ' + fails.length + '건 — 목록에 남아 있습니다.\n\n' + fails.join('\n')); }
+        if (onDone) { try { onDone(); } catch (_od) {} }
       }
       function step() {
         if (i >= items.length) { fin(); return; }
         var it = items[i++];
         btn.textContent = label + ' ' + i + '/' + items.length;
         worker(it).then(function() {
-          ok++; dropReqRow(it.id);
+          ok++; if (!it._bookedNow) { dropReqRow(it.id); }
         }).catch(function(e) {
           fails.push((it.branchName || it.id) + ' — ' + ((e && e.message) || e));
         }).then(function() { setTimeout(step, 400); });   /* 웹앱 직렬 큐 배려 — 몰아치면 스로틀 걸린다 */
@@ -3275,11 +3319,17 @@ document.getElementById('__wpSave').onclick = function() {
           (skip ? '\n\n※ 신규코드발급 ' + skip + '건 제외 (우린담당 입력이 필요해 건별 승인)' : '') +
           '\n\n배송 계열은 위펀 오피스에 바로 반영되고, 건별로 슬랙 회신이 나갑니다.\n진행할까요?';
         if (!confirm(msg)) { return; }
+        var _nb = sel.filter(function(it) { return canBook(it) && dayGap(d1Of(it)) > 0 && !bookedDate(it); }).length;
+        if (_nb && !confirm('반영 희망일이 아직 남은 배송주기변경 ' + _nb + '건은 지금 반영하지 않고 예약으로 둡니다.\n(그날 [지금 반영]으로 반영)\n\n계속할까요?')) { return; }
         bulkRun(sel, function(it) {
+          if (canBook(it) && dayGap(d1Of(it)) > 0 && !bookedDate(it)) {
+            it._bookedNow = true;
+            return editDetail(it.id, withBooking(it.detail, d1Of(it), REQ.name), REQ.name || '');
+          }
           return runActionCore(it).then(function(note) {
             return decideReq(it.id, '완료', note || '', it.slackTs);
           }).then(function(r) { autoSentIfNotTarget(it); return r; });
-        }, '일괄승인', this);
+        }, '일괄승인', this, function() { if (_nb) { load(); } });
       };
     }
     var _bRj = document.getElementById('__wpBulkRj');
