@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261002-0952';
+  var PANEL_BUILD = '20261002-1034';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -766,6 +766,7 @@
       '대기': '#F59E0B',
       '완료': '#16A34A',
       '반려': '#EF4444',
+      '예약': '#0EA5E9',
       '수정요청': '#A855F7'
     };
     var c = m[status] || '#64748B';
@@ -1030,6 +1031,65 @@
       window.__wpVisitSent = true;
       try { api({ e: 'visit_add', name: REQ.name || '', email: REQ.email || '', dept: REQ.dept || '' }).catch(function() {}); } catch (e) {}
     }
+    if (IS_ADMIN) { try { scheduleAutoRun(); } catch (_sa) {} }
+  }
+
+  /* ── 예약 자동 반영 ──
+     예약(반영 희망일이 남은 주기변경)은 반영일 오전 10시에 자동으로 오피스에 반영한다.
+     서버는 오피스에 로그인할 수 없으니, 그 시각에 관리자 패널이 열려 있는 브라우저가 대신 돌린다.
+     10시에 아무도 안 열려 있으면 그 뒤 처음 여는 패널이 돌린다. (월~금 매일 여는 업무라 사실상 10시) */
+  var AUTO_HOUR = 10;
+  function kstNowMin() { var d = kstDate(); return d.getHours() * 60 + d.getMinutes(); }
+  function autoRunBooked(why) {
+    if (!IS_ADMIN || window.__wpAutoBusy) { return Promise.resolve(); }
+    window.__wpAutoBusy = true;
+    return listReq({ status: '대기' }).then(function(items) {
+      var t = todayStr();
+      var due = (items || []).filter(function(it) {
+        return it.action === '배송주기변경' && it.status === '대기' && bookedDate(it) && bookedDate(it) <= t &&
+          String(it.detail || '').indexOf('자동반영:') < 0;        /* 다른 PC가 이미 잡은 건은 건너뛴다 */
+      });
+      if (!due.length) { return; }
+      toast('예약 ' + due.length + '건 자동 반영 시작 (' + why + ')', '#1f4e78');
+      var ok = 0, fails = [];
+      var ch = Promise.resolve();
+      due.forEach(function(it) {
+        ch = ch.then(function() {
+          var stamp = '자동반영: ' + (REQ.name || '패널') + ' ' + fmtTs(now()).slice(-5);
+          /* 선점 표시 → 1.5초 뒤 다시 읽어 내 표시가 남아 있을 때만 진행 (두 PC가 동시에 돌리는 것 방지) */
+          return editDetail(it.id, String(it.detail || '') + ' · ' + stamp, REQ.name || '').then(function() {
+            return new Promise(function(r) { setTimeout(r, 1500); });
+          }).then(function() {
+            return listReq({ status: '대기' });
+          }).then(function(fresh) {
+            var me = (fresh || []).filter(function(x) { return String(x.id) === String(it.id); })[0];
+            if (!me || String(me.detail || '').indexOf(stamp) < 0) { return; }     /* 남이 먼저 잡았거나 이미 처리됨 */
+            it.detail = me.detail;
+            return runActionCore(it).then(function(note) {
+              return decideReq(it.id, '완료', (note || '') + ' · 예약 자동반영', it.slackTs);
+            }).then(function() { ok++; });
+          }).catch(function(e) {
+            fails.push((it.branchName || it.id) + ' — ' + ((e && e.message) || e));
+          });
+        });
+      });
+      return ch.then(function() {
+        toast('✓ 예약 자동 반영 ' + ok + '건' + (fails.length ? ' / 실패 ' + fails.length : ''), fails.length ? '#b45309' : '#0a7d47');
+        if (fails.length) { alert('예약 자동 반영 실패 ' + fails.length + '건 — [예약] 탭에 남아 있습니다.\n\n' + fails.join('\n')); }
+        if (document.getElementById('__wpRevList')) { try { viewReview(); } catch (_vr) {} }
+      });
+    }).catch(function() {}).then(function() { window.__wpAutoBusy = false; });
+  }
+  function scheduleAutoRun() {
+    if (window.__wpAutoSched) { return; }
+    window.__wpAutoSched = true;
+    setTimeout(function() {                                  /* 패널 뜨고 조금 뒤 1회 — 10시가 지났으면 바로 */
+      if (kstNowMin() >= AUTO_HOUR * 60) { autoRunBooked('패널 열림'); }
+    }, 2500);
+    setInterval(function() {                                 /* 열어둔 패널이 10시를 지나는 순간 */
+      var m = kstNowMin();
+      if (m >= AUTO_HOUR * 60 && m < AUTO_HOUR * 60 + 2) { autoRunBooked('10시 정각'); }
+    }, 60000);
   }
 
   var _tabsBuilt = false;
@@ -2189,13 +2249,13 @@
         if (_bk) {
           if (!confirm('[배송주기변경] 반영 희망일이 ' + _bk + '(D-' + dayGap(_bk) + ')입니다.\n' +
               '오피스 주기 재생성은 오늘부터 전체를 다시 만들기 때문에 지금 반영하면 그 전 배송까지 바뀝니다.\n\n' +
-              '예약으로 등록하고 ' + _bk + '에 반영할까요?\n(검토 화면 맨 위에 그날 [지금 반영] 버튼이 뜹니다)')) { return; }
+              '예약으로 등록하고 ' + _bk + ' 오전 10시에 자동 반영할까요?\n([예약] 탭에서 볼 수 있습니다)')) { return; }
           o.detail = withBooking(o.detail, _bk, REQ.name);
           sb.disabled = true;
           sb.textContent = '예약 중…';
           submitReq(o).then(function() {
             toast('✓ 예약 등록 · ' + _bk + ' 반영 예정', '#0a7d47');
-            successScreen('✓ ' + _bk + ' 반영으로 예약됐습니다. 그날 관리자용 검토 화면 맨 위 [지금 반영]을 누르면 오피스에 반영됩니다.');
+            successScreen('✓ ' + _bk + ' 오전 10시 자동 반영으로 예약됐습니다. [배송요청검토 › 예약]에서 확인할 수 있습니다.');
           }).catch(function(e) {
             sb.disabled = false; sb.textContent = '바로 반영';
             alert('예약 등록 실패: ' + (e && e.message || e));
@@ -3057,14 +3117,16 @@ document.getElementById('__wpSave').onclick = function() {
     /* 미처리 건은 날짜로 자르면 안 된다 — 어제 들어온 대기 건이 오늘 화면에서 사라져 그대로 묻힌다.
        '대기'와 '미전달'은 기간을 무시하고 전부 보여준다. 완료·반려는 이력 조회라 기간 유지. */
     var ALLW = (REV_STATUS === '대기');
-    var NODATE = PEND || ALLW;
-    var filters = PENDOK ? ['대기', '완료', '미전달', '반려', '전체'] : ['대기', '완료', '반려', '전체'];
+    var BOOK = (REV_STATUS === '예약');            /* 예약 = 승인됐고 반영일을 기다리는 주기변경 (서버상 대기) */
+    if (BOOK && group !== 'deliv') { REV_STATUS = '대기'; BOOK = false; }
+    var NODATE = PEND || ALLW || BOOK;
+    var filters = PENDOK ? ['대기', '완료', '미전달', '반려', '전체'] : (group === 'deliv' ? ['대기', '예약', '완료', '반려', '전체'] : ['대기', '완료', '반려', '전체']);
     var actSel = '<select id="__wpAf" class="wp-inp" style="min-height:38px;padding:7px 9px;max-width:190px"><option value="전체">전체 작업</option>' + GACTS.map(function(a) {
       return '<option value="' + esc(a) + '"' + (a === REV_ACTION ? ' selected' : '') + '>' + esc(a) + '</option>';
     }).join('') + '</select>';
     VIEW.innerHTML = '<div style="margin-bottom:10px"><div style="margin-bottom:8px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">' + filters.map(function(f) {
       return '<button class="wp-btn ' + (f === REV_STATUS ? 'pri' : 'gh') + ' __wpFt" data-f="' + f + '" style="padding:7px 13px">' + f + '</button>';
-    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 ' + (group === 'pick' ? '수기피킹' : '코드전달') + ' 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + (ALLW ? '<div style="margin-top:7px;padding:9px 12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E;line-height:1.65"><b>대기 — 아직 처리 안 된 요청 전부입니다.</b><br>기간과 상관없이 나옵니다. 어제·지난주에 들어온 건도 처리할 때까지 계속 보입니다.</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' + (ALLW ? '<button id="__wpBulkAp" class="wp-btn ok" style="padding:7px 13px">✓ 일괄승인</button><button id="__wpBulkRj" class="wp-btn dg" style="padding:7px 13px">일괄반려</button><span style="color:#cbd5e1">|</span>' : '') + '<button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스·피킹방법변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpD1Alert"></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
+    }).join('') + '<span style="color:#cbd5e1;margin:0 3px">|</span>' + actSel + '</div>' + drBar('__wpRF', '__wpRT', '__wpRGo', '__wpRCsv') + (PEND ? '<div style="margin-top:7px;padding:9px 12px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:7px;font-size:12.5px;color:#9A3412;line-height:1.65"><b>미전달 — 승인은 끝났는데 아직 ' + (group === 'pick' ? '수기피킹' : '코드전달') + ' 엑셀에 안 담긴 건입니다.</b><br>위 기간과 상관없이 전부 나옵니다. 엑셀을 받으면 전달완료로 표시되고 이 목록에서 사라집니다.</div>' : '') + (ALLW ? '<div style="margin-top:7px;padding:9px 12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E;line-height:1.65"><b>대기 — 아직 처리 안 된 요청 전부입니다.</b><br>기간과 상관없이 나옵니다. 어제·지난주에 들어온 건도 처리할 때까지 계속 보입니다.</div>' : '') + (BOOK ? '<div style="margin-top:7px;padding:9px 12px;background:#F0F9FF;border:1px solid #7DD3FC;border-radius:7px;font-size:12.5px;color:#075985;line-height:1.65"><b>예약 — 검토는 끝났고 반영 희망일을 기다리는 배송주기변경입니다.</b><br>안 건드리면 <b>반영일 오전 10시</b>에 자동으로 위펀 오피스에 반영되고 완료로 넘어갑니다. (관리자 패널이 열려 있는 PC가 대신 돌립니다 · 10시에 아무도 안 열려 있으면 그다음 여는 순간 돌아갑니다)</div>' : '') + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' + (ALLW ? '<button id="__wpBulkAp" class="wp-btn ok" style="padding:7px 13px">✓ 일괄승인</button><button id="__wpBulkRj" class="wp-btn dg" style="padding:7px 13px">일괄반려</button><span style="color:#cbd5e1">|</span>' : '') + '<button id="__wpRCode" class="wp-btn ' + (PEND ? 'pri' : 'gh') + '" style="padding:7px 13px">⬇ 코드전달 엑셀</button><button id="__wpRPick" class="wp-btn gh" style="padding:7px 13px">⬇ 수기피킹 엑셀</button><span style="color:#94a3b8;font-size:11px">코드전달=신규·주소·거래처명·담당자·코스·피킹방법변경 / 수기피킹=피킹 품목 양식</span></div></div><div id="__wpD1Alert"></div><div id="__wpRevList" class="wp-scroll">불러오는 중…</div>';
     document.getElementById('__wpRF').value = REV_DR.from;
     document.getElementById('__wpRT').value = REV_DR.to;
     if (NODATE) {  /* 대기·미전달은 기간 개념이 없다 — 날짜칸 잠금 */
@@ -3088,13 +3150,16 @@ document.getElementById('__wpSave').onclick = function() {
     function load() {
       REV_DR.from = document.getElementById('__wpRF').value;
       REV_DR.to = document.getElementById('__wpRT').value;
-      listReqSWR('__wpRevList', PEND ? { pending: (group === 'pick' ? 'pick' : 'code') } : ALLW ? { status: '대기' } : {
+      listReqSWR('__wpRevList', PEND ? { pending: (group === 'pick' ? 'pick' : 'code') } : (ALLW || BOOK) ? { status: '대기' } : {
         status: REV_STATUS === '전체' ? '' : REV_STATUS,
         from: REV_DR.from,
         to: REV_DR.to
       }, function(items) {
         cache = NODATE ? items : filterByDate(items, REV_DR.from, REV_DR.to);
         cache = cache.filter(function(it) { return GACTS.indexOf(it.action) > -1; });
+        /* 예약 건은 '예약' 탭에만, 대기 탭에선 뺀다 — 섞여 있으면 승인 대기로 오해한다 */
+        if (BOOK) { cache = cache.filter(function(it) { return !!bookedDate(it); }); }
+        else if (ALLW) { cache = cache.filter(function(it) { return !bookedDate(it); }); }
         if (REV_ACTION !== '전체') cache = cache.filter(function(it) {
           return it.action === REV_ACTION;
         });
@@ -3202,7 +3267,7 @@ document.getElementById('__wpSave').onclick = function() {
       var h = '';
       if (dueBk.length) {
         h += '<div style="margin:8px 0;padding:11px 14px;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;font-size:13px;color:#065F46;line-height:1.7">' +
-          '<b>✅ 오늘 반영할 예약 승인 ' + dueBk.length + '건</b> <span style="font-size:12px;opacity:.8">(이미 검토 승인된 건 · 위펀 오피스 반영만 남음)</span><br>' +
+          '<b>✅ 오늘 반영할 예약 ' + dueBk.length + '건</b> <span style="font-size:12px;opacity:.8">(10시에 자동 반영 · 지금 바로 돌리려면 아래 버튼)</span><br>' +
           '<span style="font-size:12.5px">' + esc(names(dueBk, 6)) + '</span><br>' +
           '<button id="__wpRunBk" class="wp-btn ok" style="margin-top:7px;padding:7px 14px">▶ 지금 반영 ' + dueBk.length + '건</button></div>';
       }
@@ -3214,7 +3279,7 @@ document.getElementById('__wpSave').onclick = function() {
       if (soonBk.length) {
         soonBk.sort(function(x, y) { return bookedDate(x).localeCompare(bookedDate(y)); });
         h += '<div style="margin:8px 0;padding:10px 14px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;font-size:12.5px;color:#166534;line-height:1.7">' +
-          '<b>✓ 예약 승인 ' + soonBk.length + '건</b> — 그날 이 자리에 [지금 반영] 버튼이 뜹니다. 가장 이른 건 <b>' + esc(bookedDate(soonBk[0])) + '</b> (D-' + dayGap(bookedDate(soonBk[0])) + ')<br>' +
+          '<b>✓ 예약 ' + soonBk.length + '건</b> — 반영일 오전 10시에 자동 반영됩니다. 가장 이른 건 <b>' + esc(bookedDate(soonBk[0])) + '</b> (D-' + dayGap(bookedDate(soonBk[0])) + ')<br>' +
           '<span style="font-size:12px;opacity:.85">' + esc(names(soonBk, 5)) + '</span></div>';
       }
       if (soonUn.length) {
@@ -3823,7 +3888,7 @@ document.getElementById('__wpSave').onclick = function() {
         last = '<td style="white-space:normal">' + _lastInner + '</td>';
       }
       var bn = it.branchId ? ('<a href="/office/sales/branch/' + esc(it.branchId) + '" target="_blank" style="color:#1f4e78;text-decoration:none">' + esc(it.branchName) + '</a>') : esc(it.branchName);
-      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + ((codeGubun(it.action) || it.action === '배송주기변경') ? d1Badge(it) : '') + (bookedDate(it) ? ('<div style="margin-top:3px;display:inline-block;padding:1px 7px;border-radius:999px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:800">✓ 예약승인 · ' + esc(bookedDate(it).slice(5).replace('-', '/')) + ' 반영</div>') : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill(it.status) + '</td>' + last + '</tr>';
+      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + ((codeGubun(it.action) || it.action === '배송주기변경') ? d1Badge(it) : '') + (bookedDate(it) ? ('<div style="margin-top:3px;display:inline-block;padding:1px 7px;border-radius:999px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:800">✓ 예약 · ' + esc(bookedDate(it).slice(5).replace('-', '/')) + ' 10시 자동반영</div>') : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill((it.status === '대기' && bookedDate(it)) ? '예약' : it.status) + '</td>' + last + '</tr>';
     });
     h += '</tbody></table>';
     box.innerHTML = h;
@@ -4282,9 +4347,8 @@ document.getElementById('__wpSave').onclick = function() {
     if (canBook(it) && !it._runBooked && dayGap(d1Of(it)) > 0 && !bookedDate(it)) {
       var bd = d1Of(it);
       if (!confirm('[배송주기변경] 예약 승인\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') +
-          '\n\n검토 승인만 해두고, 위펀 오피스 반영은 ' + bd + '(D-' + dayGap(bd) + ')에 합니다.\n' +
-          '그때까지 배송은 기존 주기 그대로입니다.\n\n' +
-          '반영일이 되면 검토 화면 맨 위에 [지금 반영] 버튼이 뜹니다.\n\n진행할까요?')) { return; }
+          '\n\n검토 승인만 해두고, 위펀 오피스 반영은 ' + bd + '(D-' + dayGap(bd) + ') 오전 10시에 자동으로 합니다.\n' +
+          '그때까지 배송은 기존 주기 그대로입니다. [예약] 탭에서 볼 수 있습니다.\n\n진행할까요?')) { return; }
       btn.disabled = true;
       var ob = btn.textContent;
       btn.textContent = '예약 중…';
