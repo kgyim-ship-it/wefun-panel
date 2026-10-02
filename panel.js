@@ -11,7 +11,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261002-1034';
+  var PANEL_BUILD = '20261002-1139';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -3873,6 +3873,13 @@ document.getElementById('__wpSave').onclick = function() {
             last = '<td style="white-space:normal;line-height:1.9"><button class="wp-act __wpDtLook" data-id="' + esc(it.id) + '" style="border-color:#1f4e78;color:#1f4e78;font-weight:700">조회</button>' +
               '<button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:#0a7d47;color:#0a7d47">회신승인</button>' +
               '<button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button></td>';
+          } else if (it.status === '대기' && bookedDate(it)) {
+            /* 예약 건 — 승인은 이미 끝났다. 남은 건 '반영'뿐이라 버튼 이름을 그대로 쓴다.
+               희망일 전에 누르면 오피스가 오늘부터 주기를 다시 만들어 그 사이 배송도 바뀐다 → 경고색 */
+            var _early = dayGap(bookedDate(it)) > 0;
+            last = '<td style="white-space:normal;line-height:2.1"><button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:' + (_early ? '#b45309;color:#b45309' : '#0a7d47;color:#0a7d47;font-weight:800') + '">' + (_early ? '⚠ 지금 반영' : '▶ 지금 반영') + '</button><button class="wp-act __wpFix" data-id="' + esc(it.id) + '" style="border-color:#1f4e78;color:#1f4e78">날짜·내용 수정</button><button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button>' +
+              (_early ? '<div style="font-size:11px;color:#b45309;line-height:1.4;margin-top:2px">' + esc(bookedDate(it).slice(5).replace('-', '/')) + ' 10시 자동 반영 예정 · 지금 누르면 <b>오늘부터</b> 새 주기로 바뀝니다</div>' :
+                        '<div style="font-size:11px;color:#0a7d47;line-height:1.4;margin-top:2px">반영일 도래 · 10시에 자동으로 돌아가며 지금 눌러도 됩니다</div>') + '</td>';
           } else {
             last = '<td style="white-space:normal;line-height:2.1"><button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:#0a7d47;color:#0a7d47">승인</button><button class="wp-act __wpFix" data-id="' + esc(it.id) + '" style="border-color:#b45309;color:#b45309">수정승인</button><button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button></td>';
           }
@@ -4366,7 +4373,9 @@ document.getElementById('__wpSave').onclick = function() {
     }
     /* 예약된 건을 예약일 전에 수동 승인 → 앞당겨 반영되는 것이니 한 번 더 확인 */
     if (canBook(it) && !it._runBooked && bookedDate(it) && dayGap(bookedDate(it)) > 0) {
-      if (!confirm('이 건은 ' + bookedDate(it) + '(D-' + dayGap(bookedDate(it)) + ') 반영으로 예약된 건입니다.\n지금 승인하면 예약일보다 먼저 위펀 오피스에 반영됩니다.\n\n그래도 지금 반영할까요?')) { return; }
+      if (!confirm('⚠ 예약 건 조기 반영\n' + (it.branchName || '') + '\n\n이 건은 ' + bookedDate(it) + '(D-' + dayGap(bookedDate(it)) + ') 10시 자동 반영으로 예약돼 있습니다.\n' +
+          '지금 반영하면 오피스가 "오늘부터" 주기를 다시 만들기 때문에 ' + bookedDate(it) + ' 이전 배송도 새 주기로 바뀝니다.\n\n' +
+          '요청자가 "지금부터 바꿔달라"고 한 게 확실할 때만 진행하세요.\n(날짜만 당기려면 [날짜·내용 수정]에서 희망일을 고치는 게 안전합니다)\n\n그래도 지금 반영할까요?')) { return; }
       it._runBooked = true;
     }
     var cfmMsg = dtq ? ('[배송시간문의] 확인 회신\n' + (it.branchName || '') + '\n\n금일 배송 배정·완료시각·진열사진을 조회해 요청자에게 회신합니다.\n(오피스에 반영되는 것은 없습니다)\n\n진행할까요?') : pick ? ('[수기피킹] 완료 처리\n' + (it.branchName || '') + '\n\n피킹팀 처리 완료로 표시하고 요청자에게 알립니다.\n진행할까요?') : passthru ? ('[' + it.action + '] 검토 승인(접수)\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + (it._newCourse ? '\n코스변경 → ' + it._newCourse : '') + '\n\n승인하면 자회사 코드전달로 접수됩니다.\n반영예정일: ' + (d1Of(it) || workdayD1Str()) + (dayGap(d1Of(it)) > 0 ? ' (D-' + dayGap(d1Of(it)) + ' · 그날 전날까지 코드전달 엑셀에 안 담깁니다)' : '') + '\n진행할까요?') : ('[' + it.action + '] 승인 · 위펀 오피스에 반영\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + '\n\n진행할까요?');
