@@ -1,6 +1,8 @@
 (function wefunPanel() {
-  if (location.host !== 'office.wefun.kr') {
-    alert('office.wefun.kr에 로그인한 상태에서 실행해주세요.');
+  /* 오피스 호스트 — 본서버 + 장애 시 RnD가 여는 임시 서버(ngrok). 패널은 상대경로(/office/…)만 쓰므로 호스트만 열어주면 그대로 동작한다 */
+  var OK_HOSTS = ['office.wefun.kr', 'office-wefun.ngrok.io'];
+  if (OK_HOSTS.indexOf(location.host) < 0) {
+    alert('위펀 오피스(office.wefun.kr 또는 임시 서버)에 로그인한 상태에서 실행해주세요.');
     return;
   }
   if (document.getElementById('__wp')) {
@@ -11,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261002-1139';
+  var PANEL_BUILD = '20261006-1725';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
