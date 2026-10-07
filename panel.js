@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1741';
+  var PANEL_BUILD = '20261007-1744';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9523,13 +9523,13 @@ document.getElementById('__wpSave').onclick = function() {
     wk += '<span style="flex:1"></span><span style="font-size:11.5px;color:#64748b;display:flex;gap:10px;flex-wrap:wrap">' +
       [['#CBD5E1', '기본'], ['#0EA5E9', '처음 보는 대상'], ['#2563EB', '직접 지정'], ['#DC2626', '검토 필요'], ['#16A34A', '완료']].map(function(x) { return '<span><i style="display:inline-block;width:3px;height:11px;background:' + x[0] + ';vertical-align:-1px;margin-right:4px"></i>' + x[1] + '</span>'; }).join('') +
       '<span><b style="color:#F59E0B">●</b> 메모·규칙</span><span><b style="color:#B45309;font-size:10px">밸</b> 밸런스</span></span></div>';
-    var h = '<table style="border-collapse:collapse;width:100%;table-layout:fixed"><thead><tr>' + ['월', '화', '수', '목', '금'].map(function(d) { return '<th style="background:#0F172A;color:#CBD5E1;font-size:12.5px;padding:7px;text-align:center;font-weight:700">' + d + '</th>'; }).join('') + '</tr></thead><tbody>';
+    /* 오피스 페이지 CSS가 td 를 세로 가운데 정렬로 덮어써서 표 대신 grid 로 그린다 */
+    var h = '<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-left:1px solid #E2E8F0">' + ['월', '화', '수', '목', '금'].map(function(d) { return '<div style="background:#0F172A;color:#CBD5E1;font-size:12.5px;padding:7px;text-align:center;font-weight:700;position:sticky;top:0;z-index:2">' + d + '</div>'; }).join('');
     for (var w = 0; w < weeks; w++) {
       if (INV.week && INV.week !== w + 1) continue;
-      h += '<tr>';
       for (var dow = 0; dow < 5; dow++) {
         var dom = domOf(w, dow);
-        if (dom < 1 || dom > nd) { h += '<td style="background:#F1F5F9;border:1px solid #E2E8F0"></td>'; continue; }
+        if (dom < 1 || dom > nd) { h += '<div style="background:#F1F5F9;border-right:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;min-height:60px"></div>'; continue; }
         var ymd = ym + '-' + ('0' + dom).slice(-2);
         var isToday = ymd === todayStr();
         var list = (byDay[ymd] || []).map(function(bid) { return tm[bid]; }).sort(function(x, y) { return (x.comp + x.name).localeCompare(y.comp + y.name, 'ko'); });
@@ -9538,11 +9538,10 @@ document.getElementById('__wpSave').onclick = function() {
         var body;
         if (HOLIDAYS[ymd]) body = '<div style="padding:18px 8px;text-align:center;color:#DC2626;font-weight:700;font-size:13px">휴무</div>' + (list.length ? '<div style="padding:4px 6px">' + invDayList(list) + '</div>' : '');
         else body = '<div style="padding:5px 6px">' + (list.length ? invDayList(list) : '<div style="color:#CBD5E1;font-size:12px;padding:6px 2px">—</div>') + '</div>';
-        h += '<td style="vertical-align:top;padding:0;border:1px solid #E2E8F0;background:' + (HOLIDAYS[ymd] ? 'repeating-linear-gradient(135deg,#FEF2F2 0 8px,#fff 8px 16px)' : '#fff') + '">' + head + body + '</td>';
+        h += '<div style="min-width:0;border-right:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;background:' + (HOLIDAYS[ymd] ? 'repeating-linear-gradient(135deg,#FEF2F2 0 8px,#fff 8px 16px)' : '#fff') + '">' + head + body + '</div>';
       }
-      h += '</tr>';
     }
-    h += '</tbody></table>';
+    h += '</div>';
     b.innerHTML = wk + h;
     [].forEach.call(b.querySelectorAll('.__wpInvWk'), function(x) { x.onclick = function() { INV.week = +x.getAttribute('data-w'); invRenderCal(b); }; });
     [].forEach.call(b.querySelectorAll('.__wpInvChip'), function(c) { c.onclick = function() { invEditor(c.getAttribute('data-b')); }; });
