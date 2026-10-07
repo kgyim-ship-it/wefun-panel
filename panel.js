@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1732';
+  var PANEL_BUILD = '20261007-1735';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9332,7 +9332,7 @@ document.getElementById('__wpSave').onclick = function() {
       return { d: invNearest(ds, dom(ref)) };
     }
     c = ds.filter(function(x) { return invWeekRow(x) === 2; });
-    return { d: c.length ? c[0] : ds[0], why: '신규 · 전월 참조 없음' };
+    return { d: c.length ? c[0] : ds[0], info: '신규 · 전월 참조 없음(2주차 기준)' };
   }
   function invNearest(ds, dom0) { var best = ds[0], bd = 99; ds.forEach(function(x) { var g = Math.abs(+x.slice(8) - dom0); if (g < bd) { bd = g; best = x; } }); return best; }
 
@@ -9351,7 +9351,7 @@ document.getElementById('__wpSave').onclick = function() {
       var cf = INV.cfg[t.bid] || {};
       var ref = INV.prev && INV.prev[t.bid] && INV.prev[t.bid].d;
       var pk = invPick(ds, invRule(cf.rule), ref);
-      plan[t.bid] = { d: pk.d, s: (it && it.s) || '', m: (it && it.m) || '', w: pk.why || '', a: 'auto' };
+      plan[t.bid] = { d: pk.d, s: (it && it.s) || '', m: (it && it.m) || '', w: pk.why || '', i: pk.info || '', a: 'auto' };
       n++;
     });
     /* 같은 기업 묶음: 구성원 전부가 공통으로 배송받는 날이 있으면 그날로 통일(수동·완료 제외) */
@@ -9367,9 +9367,9 @@ document.getElementById('__wpSave').onclick = function() {
       if (common && common.length) {
         var cnt = {}; picks.forEach(function(d) { cnt[d] = (cnt[d] || 0) + 1; });
         var tgt = common.filter(function(d) { return cnt[d]; }).sort(function(a, b) { return cnt[b] - cnt[a]; })[0] || common[0];
-        ms.forEach(function(t) { var it = plan[t.bid]; if (!it || it.a === 'm' || it.a === 'sheet' || it.s === 'done') return; if (it.d !== tgt) { it.d = tgt; it.w = (it.w ? it.w + ' · ' : '') + '기업 묶음(' + g + ')으로 조정'; } });
+        ms.forEach(function(t) { var it = plan[t.bid]; if (!it || it.a === 'm' || it.a === 'sheet' || it.s === 'done') return; if (it.d !== tgt) { it.d = tgt; it.i = (it.i ? it.i + ' · ' : '') + '기업 묶음(' + g + ')으로 날짜 통일'; } });
       } else {
-        ms.forEach(function(t) { var it = plan[t.bid]; if (!it || it.a === 'm' || it.a === 'sheet' || it.s === 'done') return; it.w = (it.w ? it.w + ' · ' : '') + '같은 기업인데 공통 배송일 없음'; });
+        ms.forEach(function(t) { var it = plan[t.bid]; if (!it || it.a === 'm' || it.a === 'sheet' || it.s === 'done') return; it.i = (it.i ? it.i + ' · ' : '') + '같은 기업 공통 배송일 없음'; });
       }
     });
     INV.dirty = true;
@@ -9385,7 +9385,7 @@ document.getElementById('__wpSave').onclick = function() {
     return invFetchTargets(forceOffice).then(function(ts) {
       msg('저장된 설정·일정 불러오는 중…');
       return invKvLoad(true).then(function() { return invKvGet('cfg'); }).then(function(cfg) { INV.cfg = cfg || {}; return invKvGet('plan:' + ym); }).then(function(plan) {
-        INV.plan = plan || {}; return invKvGet('plan:' + invYmAdd(ym, -1));
+        INV.plan = plan || {}; INV.saved = !!plan; return invKvGet('plan:' + invYmAdd(ym, -1));
       }).then(function(prev) {
         INV.prev = prev || null;
         var live = ts.filter(function(t) { return !invIsExcl(t); });
@@ -9448,7 +9448,7 @@ document.getElementById('__wpSave').onclick = function() {
       (INV.canEdit ? '<button id="__wpInvAuto" class="wp-btn gh">자동 배치</button><button id="__wpInvSave" class="wp-btn ' + (INV.dirty ? 'ok' : 'gh') + '">저장' + (INV.dirty ? ' ●' : '') + '</button>' : '') +
       '<button id="__wpInvXls" class="wp-btn gh">⬇ 엑셀</button><button id="__wpInvRe" class="wp-btn gh" title="오피스에서 대상·배송일을 다시 읽습니다">↻ 오피스</button></div>' +
       (s ? '<div class="wp-meta" style="margin:0 0 8px;padding:8px 12px;font-size:12.5px">대상 <b>' + s.live + '</b> (스/밸 활동 ' + s.all + ' − 제외 ' + s.ex + ') · 배치 <b>' + s.placed + '</b> · 완료 <b style="color:#16A34A">' + s.done + '</b> · 검토 <b style="color:#DC2626">' + s.flag + '</b> · 이달 배송 없음 ' + s.nod + ' · 처음 보는 대상 <b>' + s.nw + '</b>' +
-        (INV.prev ? '' : ' · <span style="color:#b45309">전월 계획 없음 → 2주차 기준 배치</span>') + '</div>' : '');
+        (INV.prev || INV.saved ? '' : ' · <span style="color:#b45309">전월 계획 없음 → 신규는 2주차 기준 배치</span>') + '</div>' : '');
     document.getElementById('__wpInvPrev').onclick = function() { invGo(invYmAdd(INV.ym, -1)); };
     document.getElementById('__wpInvNext').onclick = function() { invGo(invYmAdd(INV.ym, 1)); };
     [].forEach.call(h.querySelectorAll('.__wpInvSub'), function(b) { b.onclick = function() { INV.sub = b.getAttribute('data-s'); invRenderHead(); invRender(); }; });
@@ -9469,10 +9469,10 @@ document.getElementById('__wpSave').onclick = function() {
   }
   function invTargetMap() { var m = {}; (INV.targets || []).forEach(function(t) { m[t.bid] = t; }); return m; }
   function invChip(t, it) {
-    var done = it.s === 'done', flag = !!it.w, man = it.a === 'm';
-    var st = 'display:block;cursor:pointer;padding:2px 5px;margin:1px 0;border-radius:4px;font-size:12px;line-height:1.3;' +
-      (done ? 'background:#DCFCE7;color:#166534;text-decoration:line-through;' : flag ? 'background:#FEE2E2;color:#991B1B;' : man ? 'background:#DBEAFE;color:#1E3A8A;' : 'background:#F1F5F9;color:#1E293B;');
-    return '<span class="__wpInvChip" data-b="' + t.bid + '" style="' + st + '" title="' + esc((it.w ? '⚠ ' + it.w + '\n' : '') + (it.m || '') + (INV.cfg[t.bid] && INV.cfg[t.bid].rule ? '\n규칙: ' + INV.cfg[t.bid].rule : '')) + '">' + esc(t.name) + '</span>';
+    var done = it.s === 'done', flag = !!it.w, man = it.a === 'm', nw = invIsNew(t);
+    var st = 'display:block;cursor:pointer;padding:1px 5px;margin:1px 0;border-radius:4px;font-size:11.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' +
+      (done ? 'background:#DCFCE7;color:#166534;text-decoration:line-through;' : flag ? 'background:#FEE2E2;color:#991B1B;' : nw ? 'background:#E0F2FE;color:#075985;' : man ? 'background:#DBEAFE;color:#1E3A8A;' : 'background:#F1F5F9;color:#1E293B;');
+    return '<span class="__wpInvChip" data-b="' + t.bid + '" style="' + st + '" title="' + esc((it.w ? '⚠ ' + it.w + '\n' : '') + (it.i ? it.i + '\n' : '') + (nw ? '처음 보는 대상\n' : '') + (it.m || '') + (INV.cfg[t.bid] && INV.cfg[t.bid].rule ? '\n규칙: ' + INV.cfg[t.bid].rule : '')) + '">' + esc(t.name) + '</span>';
   }
   function invRenderCal(b) {
     var ym = INV.ym, nd = invMonthDays(ym), tm = invTargetMap();
@@ -9495,7 +9495,7 @@ document.getElementById('__wpSave').onclick = function() {
       h += '</tr>';
     }
     h += '</tbody></table>';
-    b.innerHTML = h;
+    b.innerHTML = '<div style="padding:6px 10px;font-size:11.5px;color:#64748b;border-bottom:1px solid #E2E8F0;display:flex;gap:12px;flex-wrap:wrap"><span><i style="display:inline-block;width:10px;height:10px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:2px"></i> 자동/전월기준</span><span><i style="display:inline-block;width:10px;height:10px;background:#E0F2FE;border-radius:2px"></i> 처음 보는 대상</span><span><i style="display:inline-block;width:10px;height:10px;background:#DBEAFE;border-radius:2px"></i> 직접 지정</span><span><i style="display:inline-block;width:10px;height:10px;background:#FEE2E2;border-radius:2px"></i> 검토 필요</span><span><i style="display:inline-block;width:10px;height:10px;background:#DCFCE7;border-radius:2px"></i> 완료</span><span>· 이름을 누르면 날짜·상태·규칙을 고칩니다</span></div>' + h;
     [].forEach.call(b.querySelectorAll('.__wpInvChip'), function(c) { c.onclick = function() { invEditor(c.getAttribute('data-b')); }; });
   }
   function invRowHtml(t) {
@@ -9505,7 +9505,7 @@ document.getElementById('__wpSave').onclick = function() {
       '<td style="font-size:12.5px;color:#475569">' + esc(t.comp) + '</td>' +
       '<td><b style="font-size:13px">' + esc(t.name) + '</b>' + (invIsNew(t) ? ' <span style="background:#0EA5E9;color:#fff;border-radius:4px;padding:0 5px;font-size:10.5px">NEW</span>' : '') + '<div style="font-size:11px;color:#94a3b8">' + esc(t.mgmt) + ' · ' + esc(t.cycle || '-') + '</div></td>' +
       '<td style="font-size:12px;color:#475569;white-space:normal">' + (ds.length ? ds.map(function(d) { return '<span class="__wpInvDs" data-b="' + t.bid + '" data-d="' + d + '" style="display:inline-block;cursor:pointer;padding:1px 5px;margin:1px;border-radius:4px;border:1px solid ' + (it.d === d ? '#0B1220;background:#0B1220;color:#fff' : '#CBD5E1') + '">' + invShort(d) + '</span>'; }).join('') : '<span style="color:#b45309">이달 배송 없음</span>') + '</td>' +
-      '<td><select class="wp-inp __wpInvD" data-b="' + t.bid + '" style="height:31px;font-size:13px;padding:0 6px"' + (INV.canEdit ? '' : ' disabled') + '>' + opts + '</select>' + (it.w ? '<div style="color:#DC2626;font-size:11.5px;margin-top:2px">⚠ ' + esc(it.w) + '</div>' : '') + '</td>' +
+      '<td><select class="wp-inp __wpInvD" data-b="' + t.bid + '" style="height:31px;font-size:13px;padding:0 6px"' + (INV.canEdit ? '' : ' disabled') + '>' + opts + '</select>' + (it.w ? '<div style="color:#DC2626;font-size:11.5px;margin-top:2px">⚠ ' + esc(it.w) + '</div>' : '') + (it.i ? '<div style="color:#94a3b8;font-size:11px;margin-top:2px">' + esc(it.i) + '</div>' : '') + '</td>' +
       '<td><select class="wp-inp __wpInvS" data-b="' + t.bid + '" style="height:31px;font-size:13px;padding:0 6px"' + (INV.canEdit ? '' : ' disabled') + '><option value=""' + (!it.s ? ' selected' : '') + '>예정</option><option value="done"' + (it.s === 'done' ? ' selected' : '') + '>완료</option><option value="skip"' + (it.s === 'skip' ? ' selected' : '') + '>미실시</option></select></td>' +
       '<td><input class="wp-inp __wpInvR" data-b="' + t.bid + '" value="' + esc(cf.rule || '') + '" placeholder="예: 3주차 · 마지막 배송 · 25일 전" style="height:31px;font-size:12.5px;width:100%"' + (INV.canEdit ? '' : ' disabled') + '></td>' +
       '<td><input class="wp-inp __wpInvM" data-b="' + t.bid + '" value="' + esc(it.m || cf.m || '') + '" style="height:31px;font-size:12.5px;width:100%"' + (INV.canEdit ? '' : ' disabled') + '></td>' +
@@ -9560,7 +9560,7 @@ document.getElementById('__wpSave').onclick = function() {
     var box = document.createElement('div'); box.id = '__wpInvEd';
     box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,94vw);background:#fff;border:1px solid #CBD5E1;border-radius:10px;box-shadow:0 24px 60px rgba(2,8,20,.35);padding:16px 18px;z-index:2147483647;font-size:13.5px';
     box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><b style="font-size:15px">' + esc(t.name) + '</b><div style="color:#94a3b8;font-size:12px">' + esc(t.comp) + ' · ' + esc(t.mgmt) + ' · ' + esc(t.cycle || '-') + (INV.prev && INV.prev[bid] && INV.prev[bid].d ? ' · 전월 조사 ' + invShort(INV.prev[bid].d) : '') + '</div></div><button id="__wpInvEdX" class="wp-act">✕</button></div>' +
-      (it.w ? '<div style="color:#DC2626;font-size:12.5px;margin-top:6px">⚠ ' + esc(it.w) + '</div>' : '') +
+      (it.w ? '<div style="color:#DC2626;font-size:12.5px;margin-top:6px">⚠ ' + esc(it.w) + '</div>' : '') + (it.i ? '<div style="color:#64748b;font-size:12px;margin-top:4px">' + esc(it.i) + '</div>' : '') +
       '<div style="margin-top:10px;font-weight:600;font-size:12.5px;color:#475569">조사일 (이달 배송일 중 선택)</div><div style="margin-top:4px">' + (ds.length ? ds.map(function(d) { return '<button class="wp-day __wpInvEdD' + (it.d === d ? ' on' : '') + '" data-d="' + d + '">' + invShort(d) + '</button>'; }).join('') : '<span style="color:#b45309">이달 배송 없음</span>') + '</div>' +
       '<div class="wp-fld"><span style="width:70px">상태</span><select id="__wpInvEdS" class="wp-inp" style="height:35px"><option value=""' + (!it.s ? ' selected' : '') + '>예정</option><option value="done"' + (it.s === 'done' ? ' selected' : '') + '>완료</option><option value="skip"' + (it.s === 'skip' ? ' selected' : '') + '>미실시</option></select></div>' +
       '<div class="wp-fld"><span style="width:70px">규칙</span><input id="__wpInvEdR" class="wp-inp" style="height:35px" value="' + esc(cf.rule || '') + '" placeholder="3주차 · 마지막 배송 · 25일 전 · 10~15일 · 묶음:이름"></div>' +
