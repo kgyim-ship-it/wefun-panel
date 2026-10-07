@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261006-1725';
+  var PANEL_BUILD = '20261007-1052';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -2378,7 +2378,12 @@
       if (f.type === 'date') {
         var el = document.getElementById('__wpf_' + f.k);
         if (el) {
-          if (f.min3) { el.min = firstDeliveryStr(); el.setAttribute('data-min', firstDeliveryStr()); if (!el.value) { el.value = firstDeliveryStr(); } }
+          if (f.min3) {
+            /* 첫배송일: 요청자는 D+3 영업일부터. 관리자 수정승인은 현장 사정을 아는 사람이 고치는 거라 D+1부터 연다 */
+            var _m3 = (edit && (edit.adminEdit || edit.adminEditOnly)) ? workdayD1Str() : firstDeliveryStr();
+            el.min = _m3; el.setAttribute('data-min', _m3);
+            if (!el.value) { el.value = _m3; }
+          }
           if (f.dmin) {
             var _mn = f.d0 ? workdayTodayStr() : workdayD1Str();
             el.min = _mn; el.setAttribute('data-min', _mn);
