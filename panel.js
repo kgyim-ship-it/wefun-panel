@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1843';
+  var PANEL_BUILD = '20261007-1854';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9333,7 +9333,7 @@ document.getElementById('__wpSave').onclick = function() {
     if (/영남\s*예외/.test(t)) r.noYn = true;
     return r;
   }
-  function invHasRule(r) { return !!(r.week || r.pos || r.before || r.after || r.from || r.on || r.dow != null); }
+  function invHasRule(r) { return !!(r.week || r.wmin || r.pos || r.before || r.after || r.from || r.on || r.dow != null); }
   /* 조사일 고르기: ds = 이달 배송일(정렬), rule = 규칙, ref = 전월 조사일 */
   function invPick(ds, rule, ref, ctx) {
     ctx = ctx || {};
@@ -9346,6 +9346,7 @@ document.getElementById('__wpSave').onclick = function() {
     }
     /* 요일 지정이 있으면 그 요일 배송일 안에서만 고른다 */
     if (r.dow != null) { c = ds.filter(function(x) { return invDow(x) === r.dow; }); if (c.length) ds = c; else return { d: all[all.length - 1], why: '그 요일 배송일 없음' }; }
+    if (r.wmin) { c = ds.filter(function(x) { return invWeekRow(x) >= r.wmin; }); if (c.length) ds = c; }
     if (r.week === 'last') return { d: ds.filter(function(x) { return invWeekRow(x) === invWeekRow(ds[ds.length - 1]); })[0] };
     if (typeof r.week === 'number') { c = ds.filter(function(x) { return invWeekRow(x) === r.week; }); if (c.length) return { d: c[0] }; return { d: invNearest(ds, r.week * 7 - 3), why: r.week + '주차에 배송일 없음' }; }
     if (r.pos === 'first') return { d: ds[0] };
@@ -9354,7 +9355,7 @@ document.getElementById('__wpSave').onclick = function() {
     if (r.before) { c = ds.filter(function(x) { return dom(x) < r.before || (r.incl && dom(x) === r.before); }); if (c.length) return { d: c[c.length - 1] }; return { d: ds[0], why: r.before + '일 전 배송일 없음' }; }
     if (r.after) { c = ds.filter(function(x) { return dom(x) >= r.after; }); if (c.length) return { d: c[0] }; return { d: ds[ds.length - 1], why: r.after + '일 이후 배송일 없음' }; }
     if (r.from) { c = ds.filter(function(x) { return dom(x) >= r.from && dom(x) <= r.to; }); if (c.length) return { d: c[0] }; return { d: invNearest(ds, r.from), why: r.from + '~' + r.to + '일 배송일 없음' }; }
-    ds = all;
+    if (!r.wmin && r.dow == null) ds = all;
     var load = ctx.load || {};
     function light(arr) { var b = arr[0]; arr.forEach(function(x) { if ((load[x] || 0) < (load[b] || 0)) b = x; }); return b; }
     /* 영남 스팟: 3~5주차에 몰아서 (전월 요일이 그 안에 있으면 그대로) */
@@ -9380,10 +9381,66 @@ document.getElementById('__wpSave').onclick = function() {
   }
   function invNearest(ds, dom0) { var best = ds[0], bd = 99; ds.forEach(function(x) { var g = Math.abs(+x.slice(8) - dom0); if (g < bd) { bd = g; best = x; } }); return best; }
 
+
+  /* ===== 마스터 DB: 거래처별 구분값(드롭다운) =====
+     cfg[bid].k = { fq: 매월|연1회|제외, rg: 수도권|영남, wk: 1~5|last|35, dow: 1~5, pos: first|last|last2,
+                    dc: before|until|after|on, dn: 숫자, grp: 묶음명, att: 참관, call: 사전연락, pic: 사진 }
+     값이 있으면 자유 텍스트 규칙보다 우선한다. */
+  var INV_K_OPTS = {
+    fq: [['', '매월'], ['yr', '연1회(1월)'], ['ex', '제외']],
+    rg: [['', '자동'], ['수도권', '수도권'], ['영남', '영남'], ['영남x', '영남(주차예외)']],
+    wk: [['', '자동'], ['1', '1주차'], ['2', '2주차'], ['3', '3주차'], ['4', '4주차'], ['last', '마지막주'], ['35', '3~5주차']],
+    dow: [['', '자동'], ['1', '월'], ['2', '화'], ['3', '수'], ['4', '목'], ['5', '금']],
+    pos: [['', '자동'], ['first', '첫 배송'], ['last', '마지막 배송'], ['last2', '마지막 전 배송']],
+    dc: [['', '없음'], ['before', '일 전'], ['until', '일까지'], ['after', '일 이후'], ['on', '일 고정']]
+  };
+  function invKOf(bid) {
+    var cf = (INV.cfg && INV.cfg[bid]) || {};
+    if (cf.k) return cf.k;
+    /* 아직 마스터로 안 만진 거래처는 기존 텍스트 규칙을 풀어서 보여준다 */
+    var r = invRule(cf.rule), k = {};
+    if (r.week === 'last') k.wk = 'last'; else if (r.week) k.wk = String(r.week);
+    if (r.dow != null) k.dow = String(r.dow);
+    if (r.pos) k.pos = r.pos;
+    if (r.on) { k.dc = 'on'; k.dn = r.on; } else if (r.before) { k.dc = r.incl ? 'until' : 'before'; k.dn = r.before; } else if (r.after) { k.dc = 'after'; k.dn = r.after; }
+    if (r.grp) k.grp = r.grp;
+    if (r.noYn) k.rg = '영남x';
+    if (cf.yr) k.fq = 'yr'; else if (cf.ex === 1) k.fq = 'ex';
+    if (/참관/.test(String(cf.rule || '') + String(cf.m || ''))) k.att = 1;
+    if (/연락|사전\s*안내/.test(String(cf.rule || '') + String(cf.m || ''))) k.call = 1;
+    if (/사진/.test(String(cf.rule || '') + String(cf.m || ''))) k.pic = 1;
+    return k;
+  }
+  function invKText(k) {
+    var a = [];
+    if (k.wk) a.push(k.wk === 'last' ? '마지막주' : k.wk === '35' ? '3~5주차' : k.wk + '주차');
+    if (k.dow) a.push('월화수목금'.charAt(+k.dow - 1) + '요일');
+    if (k.pos) a.push({ first: '첫 배송', last: '마지막 배송', last2: '마지막 전 배송' }[k.pos]);
+    if (k.dc && k.dn) a.push(k.dn + { before: '일 전', until: '일까지', after: '일 이후', on: '일 고정' }[k.dc]);
+    if (k.rg) a.push(k.rg === '영남x' ? '영남(주차예외)' : k.rg);
+    if (k.grp) a.push('묶음:' + k.grp);
+    return a.join(' · ');
+  }
+  /* 배치에 쓰는 최종 규칙 */
+  function invRuleOf(bid) {
+    var cf = (INV.cfg && INV.cfg[bid]) || {};
+    if (!cf.k) return invRule(cf.rule);
+    var k = cf.k, r = {};
+    if (k.wk === 'last') r.week = 'last'; else if (k.wk === '35') r.wmin = 3; else if (k.wk) r.week = +k.wk;
+    if (k.dow) r.dow = +k.dow;
+    if (k.pos) r.pos = k.pos;
+    var n = +k.dn || 0;
+    if (n && k.dc === 'on') r.on = n; else if (n && k.dc === 'before') r.before = n; else if (n && k.dc === 'until') { r.before = n; r.incl = true; } else if (n && k.dc === 'after') r.after = n;
+    if (k.grp) r.grp = k.grp;
+    if (k.rg) r.rg = k.rg;
+    return r;
+  }
+  /* 영남 3~5주차 규칙 적용 여부 ('영남x' = 영남이지만 주차 예외) */
+  function invYnOf(t) { var k = ((INV.cfg && INV.cfg[t.bid]) || {}).k; if (k && k.rg) return k.rg === '영남'; return !!t.yn; }
   function invCfgOf(bid) { if (!INV.cfg) INV.cfg = {}; return INV.cfg[bid] || (INV.cfg[bid] = {}); }
   /* 연1회(1월만) 거래처: 1월이 아니면 제외 */
   function invIsYearly(t) { var c = INV.cfg && INV.cfg[t.bid]; return !!(c && c.yr); }
-  function invIsExcl(t) { var c = INV.cfg && INV.cfg[t.bid]; if (c && c.yr && String(INV.ym || '').slice(5) !== '01') return true; if (c && c.ex === 1) return true; if (c && c.ex === 0) return false; return INV_EXCL_RE.test(t.name) || /계획일정없음|수기일정생성/.test(t.cycle); }
+  function invIsExcl(t) { var c = INV.cfg && INV.cfg[t.bid]; if (c && c.k && c.k.fq === 'yr') return String(INV.ym || '').slice(5) !== '01'; if (c && c.k && c.k.fq === 'ex') return true; if (c && c.yr && String(INV.ym || '').slice(5) !== '01') return true; if (c && c.ex === 1) return true; if (c && c.ex === 0) return false; return INV_EXCL_RE.test(t.name) || /계획일정없음|수기일정생성/.test(t.cycle); }
   function invIsNew(t) { var c = INV.cfg && INV.cfg[t.bid]; return !(c && c.seen); }
 
   /* 자동 배치 — 수동(a:'m')·완료 건은 건드리지 않는다 */
@@ -9399,15 +9456,15 @@ document.getElementById('__wpSave').onclick = function() {
       var ds = invDs(t.bid, ym);
       var cf = INV.cfg[t.bid] || {};
       var ref = INV.prev && INV.prev[t.bid] && INV.prev[t.bid].d;
-      var rl = invRule(cf.rule);
-      var pk = invPick(ds, rl, ref, { yn: t.yn && !rl.noYn && !/^매월1회/.test(t.cycle || ''), load: load });
+      var rl = invRuleOf(t.bid);
+      var pk = invPick(ds, rl, ref, { yn: invYnOf(t) && !rl.noYn && !/^매월1회/.test(t.cycle || ''), load: load });
       if (pk.d) load[pk.d] = (load[pk.d] || 0) + 1;
       plan[t.bid] = { d: pk.d, s: (it && it.s) || '', m: (it && it.m) || '', w: pk.why || '', i: pk.info || '', a: 'auto' };
       n++;
     });
     /* 같은 기업 묶음: 구성원 전부가 공통으로 배송받는 날이 있으면 그날로 통일(수동·완료 제외) */
     var groups = {};
-    live.forEach(function(t) { var cf = INV.cfg[t.bid] || {}; var r = invRule(cf.rule); var g = r.grp || t.comp; if (!g) return; (groups[g] = groups[g] || []).push(t); });
+    live.forEach(function(t) { var r = invRuleOf(t.bid); var g = r.grp || t.comp; if (!g) return; (groups[g] = groups[g] || []).push(t); });
     Object.keys(groups).forEach(function(g) {
       var ms = groups[g]; if (ms.length < 2) return;
       var picks = ms.map(function(t) { return plan[t.bid] && plan[t.bid].d; }).filter(Boolean);
@@ -9416,7 +9473,7 @@ document.getElementById('__wpSave').onclick = function() {
       var common = null;
       ms.forEach(function(t) { var ds = invDs(t.bid, ym); common = common === null ? ds.slice() : common.filter(function(x) { return ds.indexOf(x) > -1; }); });
       /* 규칙(특이사항)이 있는 거래처는 기준점 — 절대 옮기지 않고, 나머지가 그 날짜를 따라간다 */
-      var anchors = ms.filter(function(t) { var it = plan[t.bid]; return it && it.d && (invHasRule(invRule((INV.cfg[t.bid] || {}).rule)) || it.a === 'm' || it.a === 'sheet' || it.s === 'done'); });
+      var anchors = ms.filter(function(t) { var it = plan[t.bid]; return it && it.d && (invHasRule(invRuleOf(t.bid)) || it.a === 'm' || it.a === 'sheet' || it.s === 'done'); });
       var aDates = anchors.map(function(t) { return plan[t.bid].d; }).filter(function(x, i, arr) { return arr.indexOf(x) === i; });
       if (aDates.length > 1) { ms.forEach(function(t) { var it = plan[t.bid]; if (it && anchors.indexOf(t) < 0) it.i = (it.i ? it.i + ' · ' : '') + '같은 기업 지정일이 서로 다름'; }); return; }
       function movable(t) { var it = plan[t.bid]; return it && anchors.indexOf(t) < 0 && it.a !== 'm' && it.a !== 'sheet' && it.s !== 'done'; }
@@ -9507,6 +9564,7 @@ document.getElementById('__wpSave').onclick = function() {
       '<span style="width:10px"></span>' +
       '<button class="wp-btn gh __wpInvSub" data-s="cal"' + (INV.sub === 'cal' ? ' style="background:#0B1220;color:#fff"' : '') + '>달력</button>' +
       '<button class="wp-btn gh __wpInvSub" data-s="list"' + (INV.sub === 'list' ? ' style="background:#0B1220;color:#fff"' : '') + '>목록</button>' +
+      '<button class="wp-btn gh __wpInvSub" data-s="master"' + (INV.sub === 'master' ? ' style="background:#0B1220;color:#fff"' : '') + '>마스터</button>' +
       '<button class="wp-btn gh __wpInvSub" data-s="new"' + (INV.sub === 'new' ? ' style="background:#0B1220;color:#fff"' : '') + '>신규·검토' + (s && (s.nw + s.flag) ? ' <span style="background:#EF4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:4px">' + (s.nw + s.flag) + '</span>' : '') + '</button>' +
       '<span style="margin-left:10px;font-size:12.5px;color:#475569;background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:5px 10px">관리자 <b style="color:#0F172A">' + esc(INV_MGRS.join(', ')) + '</b>' + (INV.canEdit ? '' : ' · <span style="color:#94a3b8">보기 전용</span>') + '</span>' +
       '<span style="flex:1"></span>' +
@@ -9530,7 +9588,7 @@ document.getElementById('__wpSave').onclick = function() {
   function invRender() {
     invRenderHead();
     var b = document.getElementById('__wpInvBody'); if (!b) return;
-    if (INV.sub === 'cal') invRenderCal(b); else if (INV.sub === 'list') invRenderList(b); else invRenderNew(b);
+    if (INV.sub === 'cal') invRenderCal(b); else if (INV.sub === 'list') invRenderList(b); else if (INV.sub === 'master') invRenderMaster(b); else invRenderNew(b);
   }
   function invTargetMap() { var m = {}; (INV.targets || []).forEach(function(t) { m[t.bid] = t; }); return m; }
   /* 이름 앞 유형 표시((벤딩)·[샵인샵]·(아이스크림)…)는 작은 태그로 빼고, 끝의 _스타트/_밸런스는 지운다 — 이름이 바로 읽히게 */
@@ -9556,7 +9614,7 @@ document.getElementById('__wpSave').onclick = function() {
     var tg = invMgmtTag(t.mgmt) + (t.yn ? '<span style="flex:none;font-size:10.5px;font-weight:700;color:#9F1239;background:#FFE4E6;border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">영남</span>' : '') + sp.tags.map(function(x) { return '<span style="flex:none;font-size:10.5px;font-weight:700;color:' + x[1] + ';background:' + x[2] + ';border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">' + x[0] + '</span>'; }).join('');
     var mb = '';
     var cf = INV.cfg[t.bid] || {};
-    var tip = t.name + '\n' + t.comp + ' · ' + t.mgmt + ' · ' + (t.cycle || '-') + (it.w ? '\n⚠ ' + it.w : '') + (it.i ? '\n' + it.i : '') + (nw ? '\n처음 보는 대상' : '') + (cf.rule ? '\n규칙: ' + cf.rule : '') + ((it.m || cf.m) ? '\n메모: ' + (it.m || cf.m) : '');
+    var tip = t.name + '\n' + t.comp + ' · ' + t.mgmt + ' · ' + (t.cycle || '-') + (it.w ? '\n⚠ ' + it.w : '') + (it.i ? '\n' + it.i : '') + (nw ? '\n처음 보는 대상' : '') + ((cf.k ? invKText(cf.k) : cf.rule) ? '\n규칙: ' + (cf.k ? invKText(cf.k) : cf.rule) : '') + (invKOf(t.bid).att ? '\n참관 필요' : '') + (invKOf(t.bid).call ? '\n사전 연락' : '') + ((it.m || cf.m) ? '\n메모: ' + (it.m || cf.m) : '');
     return '<div class="__wpInvChip" data-b="' + t.bid + '" title="' + esc(tip) + '" style="display:flex;align-items:center;box-sizing:border-box;height:25px;cursor:pointer;padding:0 7px 0 6px;margin:0 0 2px;border-left:3px solid ' + bar + ';background:' + (flag ? '#FEF2F2' : '#fff') + ';border-radius:0 4px 4px 0;font-size:12.5px;line-height:1.4;color:' + (done ? '#94a3b8' : '#0F172A') + ';' + (done ? 'text-decoration:line-through;' : '') + '" onmouseover="this.style.background=\'#EEF2FF\'" onmouseout="this.style.background=\'' + (flag ? '#FEF2F2' : '#fff') + '\'">' +
       tg + '<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">' + esc(sp.name) + '</span>' + ((it.m || cf.m || cf.rule) ? '<span style="flex:none;color:#F59E0B;font-size:11px;margin-left:4px" title="메모·규칙 있음">●</span>' : '') + mb + '</div>';
   }
@@ -9690,6 +9748,74 @@ document.getElementById('__wpSave').onclick = function() {
     var fi = document.getElementById('__wpInvF'); fi.oninput = function() { INV.filter = fi.value; clearTimeout(fi._t); fi._t = setTimeout(function() { invRenderList(b); var f2 = document.getElementById('__wpInvF'); if (f2) { f2.focus(); f2.setSelectionRange(f2.value.length, f2.value.length); } }, 250); };
     document.getElementById('__wpInvFs').onchange = function() { INV.fsel = this.value; invRenderList(b); };
     invBindRows(b);
+  }
+
+  /* ---------- 마스터 DB 화면 ---------- */
+  INV.mf = INV.mf || { q: '', sel: '대상', mg: '' };
+  function invRenderMaster(b) {
+    var f = INV.mf, q = f.q.toLowerCase(), ed = INV.canEdit;
+    var ts = INV.targets.filter(function(t) {
+      if (q && (t.name + t.comp).toLowerCase().indexOf(q) < 0) return false;
+      if (f.mg && t.mgmt !== f.mg) return false;
+      var ex = invIsExcl(t), k = invKOf(t.bid);
+      if (f.sel === '대상') return !ex || k.fq === 'yr';
+      if (f.sel === '규칙 있음') return !!(invKText(k) || k.fq || k.att || k.call);
+      if (f.sel === '제외') return ex;
+      if (f.sel === '영남') return invYnOf(t) || (invKOf(t.bid).rg === '영남x');
+      return true;
+    });
+    ts.sort(function(x, y) { return (invCat(x) - invCat(y)) || (x.comp + x.name).localeCompare(y.comp + y.name, 'ko'); });
+    function sel(bid, key, val) { return '<select class="wp-inp __wpInvK" data-b="' + bid + '" data-k="' + key + '" style="height:30px;font-size:12.5px;padding:0 4px;width:100%"' + (ed ? '' : ' disabled') + '>' + INV_K_OPTS[key].map(function(o) { return '<option value="' + o[0] + '"' + (String(val || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'; }
+    function chk(bid, key, val) { return '<input type="checkbox" class="__wpInvKc" data-b="' + bid + '" data-k="' + key + '"' + (val ? ' checked' : '') + (ed ? '' : ' disabled') + '>'; }
+    var h = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid #E2E8F0;background:#F8FAFC">' +
+      '<input id="__wpInvMq" class="wp-inp" placeholder="거래처·기업 검색" value="' + esc(f.q) + '" style="width:240px;height:32px">' +
+      '<select id="__wpInvMs" class="wp-inp" style="height:32px;width:120px">' + ['대상', '규칙 있음', '영남', '제외', '전체'].map(function(x) { return '<option' + (x === f.sel ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select>' +
+      '<select id="__wpInvMm" class="wp-inp" style="height:32px;width:110px"><option value="">관리종류 전체</option><option' + (f.mg === '밸런스' ? ' selected' : '') + '>밸런스</option><option' + (f.mg === '스타트' ? ' selected' : '') + '>스타트</option></select>' +
+      '<span style="color:#64748b;font-size:12.5px">' + ts.length + '곳 · 값을 바꾸면 바로 반영되고 [저장]으로 확정됩니다. 다음 [자동 배치]부터 적용</span>' +
+      '<span style="flex:1"></span><button id="__wpInvMx" class="wp-btn gh" style="height:32px">⬇ 마스터 엑셀</button></div>';
+    h += '<table class="wp-tbl" style="table-layout:fixed;font-size:12.5px"><thead><tr>' +
+      '<th style="width:12%">기업</th><th style="width:19%">거래처</th><th style="width:6%">종류</th><th style="width:7%">배송주기</th>' +
+      '<th style="width:7.5%">조사 빈도</th><th style="width:6%">권역</th><th style="width:7%">주차</th><th style="width:5.5%">요일</th><th style="width:8%">배송 기준</th><th style="width:10%">날짜 조건</th><th style="width:7%">묶음</th>' +
+      '<th style="width:3.5%;text-align:center">참관</th><th style="width:3.5%;text-align:center">연락</th><th style="width:3.5%;text-align:center">사진</th></tr></thead><tbody>';
+    ts.forEach(function(t) {
+      var k = invKOf(t.bid), yn = invYnOf(t), sp = invSplitName(t.name), cf = INV.cfg[t.bid] || {};
+      var auto = !cf.k && !(cf.ex === 1) && invIsExcl(t) && !cf.yr;
+      h += '<tr data-b="' + t.bid + '"' + (invIsExcl(t) && k.fq !== 'yr' ? ' style="opacity:.55"' : '') + '>' +
+        '<td style="color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(t.comp) + '">' + esc(t.comp) + '</td>' +
+        '<td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(t.name + (cf.m ? '\n메모: ' + cf.m : '')) + '"><b>' + esc(sp.name) + '</b>' + sp.tags.map(function(x) { return ' <span style="font-size:10.5px;color:' + x[1] + ';background:' + x[2] + ';border-radius:3px;padding:0 4px">' + x[0] + '</span>'; }).join('') + '</td>' +
+        '<td>' + invMgmtTag(t.mgmt) + '</td>' +
+        '<td style="color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(t.cycle || '-') + '</td>' +
+        '<td>' + sel(t.bid, 'fq', k.fq) + (auto ? '<div style="font-size:10.5px;color:#94a3b8">자동 제외</div>' : '') + '</td>' +
+        '<td>' + sel(t.bid, 'rg', k.rg) + (!k.rg ? '<div style="font-size:10.5px;color:#94a3b8">오피스: ' + (t.yn ? '영남' : '수도권') + '</div>' : '') + '</td>' +
+        '<td>' + sel(t.bid, 'wk', k.wk) + '</td><td>' + sel(t.bid, 'dow', k.dow) + '</td><td>' + sel(t.bid, 'pos', k.pos) + '</td>' +
+        '<td><div style="display:flex;gap:3px"><input class="wp-inp __wpInvKn" data-b="' + t.bid + '" type="number" min="1" max="31" value="' + esc(k.dn || '') + '" style="height:30px;width:48px;font-size:12.5px;padding:0 4px"' + (ed ? '' : ' disabled') + '>' + sel(t.bid, 'dc', k.dc) + '</div></td>' +
+        '<td><input class="wp-inp __wpInvKg" data-b="' + t.bid + '" value="' + esc(k.grp || '') + '" placeholder="기업" style="height:30px;width:100%;font-size:12px;padding:0 5px"' + (ed ? '' : ' disabled') + '></td>' +
+        '<td style="text-align:center">' + chk(t.bid, 'att', k.att) + '</td><td style="text-align:center">' + chk(t.bid, 'call', k.call) + '</td><td style="text-align:center">' + chk(t.bid, 'pic', k.pic) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    b.innerHTML = h;
+    function put(bid, key, v) {
+      var c = invCfgOf(bid);
+      if (!c.k) c.k = JSON.parse(JSON.stringify(invKOf(bid)));
+      if (v === '' || v === 0 || v == null) delete c.k[key]; else c.k[key] = v;
+      /* 빈도는 기존 제외/연1회 표시와 같이 맞춘다 */
+      if (key === 'fq') { c.ex = v === 'ex' ? 1 : 0; c.yr = v === 'yr' ? 1 : 0; if (v) { var it = INV.plan[bid]; if (it && it.s !== 'done' && (v === 'ex' || INV.ym.slice(5) !== '01')) delete INV.plan[bid]; } }
+      c.rule = invKText(c.k); c.seen = 1;
+      INV.dirty = true; invRenderHead();
+    }
+    [].forEach.call(b.querySelectorAll('.__wpInvK'), function(x) { x.onchange = function() { put(x.getAttribute('data-b'), x.getAttribute('data-k'), x.value); }; });
+    [].forEach.call(b.querySelectorAll('.__wpInvKc'), function(x) { x.onchange = function() { put(x.getAttribute('data-b'), x.getAttribute('data-k'), x.checked ? 1 : 0); }; });
+    [].forEach.call(b.querySelectorAll('.__wpInvKn'), function(x) { x.onchange = function() { var n = parseInt(x.value, 10); put(x.getAttribute('data-b'), 'dn', n > 0 && n < 32 ? n : ''); }; });
+    [].forEach.call(b.querySelectorAll('.__wpInvKg'), function(x) { x.onchange = function() { put(x.getAttribute('data-b'), 'grp', x.value.trim()); }; });
+    var mq = document.getElementById('__wpInvMq'); mq.oninput = function() { f.q = mq.value; clearTimeout(mq._t); mq._t = setTimeout(function() { invRenderMaster(b); var m2 = document.getElementById('__wpInvMq'); if (m2) { m2.focus(); m2.setSelectionRange(m2.value.length, m2.value.length); } }, 250); };
+    document.getElementById('__wpInvMs').onchange = function() { f.sel = this.value; invRenderMaster(b); };
+    document.getElementById('__wpInvMm').onchange = function() { f.mg = this.value; invRenderMaster(b); };
+    document.getElementById('__wpInvMx').onclick = function() {
+      var L = function(key, v) { var o = INV_K_OPTS[key].filter(function(x) { return x[0] === String(v || ''); })[0]; return o ? o[1] : ''; };
+      var rows = [['branch_id', '기업', '거래처', '관리종류', '배송주기', '조사 빈도', '권역', '주차', '요일', '배송 기준', '날짜 조건', '묶음', '참관', '사전연락', '사진', '메모']];
+      INV.targets.forEach(function(t) { var k = invKOf(t.bid), cf = INV.cfg[t.bid] || {}; rows.push([+t.bid, t.comp, t.name, t.mgmt, t.cycle, invIsExcl(t) && !k.fq ? '제외(자동)' : L('fq', k.fq), (k.rg ? L('rg', k.rg) : (t.yn ? '영남' : '수도권')), L('wk', k.wk), L('dow', k.dow), L('pos', k.pos), k.dc && k.dn ? k.dn + L('dc', k.dc) : '', k.grp || '', k.att ? 'Y' : '', k.call ? 'Y' : '', k.pic ? 'Y' : '', cf.m || '']); });
+      xlsxDownload(rows, null, '재고조사 마스터', '재고조사_마스터_' + todayStr() + '.xlsx');
+    };
   }
   function invRenderNew(b) {
     var nw = INV.targets.filter(function(t) { return invIsNew(t); });
