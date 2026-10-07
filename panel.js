@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1815';
+  var PANEL_BUILD = '20261007-1830';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9272,13 +9272,21 @@ document.getElementById('__wpSave').onclick = function() {
         return trs.length >= 500 ? grab(m, page + 1, acc) : acc;
       });
     }
-    return grab('스타트', 1).then(function(a) { return grab('밸런스', 1).then(function(b) {
+    /* 영남 물류권역 거래처 — 서비스 목록 logisType=영남 필터로 branchId 만 모은다 */
+    function grabYn(m) {
+      return fetch('/office/sales/service?searchYN=Y&size=500&page=1&serviceType=' + invEnc('스낵24') + '&serviceManagement=' + invEnc(m) + '&serviceStatus=' + invEnc('활동') + '&logisType=' + invEnc('영남')).then(function(r) { return r.text(); }).then(function(h) {
+        var ids = {}, re = /\/sales\/branch\/(\d+)/g, mm; while ((mm = re.exec(h))) ids[mm[1]] = 1; return ids;
+      }).catch(function() { return {}; });
+    }
+    return grab('스타트', 1).then(function(a) { return grab('밸런스', 1).then(function(b) { return Promise.all([grabYn('스타트'), grabYn('밸런스')]).then(function(yy) {
+      var yn = {}; yy.forEach(function(o) { Object.keys(o).forEach(function(k) { yn[k] = 1; }); });
+      a.concat(b).forEach(function(x) { x.yn = !!yn[x.bid]; });
       var all = a.concat(b), seen = {};
       all = all.filter(function(x) { if (seen[x.bid]) return false; seen[x.bid] = 1; return true; });
       all.sort(function(x, y) { return (x.comp + x.name).localeCompare(y.comp + y.name, 'ko'); });
       INV.targets = all; INV.tAt = Date.now();
       return all;
-    }); });
+    }); }); });
   }
   /* ---- 오피스: 거래처의 해당 월 배송일 ---- */
   function invFetchDates(bid, ym) {
@@ -9321,7 +9329,8 @@ document.getElementById('__wpSave').onclick = function() {
   }
   function invHasRule(r) { return !!(r.week || r.pos || r.before || r.after || r.from); }
   /* 조사일 고르기: ds = 이달 배송일(정렬), rule = 규칙, ref = 전월 조사일 */
-  function invPick(ds, rule, ref) {
+  function invPick(ds, rule, ref, ctx) {
+    ctx = ctx || {};
     if (!ds.length) return { d: '', why: '이달 배송 없음' };
     var r = rule || {}, c;
     function dom(x) { return +x.slice(8); }
@@ -9333,14 +9342,28 @@ document.getElementById('__wpSave').onclick = function() {
     if (r.before) { c = ds.filter(function(x) { return dom(x) <= r.before; }); if (c.length) return { d: c[c.length - 1] }; return { d: ds[0], why: r.before + '일 전 배송일 없음' }; }
     if (r.after) { c = ds.filter(function(x) { return dom(x) >= r.after; }); if (c.length) return { d: c[0] }; return { d: ds[ds.length - 1], why: r.after + '일 이후 배송일 없음' }; }
     if (r.from) { c = ds.filter(function(x) { return dom(x) >= r.from && dom(x) <= r.to; }); if (c.length) return { d: c[0] }; return { d: invNearest(ds, r.from), why: r.from + '~' + r.to + '일 배송일 없음' }; }
+    var load = ctx.load || {};
+    function light(arr) { var b = arr[0]; arr.forEach(function(x) { if ((load[x] || 0) < (load[b] || 0)) b = x; }); return b; }
+    /* 영남 스팟: 3~5주차에 몰아서 (전월 요일이 그 안에 있으면 그대로) */
+    if (ctx.yn) {
+      c = ds.filter(function(x) { return invWeekRow(x) >= 3; });
+      if (!c.length) return { d: ds[ds.length - 1], why: '영남인데 3주차 이후 배송일 없음' };
+      if (ref) {
+        var yw = invWeekRow(ref), yd = invDow(ref), y1 = c.filter(function(x) { return invWeekRow(x) === yw && invDow(x) === yd; });
+        if (y1.length) return { d: y1[0], info: '영남 3~5주차 · 전월 동일' };
+        var y2 = c.filter(function(x) { return invDow(x) === yd; });
+        if (y2.length) return { d: light(y2), info: '영남 3~5주차 · 전월 요일' };
+      }
+      return { d: light(c), info: '영남 3~5주차' };
+    }
     if (ref) {
       var rw = invWeekRow(ref), rd = invDow(ref);
       c = ds.filter(function(x) { return invWeekRow(x) === rw && invDow(x) === rd; }); if (c.length) return { d: c[0] };
       c = ds.filter(function(x) { return invWeekRow(x) === rw; }); if (c.length) return { d: c[0] };
       return { d: invNearest(ds, dom(ref)) };
     }
-    c = ds.filter(function(x) { return invWeekRow(x) === 2; });
-    return { d: c.length ? c[0] : ds[0], info: '신규 · 전월 참조 없음(2주차 기준)' };
+    /* 전월 기록 없음(신규): 이달 배송일 중 가장 덜 붐비는 날 — 특정 날에 몰리지 않게 */
+    return { d: light(ds), info: '신규 · 전월 기록 없음 → 덜 붐비는 배송일' };
   }
   function invNearest(ds, dom0) { var best = ds[0], bd = 99; ds.forEach(function(x) { var g = Math.abs(+x.slice(8) - dom0); if (g < bd) { bd = g; best = x; } }); return best; }
 
@@ -9352,13 +9375,17 @@ document.getElementById('__wpSave').onclick = function() {
   function invAutoPlace(onlyEmpty) {
     var ym = INV.ym, plan = INV.plan || (INV.plan = {}), n = 0;
     var live = INV.targets.filter(function(t) { return !invIsExcl(t); });
+    /* 날짜별 현재 건수 — 새로 배치할 땐 덜 붐비는 날로 */
+    var load = {};
+    live.forEach(function(t) { var it = plan[t.bid]; if (!it || !it.d) return; var keep = it.a === 'm' || it.a === 'sheet' || it.s === 'done' || (onlyEmpty && it.d); if (keep) load[it.d] = (load[it.d] || 0) + 1; });
     live.forEach(function(t) {
       var it = plan[t.bid]; if (it && (it.a === 'm' || it.a === 'sheet' || it.s === 'done')) return;
       if (onlyEmpty && it && it.d) return;
       var ds = invDs(t.bid, ym);
       var cf = INV.cfg[t.bid] || {};
       var ref = INV.prev && INV.prev[t.bid] && INV.prev[t.bid].d;
-      var pk = invPick(ds, invRule(cf.rule), ref);
+      var pk = invPick(ds, invRule(cf.rule), ref, { yn: t.yn, load: load });
+      if (pk.d) load[pk.d] = (load[pk.d] || 0) + 1;
       plan[t.bid] = { d: pk.d, s: (it && it.s) || '', m: (it && it.m) || '', w: pk.why || '', i: pk.info || '', a: 'auto' };
       n++;
     });
@@ -9502,7 +9529,7 @@ document.getElementById('__wpSave').onclick = function() {
     var done = it.s === 'done', flag = !!it.w, man = it.a === 'm', nw = invIsNew(t);
     var bar = done ? '#16A34A' : flag ? '#DC2626' : nw ? '#0EA5E9' : man ? '#2563EB' : '#CBD5E1';
     var sp = invSplitName(t.name);
-    var tg = invMgmtTag(t.mgmt) + sp.tags.map(function(x) { return '<span style="flex:none;font-size:10.5px;font-weight:700;color:' + x[1] + ';background:' + x[2] + ';border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">' + x[0] + '</span>'; }).join('');
+    var tg = invMgmtTag(t.mgmt) + (t.yn ? '<span style="flex:none;font-size:10.5px;font-weight:700;color:#9F1239;background:#FFE4E6;border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">영남</span>' : '') + sp.tags.map(function(x) { return '<span style="flex:none;font-size:10.5px;font-weight:700;color:' + x[1] + ';background:' + x[2] + ';border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">' + x[0] + '</span>'; }).join('');
     var mb = '';
     var cf = INV.cfg[t.bid] || {};
     var tip = t.name + '\n' + t.comp + ' · ' + t.mgmt + ' · ' + (t.cycle || '-') + (it.w ? '\n⚠ ' + it.w : '') + (it.i ? '\n' + it.i : '') + (nw ? '\n처음 보는 대상' : '') + (cf.rule ? '\n규칙: ' + cf.rule : '') + ((it.m || cf.m) ? '\n메모: ' + (it.m || cf.m) : '');
