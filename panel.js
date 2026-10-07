@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1842';
+  var PANEL_BUILD = '20261007-1843';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9415,12 +9415,20 @@ document.getElementById('__wpSave').onclick = function() {
       if (uniq.length <= 1) return;
       var common = null;
       ms.forEach(function(t) { var ds = invDs(t.bid, ym); common = common === null ? ds.slice() : common.filter(function(x) { return ds.indexOf(x) > -1; }); });
-      if (common && common.length) {
+      /* 규칙(특이사항)이 있는 거래처는 기준점 — 절대 옮기지 않고, 나머지가 그 날짜를 따라간다 */
+      var anchors = ms.filter(function(t) { var it = plan[t.bid]; return it && it.d && (invHasRule(invRule((INV.cfg[t.bid] || {}).rule)) || it.a === 'm' || it.a === 'sheet' || it.s === 'done'); });
+      var aDates = anchors.map(function(t) { return plan[t.bid].d; }).filter(function(x, i, arr) { return arr.indexOf(x) === i; });
+      if (aDates.length > 1) { ms.forEach(function(t) { var it = plan[t.bid]; if (it && anchors.indexOf(t) < 0) it.i = (it.i ? it.i + ' · ' : '') + '같은 기업 지정일이 서로 다름'; }); return; }
+      function movable(t) { var it = plan[t.bid]; return it && anchors.indexOf(t) < 0 && it.a !== 'm' && it.a !== 'sheet' && it.s !== 'done'; }
+      if (aDates.length === 1) {
+        var tg = aDates[0];
+        ms.forEach(function(t) { if (!movable(t)) return; var it = plan[t.bid]; if (invDs(t.bid, ym).indexOf(tg) > -1) { if (it.d !== tg) { it.d = tg; it.i = (it.i ? it.i + ' · ' : '') + '같은 기업 지정일(' + invShort(tg) + ')로 맞춤'; } } else { it.i = (it.i ? it.i + ' · ' : '') + '같은 기업 지정일(' + invShort(tg) + ')에 배송 없음'; } });
+      } else if (common && common.length) {
         var cnt = {}; picks.forEach(function(d) { cnt[d] = (cnt[d] || 0) + 1; });
         var tgt = common.filter(function(d) { return cnt[d]; }).sort(function(a, b) { return cnt[b] - cnt[a]; })[0] || common[0];
-        ms.forEach(function(t) { var it = plan[t.bid]; if (!it || it.a === 'm' || it.a === 'sheet' || it.s === 'done') return; if (it.d !== tgt) { it.d = tgt; it.i = (it.i ? it.i + ' · ' : '') + '기업 묶음(' + g + ')으로 날짜 통일'; } });
+        ms.forEach(function(t) { if (!movable(t)) return; var it = plan[t.bid]; if (it.d !== tgt) { it.d = tgt; it.i = (it.i ? it.i + ' · ' : '') + '기업 묶음(' + g + ')으로 날짜 통일'; } });
       } else {
-        ms.forEach(function(t) { var it = plan[t.bid]; if (!it || it.a === 'm' || it.a === 'sheet' || it.s === 'done') return; it.i = (it.i ? it.i + ' · ' : '') + '같은 기업 공통 배송일 없음'; });
+        ms.forEach(function(t) { if (!movable(t)) return; var it = plan[t.bid]; it.i = (it.i ? it.i + ' · ' : '') + '같은 기업 공통 배송일 없음'; });
       }
     });
     INV.dirty = true;
