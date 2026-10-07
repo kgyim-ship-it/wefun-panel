@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1052';
+  var PANEL_BUILD = '20261007-1355';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -1047,9 +1047,15 @@
     window.__wpAutoBusy = true;
     return listReq({ status: '대기' }).then(function(items) {
       var t = todayStr();
+      var nowMin = kstNowMin();
+      function claimFresh(it) {                                   /* 10분 안에 찍힌 선점 표시만 '진행 중'으로 본다 */
+        var m = /자동반영:\s*[^·]*?(\d{2}):(\d{2})\s*$/.exec(String(it.detail || ''));
+        if (!m) { return false; }
+        var at = (+m[1]) * 60 + (+m[2]);
+        return nowMin >= at && nowMin - at < 10;
+      }
       var due = (items || []).filter(function(it) {
-        return it.action === '배송주기변경' && it.status === '대기' && bookedDate(it) && bookedDate(it) <= t &&
-          String(it.detail || '').indexOf('자동반영:') < 0;        /* 다른 PC가 이미 잡은 건은 건너뛴다 */
+        return it.action === '배송주기변경' && it.status === '대기' && bookedDate(it) && bookedDate(it) <= t && !claimFresh(it);
       });
       if (!due.length) { return; }
       toast('예약 ' + due.length + '건 자동 반영 시작 (' + why + ')', '#1f4e78');
@@ -1058,8 +1064,9 @@
       due.forEach(function(it) {
         ch = ch.then(function() {
           var stamp = '자동반영: ' + (REQ.name || '패널') + ' ' + fmtTs(now()).slice(-5);
+          var base = String(it.detail || '').replace(/\s*·\s*자동반영:[^·]*$/, '');   /* 지난 시도 흔적 제거 */
           /* 선점 표시 → 1.5초 뒤 다시 읽어 내 표시가 남아 있을 때만 진행 (두 PC가 동시에 돌리는 것 방지) */
-          return editDetail(it.id, String(it.detail || '') + ' · ' + stamp, REQ.name || '').then(function() {
+          return editDetail(it.id, base + ' · ' + stamp, REQ.name || '').then(function() {
             return new Promise(function(r) { setTimeout(r, 1500); });
           }).then(function() {
             return listReq({ status: '대기' });
@@ -1072,6 +1079,8 @@
             }).then(function() { ok++; });
           }).catch(function(e) {
             fails.push((it.branchName || it.id) + ' — ' + ((e && e.message) || e));
+            /* 실패하면 선점 표시를 걷어낸다 — 안 걷으면 '진행 중'으로 보여 영영 다시 안 돈다 */
+            return editDetail(it.id, base, REQ.name || '').catch(function() {});
           });
         });
       });
