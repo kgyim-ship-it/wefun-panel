@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1809';
+  var PANEL_BUILD = '20261007-1811';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9472,8 +9472,9 @@ document.getElementById('__wpSave').onclick = function() {
   }
   function invTargetMap() { var m = {}; (INV.targets || []).forEach(function(t) { m[t.bid] = t; }); return m; }
   /* 이름 앞 유형 표시((벤딩)·[샵인샵]·(아이스크림)…)는 작은 태그로 빼고, 끝의 _스타트/_밸런스는 지운다 — 이름이 바로 읽히게 */
-  var INV_TAGS = { '벤딩': ['벤딩', '#6D28D9', '#F3E8FF'], '밴딩': ['벤딩', '#6D28D9', '#F3E8FF'], '샵인샵': ['샵인샵', '#0F766E', '#CCFBF1'], '아이스크림': ['아이스', '#0369A1', '#E0F2FE'] };
-  var INV_DROP = /^(스낵|E|SNF|SR|K|발렉스|N카페|예약|정산)$/;
+  var INV_TAGS = { '벤딩': ['벤딩', '#6D28D9', '#F3E8FF'], '밴딩': ['벤딩', '#6D28D9', '#F3E8FF'], '샵인샵': ['샵인샵', '#0F766E', '#CCFBF1'] };
+  var INV_DROP = /^(스낵|아이스크림|E|SNF|SR|K|발렉스|N카페|예약|정산)$/;
+  function invMgmtTag(m) { var b = m === '밸런스'; return '<span style="flex:none;font-size:10.5px;font-weight:700;color:' + (b ? '#B45309' : '#475569') + ';background:' + (b ? '#FEF3C7' : '#F1F5F9') + ';border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">' + esc(m || '-') + '</span>'; }
   function invSplitName(nm) {
     var s = String(nm || ''), tags = [], m, guard = 0;
     while ((m = /^\s*[\[(]([^\])]{1,6})[\])]\s*/.exec(s)) && guard++ < 6) {
@@ -9490,8 +9491,8 @@ document.getElementById('__wpSave').onclick = function() {
     var done = it.s === 'done', flag = !!it.w, man = it.a === 'm', nw = invIsNew(t);
     var bar = done ? '#16A34A' : flag ? '#DC2626' : nw ? '#0EA5E9' : man ? '#2563EB' : '#CBD5E1';
     var sp = invSplitName(t.name);
-    var tg = sp.tags.map(function(x) { return '<span style="flex:none;font-size:10.5px;font-weight:700;color:' + x[1] + ';background:' + x[2] + ';border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">' + x[0] + '</span>'; }).join('');
-    var mb = t.mgmt === '밸런스' ? '<span style="flex:none;font-size:10px;font-weight:800;color:#B45309;margin-left:auto;padding-left:6px">밸</span>' : '';
+    var tg = invMgmtTag(t.mgmt) + sp.tags.map(function(x) { return '<span style="flex:none;font-size:10.5px;font-weight:700;color:' + x[1] + ';background:' + x[2] + ';border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">' + x[0] + '</span>'; }).join('');
+    var mb = '';
     var cf = INV.cfg[t.bid] || {};
     var tip = t.name + '\n' + t.comp + ' · ' + t.mgmt + ' · ' + (t.cycle || '-') + (it.w ? '\n⚠ ' + it.w : '') + (it.i ? '\n' + it.i : '') + (nw ? '\n처음 보는 대상' : '') + (cf.rule ? '\n규칙: ' + cf.rule : '') + ((it.m || cf.m) ? '\n메모: ' + (it.m || cf.m) : '');
     return '<div class="__wpInvChip" data-b="' + t.bid + '" title="' + esc(tip) + '" style="display:flex;align-items:center;box-sizing:border-box;height:25px;cursor:pointer;padding:0 7px 0 6px;margin:0 0 2px;border-left:3px solid ' + bar + ';background:' + (flag ? '#FEF2F2' : '#fff') + ';border-radius:0 4px 4px 0;font-size:12.5px;line-height:1.4;color:' + (done ? '#94a3b8' : '#0F172A') + ';' + (done ? 'text-decoration:line-through;' : '') + '" onmouseover="this.style.background=\'#EEF2FF\'" onmouseout="this.style.background=\'' + (flag ? '#FEF2F2' : '#fff') + '\'">' +
@@ -9519,7 +9520,7 @@ document.getElementById('__wpSave').onclick = function() {
       var sec = cat !== lastCat ? '<div style="font-size:10.5px;font-weight:700;color:#94a3b8;letter-spacing:.02em;margin:' + (lastCat < 0 ? '0' : '7px') + ' 0 3px 2px">' + INV_CATS[cat] + ' · ' + nCat + '</div>' : '';
       lastCat = cat;
       return sec + (function() {
-      var ms = by[k];
+      var ms = by[k0];
       if (ms.length < 2) return invChip(ms[0], INV.plan[ms[0].bid]);
       var gk = ymd + '|' + k0, open = !!INV.open[gk];
       var its = ms.map(function(t) { return INV.plan[t.bid] || {}; });
@@ -9528,8 +9529,9 @@ document.getElementById('__wpSave').onclick = function() {
       var bar = anyFlag ? '#DC2626' : allDone ? '#16A34A' : anyNew ? '#0EA5E9' : anyMan ? '#2563EB' : '#CBD5E1';
       var tags = [];
       ms.forEach(function(t) { invSplitName(t.name).tags.forEach(function(x) { if (tags.indexOf(x) < 0) tags.push(x); }); });
-      var tg = tags.map(function(x) { return '<span style="flex:none;font-size:10.5px;font-weight:700;color:' + x[1] + ';background:' + x[2] + ';border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">' + x[0] + '</span>'; }).join('');
-      var bal = ms.some(function(t) { return t.mgmt === '밸런스'; }) ? '<span style="flex:none;font-size:10px;font-weight:800;color:#B45309;padding-left:6px">밸</span>' : '';
+      var mg = []; ms.forEach(function(t) { if (mg.indexOf(t.mgmt) < 0) mg.push(t.mgmt); });
+      var tg = mg.map(invMgmtTag).join('') + tags.map(function(x) { return '<span style="flex:none;font-size:10.5px;font-weight:700;color:' + x[1] + ';background:' + x[2] + ';border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">' + x[0] + '</span>'; }).join('');
+      var bal = '';
       var bg = anyFlag ? '#FEF2F2' : '#fff';
       return '<div style="margin:0 0 2px">' +
         '<div class="__wpInvGrp" data-g="' + esc(gk) + '" title="' + esc(ms.map(function(t) { return t.name; }).join('\n')) + '" style="display:flex;align-items:center;box-sizing:border-box;height:25px;cursor:pointer;padding:0 7px 0 4px;border-left:3px solid ' + bar + ';background:' + bg + ';border-radius:0 4px 4px 0;font-size:12.5px;line-height:1.4;color:#0F172A" onmouseover="this.style.background=\'#EEF2FF\'" onmouseout="this.style.background=\'' + bg + '\'">' +
@@ -9559,7 +9561,7 @@ document.getElementById('__wpSave').onclick = function() {
     }
     wk += '<span style="flex:1"></span><span style="font-size:11.5px;color:#64748b;display:flex;gap:10px;flex-wrap:wrap">' +
       [['#CBD5E1', '기본'], ['#0EA5E9', '처음 보는 대상'], ['#2563EB', '직접 지정'], ['#DC2626', '검토 필요'], ['#16A34A', '완료']].map(function(x) { return '<span><i style="display:inline-block;width:3px;height:11px;background:' + x[0] + ';vertical-align:-1px;margin-right:4px"></i>' + x[1] + '</span>'; }).join('') +
-      '<span><b style="color:#F59E0B">●</b> 메모·규칙</span><span><b style="color:#B45309;font-size:10px">밸</b> 밸런스</span></span></div>';
+      '<span><b style="color:#F59E0B">●</b> 메모·규칙</span></span></div>';
     /* 오피스 페이지 CSS가 td 를 세로 가운데 정렬로 덮어써서 표 대신 grid 로 그린다 */
     var h = '<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-left:1px solid #E2E8F0">' + ['월', '화', '수', '목', '금'].map(function(d) { return '<div style="background:#0F172A;color:#CBD5E1;font-size:12.5px;padding:7px;text-align:center;font-weight:700;position:sticky;top:0;z-index:2">' + d + '</div>'; }).join('');
     for (var w = 0; w < weeks; w++) {
