@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1800';
+  var PANEL_BUILD = '20261007-1809';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9499,13 +9499,29 @@ document.getElementById('__wpSave').onclick = function() {
   }
   /* 하루치 목록: 같은 기업이 2곳 이상이면 한 줄로 접어 두고 ▸ 를 누르면 펼친다 */
   INV.open = INV.open || {};
+  /* 하루 안 표시 순서: 밸런스 → 스타트 → 샵인샵 → 벤딩 (샵인샵·벤딩은 이름 태그 우선) */
+  var INV_CATS = ['밸런스', '스타트', '샵인샵', '벤딩'];
+  function invCat(t) {
+    var tg = invSplitName(t.name).tags.map(function(x) { return x[0]; });
+    if (tg.indexOf('샵인샵') > -1) return 2;
+    if (tg.indexOf('벤딩') > -1) return 3;
+    return t.mgmt === '밸런스' ? 0 : 1;
+  }
+  function invSortDay(arr) { return arr.slice().sort(function(x, y) { return (invCat(x) - invCat(y)) || (x.comp + x.name).localeCompare(y.comp + y.name, 'ko'); }); }
   function invDayList(list, ymd) {
+    list = invSortDay(list);
     var by = {}, order = [];
-    list.forEach(function(t) { var k = t.comp || t.name; if (!by[k]) { by[k] = []; order.push(k); } by[k].push(t); });
-    return order.map(function(k) {
+    list.forEach(function(t) { var k = invCat(t) + '|' + (t.comp || t.name); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(t); });
+    var lastCat = -1;
+    return order.map(function(k0) {
+      var cat = +k0.split('|')[0], k = k0.slice(k0.indexOf('|') + 1);
+      var nCat = list.filter(function(t) { return invCat(t) === cat; }).length;
+      var sec = cat !== lastCat ? '<div style="font-size:10.5px;font-weight:700;color:#94a3b8;letter-spacing:.02em;margin:' + (lastCat < 0 ? '0' : '7px') + ' 0 3px 2px">' + INV_CATS[cat] + ' · ' + nCat + '</div>' : '';
+      lastCat = cat;
+      return sec + (function() {
       var ms = by[k];
       if (ms.length < 2) return invChip(ms[0], INV.plan[ms[0].bid]);
-      var gk = ymd + '|' + k, open = !!INV.open[gk];
+      var gk = ymd + '|' + k0, open = !!INV.open[gk];
       var its = ms.map(function(t) { return INV.plan[t.bid] || {}; });
       var anyFlag = its.some(function(x) { return x.w; }), allDone = its.every(function(x) { return x.s === 'done'; }), doneN = its.filter(function(x) { return x.s === 'done'; }).length;
       var anyNew = ms.some(invIsNew), anyMan = its.some(function(x) { return x.a === 'm'; });
@@ -9522,6 +9538,7 @@ document.getElementById('__wpSave').onclick = function() {
         '<span style="flex:none;margin-left:6px;font-size:11px;font-weight:700;color:#475569;background:#E2E8F0;border-radius:9px;padding:0 7px">' + (doneN ? doneN + '/' : '') + ms.length + '곳</span>' +
         '<span style="flex:1"></span>' + bal + '</div>' +
         '<div data-gb="' + esc(gk) + '" style="display:' + (open ? 'block' : 'none') + ';margin:2px 0 4px 12px">' + ms.map(function(t) { return invChip(t, INV.plan[t.bid]); }).join('') + '</div></div>';
+      })();
     }).join('');
   }
   function invRenderCal(b) {
@@ -9656,7 +9673,8 @@ document.getElementById('__wpSave').onclick = function() {
       var wb = new ExcelJS.Workbook();
       var ws = wb.addWorksheet(ym.slice(2, 4) + '년 ' + (+ym.slice(5)) + '월 재고조사');
       var byDay = {};
-      Object.keys(INV.plan).forEach(function(bid) { var it = INV.plan[bid]; if (!it || !it.d || !tm[bid] || invIsExcl(tm[bid])) return; (byDay[it.d] = byDay[it.d] || []).push(tm[bid].name + (it.s === 'done' ? ' ✓' : '')); });
+      Object.keys(INV.plan).forEach(function(bid) { var it = INV.plan[bid]; if (!it || !it.d || !tm[bid] || invIsExcl(tm[bid])) return; (byDay[it.d] = byDay[it.d] || []).push(tm[bid]); });
+      Object.keys(byDay).forEach(function(k) { byDay[k] = invSortDay(byDay[k]).map(function(t) { return t.name + ((INV.plan[t.bid] || {}).s === 'done' ? ' ✓' : ''); }); });
       ws.addRow(['', (+ym.slice(5)) + '월 재고조사 일정']);
       var hr = ws.addRow(['', '월', '화', '수', '목', '금', '', '메모']);
       hr.eachCell(function(c) { c.font = { bold: true }; c.alignment = { horizontal: 'center' }; });
@@ -9664,7 +9682,7 @@ document.getElementById('__wpSave').onclick = function() {
       var weeks = invWeekRow(ym + '-' + ('0' + nd).slice(-2));
       for (var w = 0; w < weeks; w++) {
         var nums = [''], names = [''];
-        for (var dow = 0; dow < 5; dow++) { var dom = w * 7 + dow - off + 1; if (dom < 1 || dom > nd) { nums.push(''); names.push(''); continue; } var ymd = ym + '-' + ('0' + dom).slice(-2); nums.push(dom); names.push((HOLIDAYS[ymd] ? '휴무\n' : '') + (byDay[ymd] || []).sort().join('\n')); }
+        for (var dow = 0; dow < 5; dow++) { var dom = w * 7 + dow - off + 1; if (dom < 1 || dom > nd) { nums.push(''); names.push(''); continue; } var ymd = ym + '-' + ('0' + dom).slice(-2); nums.push(dom); names.push((HOLIDAYS[ymd] ? '휴무\n' : '') + (byDay[ymd] || []).join('\n')); }
         nums.push(''); nums.push('메모'); ws.addRow(nums).eachCell(function(c) { c.font = { bold: true }; });
         var r = ws.addRow(names); r.eachCell({ includeEmpty: true }, function(c) { c.alignment = { wrapText: true, vertical: 'top' }; });
       }
