@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1833';
+  var PANEL_BUILD = '20261007-1842';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9212,7 +9212,8 @@ document.getElementById('__wpSave').onclick = function() {
   function invMonthDays(ym) { var p = ym.split('-'); return new Date(+p[0], +p[1], 0).getDate(); }
   function invDow(ymd) { var p = ymd.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]).getDay(); }
   /* 달력 주차(월~금 행 기준). 1일이 들어 있는 행이 1주차 — 시트 월력과 같은 셈법 */
-  function invWeekRow(ymd) { var p = ymd.split('-'); var first = new Date(+p[0], +p[1] - 1, 1); var off = (first.getDay() + 6) % 7; return Math.floor((+p[2] - 1 + off) / 7) + 1; }
+  /* 1일이 토·일이면 그 줄엔 평일이 없으니 다음 줄(첫 월~금)을 1주차로 센다 */
+  function invWeekRow(ymd) { var p = ymd.split('-'); var first = new Date(+p[0], +p[1] - 1, 1); var off = (first.getDay() + 6) % 7; var w = Math.floor((+p[2] - 1 + off) / 7) + 1; return off >= 5 ? Math.max(1, w - 1) : w; }
   function invDowKo(ymd) { return ['일', '월', '화', '수', '목', '금', '토'][invDow(ymd)]; }
   function invShort(ymd) { return ymd ? (+ymd.slice(5, 7)) + '/' + (+ymd.slice(8)) + '(' + invDowKo(ymd) + ')' : ''; }
 
@@ -9601,7 +9602,7 @@ document.getElementById('__wpSave').onclick = function() {
     var byDay = {};
     Object.keys(INV.plan).forEach(function(bid) { var it = INV.plan[bid]; if (!it || !it.d || !tm[bid] || invIsExcl(tm[bid])) return; (byDay[it.d] = byDay[it.d] || []).push(bid); });
     var weeks = invWeekRow(ym + '-' + ('0' + nd).slice(-2));
-    var p = ym.split('-'); var first = new Date(+p[0], +p[1] - 1, 1); var off = (first.getDay() + 6) % 7;
+    var p = ym.split('-'); var first = new Date(+p[0], +p[1] - 1, 1); var off = (first.getDay() + 6) % 7; if (off >= 5) off -= 7;  /* 1일이 주말이면 첫 월요일 줄부터 */
     function domOf(w, dow) { return w * 7 + dow - off + 1; }
     /* 주 선택: 이번 달이면 오늘이 든 주, 아니면 전체 */
     if (INV.week == null || INV.weekYm !== ym) { INV.weekYm = ym; var td = todayStr(); INV.week = td.slice(0, 7) === ym ? invWeekRow(td) : 0; }
@@ -9733,7 +9734,7 @@ document.getElementById('__wpSave').onclick = function() {
       ws.addRow(['', (+ym.slice(5)) + '월 재고조사 일정']);
       var hr = ws.addRow(['', '월', '화', '수', '목', '금', '', '메모']);
       hr.eachCell(function(c) { c.font = { bold: true }; c.alignment = { horizontal: 'center' }; });
-      var p = ym.split('-'); var first = new Date(+p[0], +p[1] - 1, 1); var off = (first.getDay() + 6) % 7;
+      var p = ym.split('-'); var first = new Date(+p[0], +p[1] - 1, 1); var off = (first.getDay() + 6) % 7; if (off >= 5) off -= 7;
       var weeks = invWeekRow(ym + '-' + ('0' + nd).slice(-2));
       for (var w = 0; w < weeks; w++) {
         var nums = [''], names = [''];
