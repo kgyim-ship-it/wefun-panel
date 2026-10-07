@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1735';
+  var PANEL_BUILD = '20261007-1741';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9468,34 +9468,83 @@ document.getElementById('__wpSave').onclick = function() {
     if (INV.sub === 'cal') invRenderCal(b); else if (INV.sub === 'list') invRenderList(b); else invRenderNew(b);
   }
   function invTargetMap() { var m = {}; (INV.targets || []).forEach(function(t) { m[t.bid] = t; }); return m; }
+  /* 이름 앞 유형 표시((벤딩)·[샵인샵]·(아이스크림)…)는 작은 태그로 빼고, 끝의 _스타트/_밸런스는 지운다 — 이름이 바로 읽히게 */
+  var INV_TAGS = { '벤딩': ['벤딩', '#6D28D9', '#F3E8FF'], '밴딩': ['벤딩', '#6D28D9', '#F3E8FF'], '샵인샵': ['샵인샵', '#0F766E', '#CCFBF1'], '아이스크림': ['아이스', '#0369A1', '#E0F2FE'] };
+  var INV_DROP = /^(스낵|E|SNF|SR|K|발렉스|N카페|예약|정산)$/;
+  function invSplitName(nm) {
+    var s = String(nm || ''), tags = [], m, guard = 0;
+    while ((m = /^\s*[\[(]([^\])]{1,6})[\])]\s*/.exec(s)) && guard++ < 6) {
+      var k = m[1].trim();
+      if (INV_TAGS[k]) { if (tags.indexOf(INV_TAGS[k]) < 0) tags.push(INV_TAGS[k]); }
+      else if (!INV_DROP.test(k)) break;
+      s = s.slice(m[0].length);
+    }
+    if (/(벤딩|밴딩)/.test(s) && !tags.length) tags.push(INV_TAGS['벤딩']);
+    s = s.replace(/_?(스타트|밸런스)(\(신형\))?(\[[A-Z]+\])?\s*$/, '').replace(/^\s+|\s+$/g, '');
+    return { tags: tags, name: s || nm };
+  }
   function invChip(t, it) {
     var done = it.s === 'done', flag = !!it.w, man = it.a === 'm', nw = invIsNew(t);
-    var st = 'display:block;cursor:pointer;padding:1px 5px;margin:1px 0;border-radius:4px;font-size:11.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' +
-      (done ? 'background:#DCFCE7;color:#166534;text-decoration:line-through;' : flag ? 'background:#FEE2E2;color:#991B1B;' : nw ? 'background:#E0F2FE;color:#075985;' : man ? 'background:#DBEAFE;color:#1E3A8A;' : 'background:#F1F5F9;color:#1E293B;');
-    return '<span class="__wpInvChip" data-b="' + t.bid + '" style="' + st + '" title="' + esc((it.w ? '⚠ ' + it.w + '\n' : '') + (it.i ? it.i + '\n' : '') + (nw ? '처음 보는 대상\n' : '') + (it.m || '') + (INV.cfg[t.bid] && INV.cfg[t.bid].rule ? '\n규칙: ' + INV.cfg[t.bid].rule : '')) + '">' + esc(t.name) + '</span>';
+    var bar = done ? '#16A34A' : flag ? '#DC2626' : nw ? '#0EA5E9' : man ? '#2563EB' : '#CBD5E1';
+    var sp = invSplitName(t.name);
+    var tg = sp.tags.map(function(x) { return '<span style="flex:none;font-size:10.5px;font-weight:700;color:' + x[1] + ';background:' + x[2] + ';border-radius:3px;padding:0 4px;margin-right:5px;line-height:17px">' + x[0] + '</span>'; }).join('');
+    var mb = t.mgmt === '밸런스' ? '<span style="flex:none;font-size:10px;font-weight:800;color:#B45309;margin-left:auto;padding-left:6px">밸</span>' : '';
+    var cf = INV.cfg[t.bid] || {};
+    var tip = t.name + '\n' + t.comp + ' · ' + t.mgmt + ' · ' + (t.cycle || '-') + (it.w ? '\n⚠ ' + it.w : '') + (it.i ? '\n' + it.i : '') + (nw ? '\n처음 보는 대상' : '') + (cf.rule ? '\n규칙: ' + cf.rule : '') + ((it.m || cf.m) ? '\n메모: ' + (it.m || cf.m) : '');
+    return '<div class="__wpInvChip" data-b="' + t.bid + '" title="' + esc(tip) + '" style="display:flex;align-items:center;cursor:pointer;padding:3px 7px 3px 6px;margin:0 0 2px;border-left:3px solid ' + bar + ';background:' + (flag ? '#FEF2F2' : '#fff') + ';border-radius:0 4px 4px 0;font-size:12.5px;line-height:1.4;color:' + (done ? '#94a3b8' : '#0F172A') + ';' + (done ? 'text-decoration:line-through;' : '') + '" onmouseover="this.style.background=\'#EEF2FF\'" onmouseout="this.style.background=\'' + (flag ? '#FEF2F2' : '#fff') + '\'">' +
+      tg + '<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">' + esc(sp.name) + '</span>' + ((it.m || cf.m || cf.rule) ? '<span style="flex:none;color:#F59E0B;font-size:11px;margin-left:4px" title="메모·규칙 있음">●</span>' : '') + mb + '</div>';
+  }
+  /* 하루치 목록: 같은 기업이 2곳 이상이면 기업명 아래로 묶는다 */
+  function invDayList(list) {
+    var by = {}, order = [];
+    list.forEach(function(t) { var k = t.comp || t.name; if (!by[k]) { by[k] = []; order.push(k); } by[k].push(t); });
+    return order.map(function(k) {
+      var ms = by[k];
+      if (ms.length < 2) return invChip(ms[0], INV.plan[ms[0].bid]);
+      return '<div style="margin:4px 0 4px"><div style="font-size:11px;font-weight:700;color:#64748b;padding:0 2px 1px">' + esc(k) + ' <span style="font-weight:500">· ' + ms.length + '</span></div><div style="border-left:1px dashed #CBD5E1;margin-left:2px;padding-left:4px">' + ms.map(function(t) { return invChip(t, INV.plan[t.bid]); }).join('') + '</div></div>';
+    }).join('');
   }
   function invRenderCal(b) {
     var ym = INV.ym, nd = invMonthDays(ym), tm = invTargetMap();
     var byDay = {};
     Object.keys(INV.plan).forEach(function(bid) { var it = INV.plan[bid]; if (!it || !it.d || !tm[bid] || invIsExcl(tm[bid])) return; (byDay[it.d] = byDay[it.d] || []).push(bid); });
     var weeks = invWeekRow(ym + '-' + ('0' + nd).slice(-2));
-    var h = '<table class="wp-tbl" style="table-layout:fixed"><thead><tr>' + ['월', '화', '수', '목', '금'].map(function(d) { return '<th style="text-align:center">' + d + '</th>'; }).join('') + '</tr></thead><tbody>';
     var p = ym.split('-'); var first = new Date(+p[0], +p[1] - 1, 1); var off = (first.getDay() + 6) % 7;
+    function domOf(w, dow) { return w * 7 + dow - off + 1; }
+    /* 주 선택: 이번 달이면 오늘이 든 주, 아니면 전체 */
+    if (INV.week == null || INV.weekYm !== ym) { INV.weekYm = ym; var td = todayStr(); INV.week = td.slice(0, 7) === ym ? invWeekRow(td) : 0; }
+    var wk = '<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid #E2E8F0;background:#F8FAFC">';
+    wk += '<button class="wp-btn gh __wpInvWk" data-w="0" style="height:30px;font-size:13px;padding:0 12px;' + (INV.week === 0 ? 'background:#0B1220;color:#fff;border-color:#0B1220' : '') + '">전체</button>';
+    for (var w0 = 0; w0 < weeks; w0++) {
+      var a = Math.max(1, domOf(w0, 0)), z = Math.min(nd, domOf(w0, 4)); if (a > nd || z < 1 || a > z) continue;
+      var cnt = 0; for (var q = a; q <= z; q++) cnt += (byDay[ym + '-' + ('0' + q).slice(-2)] || []).length;
+      wk += '<button class="wp-btn gh __wpInvWk" data-w="' + (w0 + 1) + '" style="height:30px;font-size:13px;padding:0 12px;' + (INV.week === w0 + 1 ? 'background:#0B1220;color:#fff;border-color:#0B1220' : '') + '">' + (w0 + 1) + '주 <span style="font-weight:500;opacity:.7;margin-left:4px">' + (+p[1]) + '/' + a + '~' + z + ' · ' + cnt + '곳</span></button>';
+    }
+    wk += '<span style="flex:1"></span><span style="font-size:11.5px;color:#64748b;display:flex;gap:10px;flex-wrap:wrap">' +
+      [['#CBD5E1', '기본'], ['#0EA5E9', '처음 보는 대상'], ['#2563EB', '직접 지정'], ['#DC2626', '검토 필요'], ['#16A34A', '완료']].map(function(x) { return '<span><i style="display:inline-block;width:3px;height:11px;background:' + x[0] + ';vertical-align:-1px;margin-right:4px"></i>' + x[1] + '</span>'; }).join('') +
+      '<span><b style="color:#F59E0B">●</b> 메모·규칙</span><span><b style="color:#B45309;font-size:10px">밸</b> 밸런스</span></span></div>';
+    var h = '<table style="border-collapse:collapse;width:100%;table-layout:fixed"><thead><tr>' + ['월', '화', '수', '목', '금'].map(function(d) { return '<th style="background:#0F172A;color:#CBD5E1;font-size:12.5px;padding:7px;text-align:center;font-weight:700">' + d + '</th>'; }).join('') + '</tr></thead><tbody>';
     for (var w = 0; w < weeks; w++) {
+      if (INV.week && INV.week !== w + 1) continue;
       h += '<tr>';
       for (var dow = 0; dow < 5; dow++) {
-        var dom = w * 7 + dow - off + 1;
-        if (dom < 1 || dom > nd) { h += '<td style="background:#F8FAFC"></td>'; continue; }
+        var dom = domOf(w, dow);
+        if (dom < 1 || dom > nd) { h += '<td style="background:#F1F5F9;border:1px solid #E2E8F0"></td>'; continue; }
         var ymd = ym + '-' + ('0' + dom).slice(-2);
-        var hol = HOLIDAYS[ymd] ? '<span style="color:#DC2626;font-size:11px;margin-left:4px">휴무</span>' : '';
+        var isToday = ymd === todayStr();
         var list = (byDay[ymd] || []).map(function(bid) { return tm[bid]; }).sort(function(x, y) { return (x.comp + x.name).localeCompare(y.comp + y.name, 'ko'); });
-        h += '<td style="vertical-align:top;padding:6px 6px;' + (HOLIDAYS[ymd] ? 'background:#FFF7ED' : '') + '"><div style="font-weight:800;font-size:13px;margin-bottom:3px">' + dom + hol + (list.length ? '<span style="color:#94a3b8;font-weight:500;font-size:11px;margin-left:5px">' + list.length + '</span>' : '') + '</div>' +
-          list.map(function(t) { return invChip(t, INV.plan[t.bid]); }).join('') + '</td>';
+        var head = '<div style="display:flex;align-items:baseline;gap:6px;padding:6px 9px;border-bottom:1px solid #E2E8F0;background:' + (isToday ? '#0B1220' : '#F8FAFC') + ';color:' + (isToday ? '#fff' : '#0F172A') + '"><b style="font-size:17px">' + dom + '</b><span style="font-size:12px;opacity:.7">' + ['월', '화', '수', '목', '금'][dow] + (isToday ? ' · 오늘' : '') + '</span>' +
+          (list.length ? '<span style="margin-left:auto;font-size:12px;font-weight:700;background:' + (isToday ? '#38BDF8;color:#04121F' : '#E2E8F0;color:#334155') + ';border-radius:10px;padding:0 8px">' + list.length + '곳</span>' : '') + '</div>';
+        var body;
+        if (HOLIDAYS[ymd]) body = '<div style="padding:18px 8px;text-align:center;color:#DC2626;font-weight:700;font-size:13px">휴무</div>' + (list.length ? '<div style="padding:4px 6px">' + invDayList(list) + '</div>' : '');
+        else body = '<div style="padding:5px 6px">' + (list.length ? invDayList(list) : '<div style="color:#CBD5E1;font-size:12px;padding:6px 2px">—</div>') + '</div>';
+        h += '<td style="vertical-align:top;padding:0;border:1px solid #E2E8F0;background:' + (HOLIDAYS[ymd] ? 'repeating-linear-gradient(135deg,#FEF2F2 0 8px,#fff 8px 16px)' : '#fff') + '">' + head + body + '</td>';
       }
       h += '</tr>';
     }
     h += '</tbody></table>';
-    b.innerHTML = '<div style="padding:6px 10px;font-size:11.5px;color:#64748b;border-bottom:1px solid #E2E8F0;display:flex;gap:12px;flex-wrap:wrap"><span><i style="display:inline-block;width:10px;height:10px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:2px"></i> 자동/전월기준</span><span><i style="display:inline-block;width:10px;height:10px;background:#E0F2FE;border-radius:2px"></i> 처음 보는 대상</span><span><i style="display:inline-block;width:10px;height:10px;background:#DBEAFE;border-radius:2px"></i> 직접 지정</span><span><i style="display:inline-block;width:10px;height:10px;background:#FEE2E2;border-radius:2px"></i> 검토 필요</span><span><i style="display:inline-block;width:10px;height:10px;background:#DCFCE7;border-radius:2px"></i> 완료</span><span>· 이름을 누르면 날짜·상태·규칙을 고칩니다</span></div>' + h;
+    b.innerHTML = wk + h;
+    [].forEach.call(b.querySelectorAll('.__wpInvWk'), function(x) { x.onclick = function() { INV.week = +x.getAttribute('data-w'); invRenderCal(b); }; });
     [].forEach.call(b.querySelectorAll('.__wpInvChip'), function(c) { c.onclick = function() { invEditor(c.getAttribute('data-b')); }; });
   }
   function invRowHtml(t) {
