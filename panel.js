@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1355';
+  var PANEL_BUILD = '20261007-1533';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -411,13 +411,15 @@
       }, {
         k: '정기배송요일',
         label: '정기 배송요일(매주 계열)',
+        sub: '고객 요청 요일이 있을 때만 선택 · 비우면 물류팀이 캐파에 따라 금→목→화 순으로 배정',
         type: 'days'
       }, {
         k: '첫배송희망일',
         label: '첫 배송희망일',
+        sub: '고객 요청일이 있을 때만 입력 · 비우면 물류팀이 배정',
         type: 'date',
         min3: true,
-        req: true
+        reqAdmin: true
       }, {
         k: '배송형태',
         label: '배송형태',
@@ -2460,8 +2462,11 @@ document.getElementById('__wpSave').onclick = function() {
         if (v) parts.push(f.k + ': ' + v);
       });
       /* 필수값 검사 — 빈 채로 요청이 올라가면 물류팀이 되물어야 한다 */
+      /* 영업 이관 시 요일·첫배송일은 선택 사항(대표님 지시, 2026-10) — 물류팀이 수정승인에서 배정한다.
+         그래서 reqAdmin 항목은 관리자 수정승인 폼에서만 필수다. */
+      var ADM_EDIT = !!(edit && (edit.adminEdit || edit.adminEditOnly));
       var miss = (spec.fields || []).filter(function(f) {
-        if (!f.req) { return false; }
+        if (!f.req && !(f.reqAdmin && ADM_EDIT)) { return false; }
         /* reqIf: 지정한 항목이 채워진 경우에만 필수 (예: 설비가 있어야 설치일이 의미 있음) */
         if (f.reqIf) {
           var g = vals[f.reqIf] || '';
@@ -2482,8 +2487,11 @@ document.getElementById('__wpSave').onclick = function() {
         return;
       }
       if (cycV && !/^(매일|수기일정생성|계획일정없음)$/.test(cycV) && dayV.split(',').filter(Boolean).length === 0) {
-        toast('배송요일을 선택하세요 (요일 미선택 시 반영 불가)', '#c0392b');
-        return;
+        /* 신규코드발급(영업 이관)은 요일을 비워도 올라간다 — 승인 시 물류팀이 수정승인에서 배정 */
+        if (!(action === '신규코드발급' && !ADM_EDIT)) {
+          toast('배송요일을 선택하세요 (요일 미선택 시 반영 불가)', '#c0392b');
+          return;
+        }
       }
       self.disabled = true;
       var o0 = self.textContent;
@@ -4353,6 +4361,15 @@ document.getElementById('__wpSave').onclick = function() {
     if (!it || btn.disabled) return;
     var passthru = (it.action === '주소변경' || it.action === '거래처명변경' || it.action === '담당자변경' || it.action === '피킹방법변경');
     if (it.action === '신규코드발급') {
+      /* 영업이 요일을 비워 보낸 건 — 그냥 승인하면 주기만 돌고 요일이 없어 일정이 안 찍힌다.
+         [수정승인]에서 금→목→화 캐파 순으로 요일(·첫배송일)을 넣고 승인하게 막는다. */
+      var cycN = String(detailGet(it.detail, '요청주기') || '');
+      var dayN = String(detailGet(it.detail, '정기배송요일') || '').split(',').filter(Boolean);
+      var isJ = /조식/.test(String(detailGet(it.detail, '서비스구분') || '')) || /조식/.test(String(it.branchName || ''));
+      if (!isJ && cycN && !/^(매일|수기일정생성|계획일정없음)$/.test(cycN) && !dayN.length) {
+        alert('배송요일이 지정되지 않은 이관 건입니다.\n\n[수정승인]을 눌러 배송요일(캐파 순: 금 → 목 → 화)과 첫 배송희망일을 넣은 뒤 승인하세요.');
+        return;
+      }
       var drv = prompt('우린배송담당(코스)을 입력하세요.\n거래처 배송정보의 우린배송담당에 반영됩니다.', '');
       if (drv === null) return;
       it._driver = drv.trim();
