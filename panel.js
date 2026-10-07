@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1533';
+  var PANEL_BUILD = '20261007-1732';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -1123,6 +1123,7 @@
       ['newcode', '신규코드'],
       ['voc', '배송 VOC'],
       ['tracking', '운송장조회'],
+      ['inventory', '재고조사'],
       ['mine', '내 요청 상태']
     ],
     admin: [
@@ -1131,6 +1132,7 @@
       ['review_pick', '수기피킹검토'],
       ['find', '거래처 조회'],
       ['tracking', '운송장조회'],
+      ['inventory', '재고조사'],
       ['bulk', '배송정보 일괄입력'],
       ['sched_bulk', '배송일정 일괄'],
       ['stats', '배송통계'],
@@ -1176,6 +1178,7 @@
     else if (t === 'temp') viewTemp();
     else if (t === 'ticket') viewTicket();
     else if (t === 'tracking') viewTracking();
+    else if (t === 'inventory') viewInventory();
     else if (t === 'visits') viewVisits();
     else if (t === 'voc') viewVoc();
     else if (t === 'newcode') viewNewCode();
@@ -9194,6 +9197,422 @@ document.getElementById('__wpSave').onclick = function() {
       ta.remove();
       toast('✓ 복사됨 · ' + v, '#0a7d47');
     } catch (e) { toast('복사 실패 — 직접 선택해 주세요', '#c0392b'); }
+  }
+
+  /* ================= 재고조사 (스타트·밸런스 거래처 현장 재고조사 월력) =================
+     대상 = 위펀오피스 서비스 중 관리종류 스타트·밸런스 + 활동 + 스낵24 (수기 기업리스트 없이 자동)
+     배송일 = 오피스 배송일정(branchId 필터)에서 해당 월 날짜
+     저장 = 큐 워커 게시판(type=inv)을 KV처럼 사용: 'cfg'(거래처별 규칙/제외/메모), 'plan:YYYY-MM'(월별 조사일)
+     배치 = 규칙 > 전월 조사일(같은 주차·요일) > 2주차 첫 배송일. 같은 기업은 공통 배송일이 있으면 같은 날. */
+  var INV = { targets: null, tAt: 0, dates: {}, cfg: null, plan: null, prev: null, posts: null, ym: '', sub: 'cal', dirty: false, filter: '', fsel: '전체', canEdit: false };
+  var INV_EXCL_RE = /발주용|정산용|_정산|파쇄기|프리오더|위펀\(|위펀풀필먼트|테스트|TEST/i;
+  function invEnc(s) { return encodeURIComponent(s); }
+  function invYmAdd(ym, n) { var p = ym.split('-'); var d = new Date(+p[0], +p[1] - 1 + n, 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
+  function invMonthDays(ym) { var p = ym.split('-'); return new Date(+p[0], +p[1], 0).getDate(); }
+  function invDow(ymd) { var p = ymd.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]).getDay(); }
+  /* 달력 주차(월~금 행 기준). 1일이 들어 있는 행이 1주차 — 시트 월력과 같은 셈법 */
+  function invWeekRow(ymd) { var p = ymd.split('-'); var first = new Date(+p[0], +p[1] - 1, 1); var off = (first.getDay() + 6) % 7; return Math.floor((+p[2] - 1 + off) / 7) + 1; }
+  function invDowKo(ymd) { return ['일', '월', '화', '수', '목', '금', '토'][invDow(ymd)]; }
+  function invShort(ymd) { return ymd ? (+ymd.slice(5, 7)) + '/' + (+ymd.slice(8)) + '(' + invDowKo(ymd) + ')' : ''; }
+
+  /* ---- KV (게시판 type=inv). 본문이 길면 key, key#2, key#3 … 로 나눠 저장 ---- */
+  function invKvLoad(force) { if (INV.posts && !force) return Promise.resolve(INV.posts); return boardList('inv').then(function(ps) { INV.posts = ps || []; return INV.posts; }); }
+  function invKvGet(key) {
+    return invKvLoad().then(function(ps) {
+      var parts = ps.filter(function(x) { return x.title === key || String(x.title).indexOf(key + '#') === 0; });
+      if (!parts.length) return null;
+      var out = {};
+      parts.forEach(function(p) { try { var o = JSON.parse(p.body || '{}'); Object.keys(o).forEach(function(k) { out[k] = o[k]; }); } catch (e) {} });
+      return out;
+    });
+  }
+  function invKvSet(key, obj) {
+    var LIM = 40000, chunks = [], cur = {}, curLen = 2;
+    Object.keys(obj).forEach(function(k) {
+      var s = JSON.stringify(obj[k]); var add = k.length + s.length + 4;
+      if (curLen + add > LIM && Object.keys(cur).length) { chunks.push(cur); cur = {}; curLen = 2; }
+      cur[k] = obj[k]; curLen += add;
+    });
+    chunks.push(cur);
+    return invKvLoad(true).then(function(ps) {
+      var old = ps.filter(function(x) { return x.title === key || String(x.title).indexOf(key + '#') === 0; });
+      var byTitle = {}; old.forEach(function(p) { byTitle[p.title] = p; });
+      var pr = Promise.resolve();
+      chunks.forEach(function(c, i) {
+        var t = i ? key + '#' + (i + 1) : key; var body = JSON.stringify(c);
+        pr = pr.then(function() { return byTitle[t] ? boardEdit(byTitle[t].id, t, body) : boardAdd('inv', t, body); });
+        delete byTitle[t];
+      });
+      Object.keys(byTitle).forEach(function(t) { pr = pr.then(function() { return boardDelete(byTitle[t].id); }); });
+      return pr.then(function() { INV.posts = null; });
+    });
+  }
+
+  /* ---- 오피스: 대상 목록 ---- */
+  function invFetchTargets(force) {
+    if (INV.targets && !force && Date.now() - INV.tAt < 3600000) return Promise.resolve(INV.targets);
+    function grab(m, page, acc) {
+      acc = acc || [];
+      return fetch('/office/sales/service?searchYN=Y&size=500&page=' + page + '&serviceType=' + invEnc('스낵24') + '&serviceManagement=' + invEnc(m) + '&serviceStatus=' + invEnc('활동')).then(function(r) { return r.text(); }).then(function(h) {
+        var d = new DOMParser().parseFromString(h, 'text/html');
+        var trs = [].slice.call(d.querySelectorAll('table tbody tr')).filter(function(t) { return /service\/update\/\d+/.test(t.innerHTML); });
+        trs.forEach(function(t) {
+          var td = t.querySelectorAll('td');
+          var bid = (t.innerHTML.match(/\/sales\/branch\/(\d+)/) || [])[1];
+          var sid = (t.innerHTML.match(/service\/update\/(\d+)/) || [])[1];
+          if (!bid) return;
+          var sp = td[2] && td[2].querySelector('span');
+          var nm = sp ? sp.textContent.trim() : (cellLines(td[2])[0] || '');
+          var comp = cellLines(td[1])[0] || '';
+          var c4 = cellLines(td[4]);
+          var cyc = (c4.join(' ').match(/(매일|매주\d회|격주|매월\d회_[^\s(]+|계획일정없음|수기일정생성)/) || [])[1] || '';
+          acc.push({ bid: bid, sid: sid, name: nm, comp: comp, mgmt: m, cycle: cyc, begin: c4[0] || '' });
+        });
+        return trs.length >= 500 ? grab(m, page + 1, acc) : acc;
+      });
+    }
+    return grab('스타트', 1).then(function(a) { return grab('밸런스', 1).then(function(b) {
+      var all = a.concat(b), seen = {};
+      all = all.filter(function(x) { if (seen[x.bid]) return false; seen[x.bid] = 1; return true; });
+      all.sort(function(x, y) { return (x.comp + x.name).localeCompare(y.comp + y.name, 'ko'); });
+      INV.targets = all; INV.tAt = Date.now();
+      return all;
+    }); });
+  }
+  /* ---- 오피스: 거래처의 해당 월 배송일 ---- */
+  function invFetchDates(bid, ym) {
+    var key = ym + ':' + bid;
+    if (INV.dates[key]) return Promise.resolve(INV.dates[key]);
+    var last = ('0' + invMonthDays(ym)).slice(-2);
+    return fetch('/office/order/schedule?searchYN=Y&size=100&page=1&branchId=' + bid + '&serviceType=' + invEnc('스낵24') + '&deliveryDateBegin=' + ym + '-01&deliveryDateEnd=' + ym + '-' + last).then(function(r) { return r.text(); }).then(function(h) {
+      var re = /<tr[\s\S]*?<\/tr>/g, m, ds = [];
+      while ((m = re.exec(h))) {
+        var s = m[0]; if (!/\/schedule\/service\/\d+/.test(s)) continue;
+        var dt = (s.match(/(\d{4}-\d{2}-\d{2})/) || [])[1];
+        if (dt && dt.slice(0, 7) === ym && ds.indexOf(dt) < 0) ds.push(dt);
+      }
+      ds.sort(); INV.dates[key] = ds; return ds;
+    });
+  }
+  function invDatesCacheLoad(ym) { try { var j = JSON.parse(localStorage.getItem('__wpInvD:' + ym) || 'null'); if (j && Date.now() - j.at < 6 * 3600000) { Object.keys(j.map).forEach(function(b) { INV.dates[ym + ':' + b] = j.map[b]; }); return true; } } catch (e) {} return false; }
+  function invDatesCacheSave(ym) { try { var map = {}; Object.keys(INV.dates).forEach(function(k) { if (k.indexOf(ym + ':') === 0) map[k.slice(ym.length + 1)] = INV.dates[k]; }); localStorage.setItem('__wpInvD:' + ym, JSON.stringify({ at: Date.now(), map: map })); } catch (e) {} }
+
+  /* ---- 규칙 ---- 거래처별 자유 텍스트에서 읽는다. 예) "3주차" "마지막 주" "25일 전" "첫 배송" "마지막 배송" "10~15일" "묶음:게스" */
+  function invRule(txt) {
+    var t = String(txt || ''), r = {}, m;
+    if ((m = /([1-5])\s*(?:째|번째)?\s*주/.exec(t))) r.week = +m[1];
+    if (/마지막\s*주|말\s*주/.test(t)) r.week = 'last';
+    if (/첫\s*배송|월초|매월\s*초|첫\s*번째\s*배송/.test(t)) r.pos = 'first';
+    if (/마지막\s*배송|월말|마지막\s*전주/.test(t)) r.pos = 'last';
+    if (/마지막\s*전주/.test(t)) r.pos = 'last2';
+    if ((m = /(\d{1,2})\s*일\s*(전|이전|까지)/.exec(t))) r.before = +m[1];
+    if ((m = /(\d{1,2})\s*일\s*(이후|부터)/.exec(t))) r.after = +m[1];
+    if ((m = /(\d{1,2})\s*~\s*(\d{1,2})\s*일/.exec(t))) { r.from = +m[1]; r.to = +m[2]; }
+    if ((m = /묶음\s*[:：]\s*([^\s,·]+)/.exec(t))) r.grp = m[1];
+    return r;
+  }
+  function invHasRule(r) { return !!(r.week || r.pos || r.before || r.after || r.from); }
+  /* 조사일 고르기: ds = 이달 배송일(정렬), rule = 규칙, ref = 전월 조사일 */
+  function invPick(ds, rule, ref) {
+    if (!ds.length) return { d: '', why: '이달 배송 없음' };
+    var r = rule || {}, c;
+    function dom(x) { return +x.slice(8); }
+    if (r.week === 'last') return { d: ds[ds.length - 1] };
+    if (typeof r.week === 'number') { c = ds.filter(function(x) { return invWeekRow(x) === r.week; }); if (c.length) return { d: c[0] }; return { d: invNearest(ds, r.week * 7 - 3), why: r.week + '주차에 배송일 없음' }; }
+    if (r.pos === 'first') return { d: ds[0] };
+    if (r.pos === 'last') return { d: ds[ds.length - 1] };
+    if (r.pos === 'last2') return { d: ds.length > 1 ? ds[ds.length - 2] : ds[0] };
+    if (r.before) { c = ds.filter(function(x) { return dom(x) <= r.before; }); if (c.length) return { d: c[c.length - 1] }; return { d: ds[0], why: r.before + '일 전 배송일 없음' }; }
+    if (r.after) { c = ds.filter(function(x) { return dom(x) >= r.after; }); if (c.length) return { d: c[0] }; return { d: ds[ds.length - 1], why: r.after + '일 이후 배송일 없음' }; }
+    if (r.from) { c = ds.filter(function(x) { return dom(x) >= r.from && dom(x) <= r.to; }); if (c.length) return { d: c[0] }; return { d: invNearest(ds, r.from), why: r.from + '~' + r.to + '일 배송일 없음' }; }
+    if (ref) {
+      var rw = invWeekRow(ref), rd = invDow(ref);
+      c = ds.filter(function(x) { return invWeekRow(x) === rw && invDow(x) === rd; }); if (c.length) return { d: c[0] };
+      c = ds.filter(function(x) { return invWeekRow(x) === rw; }); if (c.length) return { d: c[0] };
+      return { d: invNearest(ds, dom(ref)) };
+    }
+    c = ds.filter(function(x) { return invWeekRow(x) === 2; });
+    return { d: c.length ? c[0] : ds[0], why: '신규 · 전월 참조 없음' };
+  }
+  function invNearest(ds, dom0) { var best = ds[0], bd = 99; ds.forEach(function(x) { var g = Math.abs(+x.slice(8) - dom0); if (g < bd) { bd = g; best = x; } }); return best; }
+
+  function invCfgOf(bid) { if (!INV.cfg) INV.cfg = {}; return INV.cfg[bid] || (INV.cfg[bid] = {}); }
+  function invIsExcl(t) { var c = INV.cfg && INV.cfg[t.bid]; if (c && c.ex === 1) return true; if (c && c.ex === 0) return false; return INV_EXCL_RE.test(t.name) || /계획일정없음|수기일정생성/.test(t.cycle); }
+  function invIsNew(t) { var c = INV.cfg && INV.cfg[t.bid]; return !(c && c.seen); }
+
+  /* 자동 배치 — 수동(a:'m')·완료 건은 건드리지 않는다 */
+  function invAutoPlace(onlyEmpty) {
+    var ym = INV.ym, plan = INV.plan || (INV.plan = {}), n = 0;
+    var live = INV.targets.filter(function(t) { return !invIsExcl(t); });
+    live.forEach(function(t) {
+      var it = plan[t.bid]; if (it && (it.a === 'm' || it.a === 'sheet' || it.s === 'done')) return;
+      if (onlyEmpty && it && it.d) return;
+      var ds = INV.dates[ym + ':' + t.bid] || [];
+      var cf = INV.cfg[t.bid] || {};
+      var ref = INV.prev && INV.prev[t.bid] && INV.prev[t.bid].d;
+      var pk = invPick(ds, invRule(cf.rule), ref);
+      plan[t.bid] = { d: pk.d, s: (it && it.s) || '', m: (it && it.m) || '', w: pk.why || '', a: 'auto' };
+      n++;
+    });
+    /* 같은 기업 묶음: 구성원 전부가 공통으로 배송받는 날이 있으면 그날로 통일(수동·완료 제외) */
+    var groups = {};
+    live.forEach(function(t) { var cf = INV.cfg[t.bid] || {}; var r = invRule(cf.rule); var g = r.grp || t.comp; if (!g) return; (groups[g] = groups[g] || []).push(t); });
+    Object.keys(groups).forEach(function(g) {
+      var ms = groups[g]; if (ms.length < 2) return;
+      var picks = ms.map(function(t) { return plan[t.bid] && plan[t.bid].d; }).filter(Boolean);
+      var uniq = picks.filter(function(x, i) { return picks.indexOf(x) === i; });
+      if (uniq.length <= 1) return;
+      var common = null;
+      ms.forEach(function(t) { var ds = INV.dates[ym + ':' + t.bid] || []; common = common === null ? ds.slice() : common.filter(function(x) { return ds.indexOf(x) > -1; }); });
+      if (common && common.length) {
+        var cnt = {}; picks.forEach(function(d) { cnt[d] = (cnt[d] || 0) + 1; });
+        var tgt = common.filter(function(d) { return cnt[d]; }).sort(function(a, b) { return cnt[b] - cnt[a]; })[0] || common[0];
+        ms.forEach(function(t) { var it = plan[t.bid]; if (!it || it.a === 'm' || it.a === 'sheet' || it.s === 'done') return; if (it.d !== tgt) { it.d = tgt; it.w = (it.w ? it.w + ' · ' : '') + '기업 묶음(' + g + ')으로 조정'; } });
+      } else {
+        ms.forEach(function(t) { var it = plan[t.bid]; if (!it || it.a === 'm' || it.a === 'sheet' || it.s === 'done') return; it.w = (it.w ? it.w + ' · ' : '') + '같은 기업인데 공통 배송일 없음'; });
+      }
+    });
+    INV.dirty = true;
+    return n;
+  }
+
+  function invLoadMonth(ym, forceOffice) {
+    var box = document.getElementById('__wpInvBody');
+    function msg(s) { if (box) box.innerHTML = '<div style="color:#94a3b8;padding:14px">' + s + '</div>'; }
+    msg('대상 거래처 불러오는 중… (오피스 서비스 목록)');
+    INV.ym = ym;
+    if (forceOffice) { Object.keys(INV.dates).forEach(function(k) { if (k.indexOf(ym + ':') === 0) delete INV.dates[k]; }); try { localStorage.removeItem('__wpInvD:' + ym); } catch (e) {} }
+    return invFetchTargets(forceOffice).then(function(ts) {
+      msg('저장된 설정·일정 불러오는 중…');
+      return invKvLoad(true).then(function() { return invKvGet('cfg'); }).then(function(cfg) { INV.cfg = cfg || {}; return invKvGet('plan:' + ym); }).then(function(plan) {
+        INV.plan = plan || {}; return invKvGet('plan:' + invYmAdd(ym, -1));
+      }).then(function(prev) {
+        INV.prev = prev || null;
+        var live = ts.filter(function(t) { return !invIsExcl(t); });
+        invDatesCacheLoad(ym);
+        var need = live.filter(function(t) { return !INV.dates[ym + ':' + t.bid]; });
+        return mapLimit(need, 6, function(t) { return invFetchDates(t.bid, ym).catch(function() { return []; }); }, function(d, n) { msg('배송일 불러오는 중… ' + d + '/' + n + ' (처음 한 번만 오래 걸립니다)'); }).then(function() { invDatesCacheSave(ym); });
+      });
+    }).then(function() {
+      var hasPlan = Object.keys(INV.plan).filter(function(k) { return k !== '_meta'; }).length > 0;
+      if (!hasPlan) { invAutoPlace(false); INV.dirty = true; }
+      else { /* 저장된 계획에 없는 새 대상만 채운다 */ invAutoPlace(true); }
+      invRender();
+    });
+  }
+
+  function invSave() {
+    if (!INV.canEdit) { toast('수정 권한이 없습니다', '#c0392b'); return Promise.resolve(); }
+    var btn = document.getElementById('__wpInvSave'); if (btn) { btn.disabled = true; btn.textContent = '저장 중…'; }
+    INV.targets.forEach(function(t) { var c = invCfgOf(t.bid); c.seen = 1; if (!c.n) c.n = t.name; });
+    var plan = {}; Object.keys(INV.plan).forEach(function(k) { if (k === '_meta') return; var it = INV.plan[k]; if (it && it.d) plan[k] = it; });
+    plan._meta = { by: REQ.name || '', at: now() };
+    return invKvSet('cfg', INV.cfg).then(function() { return invKvSet('plan:' + INV.ym, plan); }).then(function() {
+      INV.dirty = false; toast('✓ 저장했습니다', '#0a7d47');
+    }).catch(function(e) { alert('저장 실패: ' + ((e && e.message) || e)); }).then(function() { if (btn) { btn.disabled = false; btn.textContent = '저장'; } invRenderHead(); });
+  }
+
+  function invStats() {
+    var ts = INV.targets || [], ym = INV.ym, s = { all: ts.length, ex: 0, live: 0, placed: 0, flag: 0, done: 0, nod: 0, nw: 0 };
+    ts.forEach(function(t) {
+      if (invIsExcl(t)) { s.ex++; return; }
+      s.live++;
+      if (invIsNew(t)) s.nw++;
+      var it = INV.plan[t.bid];
+      if (it && it.d) s.placed++;
+      if (it && it.w) s.flag++;
+      if (it && it.s === 'done') s.done++;
+      if (!(INV.dates[ym + ':' + t.bid] || []).length) s.nod++;
+    });
+    return s;
+  }
+
+  /* ---------- 화면 ---------- */
+  function viewInventory() {
+    INV.canEdit = IS_ADMIN || /사업추진|물류|운영/.test(String(REQ.dept || ''));
+    if (!INV.ym) { var k = kstDate(); INV.ym = k.getFullYear() + '-' + ('0' + (k.getMonth() + 1)).slice(-2); }
+    VIEW.innerHTML = '<div id="__wpInvHead"></div><div id="__wpInvBody" class="wp-scroll" style="background:#fff"></div>';
+    invRenderHead();
+    invLoadMonth(INV.ym, false).catch(function(e) { var b = document.getElementById('__wpInvBody'); if (b) b.innerHTML = '<div style="color:#b00;padding:14px">불러오기 실패: ' + esc((e && e.message) || e) + '</div>'; });
+  }
+  function invRenderHead() {
+    var h = document.getElementById('__wpInvHead'); if (!h) return;
+    var s = INV.targets ? invStats() : null;
+    h.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
+      '<button id="__wpInvPrev" class="wp-btn gh" style="padding:0 11px">◀</button><b id="__wpInvYm" style="font-size:17px;min-width:92px;text-align:center">' + esc(INV.ym) + '</b><button id="__wpInvNext" class="wp-btn gh" style="padding:0 11px">▶</button>' +
+      '<span style="width:10px"></span>' +
+      '<button class="wp-btn gh __wpInvSub" data-s="cal"' + (INV.sub === 'cal' ? ' style="background:#0B1220;color:#fff"' : '') + '>달력</button>' +
+      '<button class="wp-btn gh __wpInvSub" data-s="list"' + (INV.sub === 'list' ? ' style="background:#0B1220;color:#fff"' : '') + '>목록</button>' +
+      '<button class="wp-btn gh __wpInvSub" data-s="new"' + (INV.sub === 'new' ? ' style="background:#0B1220;color:#fff"' : '') + '>신규·검토' + (s && (s.nw + s.flag) ? ' <span style="background:#EF4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:4px">' + (s.nw + s.flag) + '</span>' : '') + '</button>' +
+      '<span style="flex:1"></span>' +
+      (INV.canEdit ? '<button id="__wpInvAuto" class="wp-btn gh">자동 배치</button><button id="__wpInvSave" class="wp-btn ' + (INV.dirty ? 'ok' : 'gh') + '">저장' + (INV.dirty ? ' ●' : '') + '</button>' : '') +
+      '<button id="__wpInvXls" class="wp-btn gh">⬇ 엑셀</button><button id="__wpInvRe" class="wp-btn gh" title="오피스에서 대상·배송일을 다시 읽습니다">↻ 오피스</button></div>' +
+      (s ? '<div class="wp-meta" style="margin:0 0 8px;padding:8px 12px;font-size:12.5px">대상 <b>' + s.live + '</b> (스/밸 활동 ' + s.all + ' − 제외 ' + s.ex + ') · 배치 <b>' + s.placed + '</b> · 완료 <b style="color:#16A34A">' + s.done + '</b> · 검토 <b style="color:#DC2626">' + s.flag + '</b> · 이달 배송 없음 ' + s.nod + ' · 처음 보는 대상 <b>' + s.nw + '</b>' +
+        (INV.prev ? '' : ' · <span style="color:#b45309">전월 계획 없음 → 2주차 기준 배치</span>') + '</div>' : '');
+    document.getElementById('__wpInvPrev').onclick = function() { invGo(invYmAdd(INV.ym, -1)); };
+    document.getElementById('__wpInvNext').onclick = function() { invGo(invYmAdd(INV.ym, 1)); };
+    [].forEach.call(h.querySelectorAll('.__wpInvSub'), function(b) { b.onclick = function() { INV.sub = b.getAttribute('data-s'); invRenderHead(); invRender(); }; });
+    var a = document.getElementById('__wpInvAuto'); if (a) a.onclick = function() { if (!confirm('규칙·전월 기준으로 다시 배치합니다.\n수동으로 고친 날짜와 완료 건은 그대로 둡니다. 진행할까요?')) return; var n = invAutoPlace(false); toast(n + '건 배치', '#1f4e78'); invRenderHead(); invRender(); };
+    var sv = document.getElementById('__wpInvSave'); if (sv) sv.onclick = invSave;
+    document.getElementById('__wpInvXls').onclick = invExcel;
+    document.getElementById('__wpInvRe').onclick = function() { invLoadMonth(INV.ym, true); };
+  }
+  function invGo(ym) {
+    if (INV.dirty && !confirm('저장하지 않은 변경이 있습니다. 이동할까요?')) return;
+    INV.dirty = false; INV.ym = ym; invRenderHead();
+    invLoadMonth(ym, false).catch(function(e) { var b = document.getElementById('__wpInvBody'); if (b) b.innerHTML = '<div style="color:#b00;padding:14px">' + esc((e && e.message) || e) + '</div>'; });
+  }
+  function invRender() {
+    invRenderHead();
+    var b = document.getElementById('__wpInvBody'); if (!b) return;
+    if (INV.sub === 'cal') invRenderCal(b); else if (INV.sub === 'list') invRenderList(b); else invRenderNew(b);
+  }
+  function invTargetMap() { var m = {}; (INV.targets || []).forEach(function(t) { m[t.bid] = t; }); return m; }
+  function invChip(t, it) {
+    var done = it.s === 'done', flag = !!it.w, man = it.a === 'm';
+    var st = 'display:block;cursor:pointer;padding:2px 5px;margin:1px 0;border-radius:4px;font-size:12px;line-height:1.3;' +
+      (done ? 'background:#DCFCE7;color:#166534;text-decoration:line-through;' : flag ? 'background:#FEE2E2;color:#991B1B;' : man ? 'background:#DBEAFE;color:#1E3A8A;' : 'background:#F1F5F9;color:#1E293B;');
+    return '<span class="__wpInvChip" data-b="' + t.bid + '" style="' + st + '" title="' + esc((it.w ? '⚠ ' + it.w + '\n' : '') + (it.m || '') + (INV.cfg[t.bid] && INV.cfg[t.bid].rule ? '\n규칙: ' + INV.cfg[t.bid].rule : '')) + '">' + esc(t.name) + '</span>';
+  }
+  function invRenderCal(b) {
+    var ym = INV.ym, nd = invMonthDays(ym), tm = invTargetMap();
+    var byDay = {};
+    Object.keys(INV.plan).forEach(function(bid) { var it = INV.plan[bid]; if (!it || !it.d || !tm[bid] || invIsExcl(tm[bid])) return; (byDay[it.d] = byDay[it.d] || []).push(bid); });
+    var weeks = invWeekRow(ym + '-' + ('0' + nd).slice(-2));
+    var h = '<table class="wp-tbl" style="table-layout:fixed"><thead><tr>' + ['월', '화', '수', '목', '금'].map(function(d) { return '<th style="text-align:center">' + d + '</th>'; }).join('') + '</tr></thead><tbody>';
+    var p = ym.split('-'); var first = new Date(+p[0], +p[1] - 1, 1); var off = (first.getDay() + 6) % 7;
+    for (var w = 0; w < weeks; w++) {
+      h += '<tr>';
+      for (var dow = 0; dow < 5; dow++) {
+        var dom = w * 7 + dow - off + 1;
+        if (dom < 1 || dom > nd) { h += '<td style="background:#F8FAFC"></td>'; continue; }
+        var ymd = ym + '-' + ('0' + dom).slice(-2);
+        var hol = HOLIDAYS[ymd] ? '<span style="color:#DC2626;font-size:11px;margin-left:4px">휴무</span>' : '';
+        var list = (byDay[ymd] || []).map(function(bid) { return tm[bid]; }).sort(function(x, y) { return (x.comp + x.name).localeCompare(y.comp + y.name, 'ko'); });
+        h += '<td style="vertical-align:top;padding:6px 6px;' + (HOLIDAYS[ymd] ? 'background:#FFF7ED' : '') + '"><div style="font-weight:800;font-size:13px;margin-bottom:3px">' + dom + hol + (list.length ? '<span style="color:#94a3b8;font-weight:500;font-size:11px;margin-left:5px">' + list.length + '</span>' : '') + '</div>' +
+          list.map(function(t) { return invChip(t, INV.plan[t.bid]); }).join('') + '</td>';
+      }
+      h += '</tr>';
+    }
+    h += '</tbody></table>';
+    b.innerHTML = h;
+    [].forEach.call(b.querySelectorAll('.__wpInvChip'), function(c) { c.onclick = function() { invEditor(c.getAttribute('data-b')); }; });
+  }
+  function invRowHtml(t) {
+    var ym = INV.ym, it = INV.plan[t.bid] || {}, cf = INV.cfg[t.bid] || {}, ds = INV.dates[ym + ':' + t.bid] || [], ex = invIsExcl(t);
+    var opts = '<option value="">—</option>' + ds.map(function(d) { return '<option value="' + d + '"' + (it.d === d ? ' selected' : '') + '>' + invShort(d) + '</option>'; }).join('') + (it.d && ds.indexOf(it.d) < 0 ? '<option value="' + it.d + '" selected>' + invShort(it.d) + ' (배송일 아님)</option>' : '');
+    return '<tr data-b="' + t.bid + '" style="' + (ex ? 'opacity:.45' : '') + '">' +
+      '<td style="font-size:12.5px;color:#475569">' + esc(t.comp) + '</td>' +
+      '<td><b style="font-size:13px">' + esc(t.name) + '</b>' + (invIsNew(t) ? ' <span style="background:#0EA5E9;color:#fff;border-radius:4px;padding:0 5px;font-size:10.5px">NEW</span>' : '') + '<div style="font-size:11px;color:#94a3b8">' + esc(t.mgmt) + ' · ' + esc(t.cycle || '-') + '</div></td>' +
+      '<td style="font-size:12px;color:#475569;white-space:normal">' + (ds.length ? ds.map(function(d) { return '<span class="__wpInvDs" data-b="' + t.bid + '" data-d="' + d + '" style="display:inline-block;cursor:pointer;padding:1px 5px;margin:1px;border-radius:4px;border:1px solid ' + (it.d === d ? '#0B1220;background:#0B1220;color:#fff' : '#CBD5E1') + '">' + invShort(d) + '</span>'; }).join('') : '<span style="color:#b45309">이달 배송 없음</span>') + '</td>' +
+      '<td><select class="wp-inp __wpInvD" data-b="' + t.bid + '" style="height:31px;font-size:13px;padding:0 6px"' + (INV.canEdit ? '' : ' disabled') + '>' + opts + '</select>' + (it.w ? '<div style="color:#DC2626;font-size:11.5px;margin-top:2px">⚠ ' + esc(it.w) + '</div>' : '') + '</td>' +
+      '<td><select class="wp-inp __wpInvS" data-b="' + t.bid + '" style="height:31px;font-size:13px;padding:0 6px"' + (INV.canEdit ? '' : ' disabled') + '><option value=""' + (!it.s ? ' selected' : '') + '>예정</option><option value="done"' + (it.s === 'done' ? ' selected' : '') + '>완료</option><option value="skip"' + (it.s === 'skip' ? ' selected' : '') + '>미실시</option></select></td>' +
+      '<td><input class="wp-inp __wpInvR" data-b="' + t.bid + '" value="' + esc(cf.rule || '') + '" placeholder="예: 3주차 · 마지막 배송 · 25일 전" style="height:31px;font-size:12.5px;width:100%"' + (INV.canEdit ? '' : ' disabled') + '></td>' +
+      '<td><input class="wp-inp __wpInvM" data-b="' + t.bid + '" value="' + esc(it.m || cf.m || '') + '" style="height:31px;font-size:12.5px;width:100%"' + (INV.canEdit ? '' : ' disabled') + '></td>' +
+      '<td style="text-align:center"><input type="checkbox" class="__wpInvX" data-b="' + t.bid + '"' + (ex ? ' checked' : '') + (INV.canEdit ? '' : ' disabled') + '></td></tr>';
+  }
+  function invBindRows(b) {
+    [].forEach.call(b.querySelectorAll('.__wpInvD'), function(s) { s.onchange = function() { var it = INV.plan[s.getAttribute('data-b')] || (INV.plan[s.getAttribute('data-b')] = {}); it.d = s.value; it.a = 'm'; it.w = ''; INV.dirty = true; invRenderHead(); }; });
+    [].forEach.call(b.querySelectorAll('.__wpInvDs'), function(s) { s.onclick = function() { if (!INV.canEdit) return; var bid = s.getAttribute('data-b'); var it = INV.plan[bid] || (INV.plan[bid] = {}); it.d = s.getAttribute('data-d'); it.a = 'm'; it.w = ''; INV.dirty = true; var tr = s.closest('tr'); var t = invTargetMap()[bid]; if (tr && t) { tr.outerHTML = invRowHtml(t); invBindRows(b); } invRenderHead(); }; });
+    [].forEach.call(b.querySelectorAll('.__wpInvS'), function(s) { s.onchange = function() { var it = INV.plan[s.getAttribute('data-b')] || (INV.plan[s.getAttribute('data-b')] = {}); it.s = s.value; INV.dirty = true; invRenderHead(); }; });
+    [].forEach.call(b.querySelectorAll('.__wpInvR'), function(s) { s.onchange = function() { invCfgOf(s.getAttribute('data-b')).rule = s.value.trim(); INV.dirty = true; invRenderHead(); }; });
+    [].forEach.call(b.querySelectorAll('.__wpInvM'), function(s) { s.onchange = function() { var bid = s.getAttribute('data-b'); var it = INV.plan[bid] || (INV.plan[bid] = {}); it.m = s.value.trim(); invCfgOf(bid).m = s.value.trim(); INV.dirty = true; invRenderHead(); }; });
+    [].forEach.call(b.querySelectorAll('.__wpInvX'), function(s) { s.onchange = function() { var bid = s.getAttribute('data-b'); invCfgOf(bid).ex = s.checked ? 1 : 0; if (s.checked) { delete INV.plan[bid]; } INV.dirty = true; var tr = s.closest('tr'); var t = invTargetMap()[bid]; if (tr && t) { tr.outerHTML = invRowHtml(t); invBindRows(b); } invRenderHead(); }; });
+  }
+  var INV_TH = '<thead><tr><th style="width:130px">기업</th><th>거래처</th><th style="width:240px">이달 배송일</th><th style="width:150px">조사일</th><th style="width:86px">상태</th><th style="width:190px">규칙</th><th style="width:180px">메모</th><th style="width:44px">제외</th></tr></thead>';
+  function invRenderList(b) {
+    var ts = INV.targets.slice(), f = INV.filter.toLowerCase(), sel = INV.fsel;
+    ts = ts.filter(function(t) {
+      if (f && (t.name + t.comp).toLowerCase().indexOf(f) < 0) return false;
+      var it = INV.plan[t.bid] || {}, ex = invIsExcl(t);
+      if (sel === '제외') return ex;
+      if (ex) return false;
+      if (sel === '검토') return !!it.w;
+      if (sel === '완료') return it.s === 'done';
+      if (sel === '미배치') return !it.d;
+      if (sel === 'NEW') return invIsNew(t);
+      return true;
+    });
+    ts.sort(function(x, y) { var a = (INV.plan[x.bid] || {}).d || '9', c = (INV.plan[y.bid] || {}).d || '9'; return a < c ? -1 : a > c ? 1 : (x.comp + x.name).localeCompare(y.comp + y.name, 'ko'); });
+    b.innerHTML = '<div style="display:flex;gap:8px;align-items:center;padding:8px;border-bottom:1px solid #E2E8F0;background:#F8FAFC"><input id="__wpInvF" class="wp-inp" placeholder="거래처·기업 검색" value="' + esc(INV.filter) + '" style="width:260px;height:33px">' +
+      '<select id="__wpInvFs" class="wp-inp" style="height:33px;width:120px">' + ['전체', '검토', 'NEW', '미배치', '완료', '제외'].map(function(x) { return '<option' + (x === sel ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select><span style="color:#94a3b8;font-size:12.5px">' + ts.length + '건 · 배송일 칩을 누르면 조사일로 지정됩니다</span></div>' +
+      '<table class="wp-tbl">' + INV_TH + '<tbody>' + ts.map(invRowHtml).join('') + '</tbody></table>';
+    var fi = document.getElementById('__wpInvF'); fi.oninput = function() { INV.filter = fi.value; clearTimeout(fi._t); fi._t = setTimeout(function() { invRenderList(b); var f2 = document.getElementById('__wpInvF'); if (f2) { f2.focus(); f2.setSelectionRange(f2.value.length, f2.value.length); } }, 250); };
+    document.getElementById('__wpInvFs').onchange = function() { INV.fsel = this.value; invRenderList(b); };
+    invBindRows(b);
+  }
+  function invRenderNew(b) {
+    var nw = INV.targets.filter(function(t) { return invIsNew(t); });
+    var fl = INV.targets.filter(function(t) { return !invIsExcl(t) && INV.plan[t.bid] && INV.plan[t.bid].w; });
+    var h = '<div style="padding:10px 12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0;font-size:12.5px;color:#475569;line-height:1.6"><b>처음 보는 대상 ' + nw.length + '건</b> — 오피스 관리종류가 스타트·밸런스인데 아직 한 번도 확인하지 않은 거래처입니다. 재고조사 대상이 아니면 <b>제외</b>에 체크하세요. 저장하면 다음부터 안 보입니다.<br>' +
+      '자동 제외 규칙: 이름에 발주용 · 정산 · 파쇄기 · 프리오더 · 위펀 · 테스트 가 들어가거나 주기가 계획일정없음·수기일정생성이면 기본 제외(체크 해제로 되살릴 수 있음).</div>';
+    h += '<table class="wp-tbl">' + INV_TH + '<tbody>' + nw.map(invRowHtml).join('') + '</tbody></table>';
+    h += '<div style="padding:10px 12px;background:#FEF2F2;border-top:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;font-size:12.5px;color:#991B1B"><b>검토 필요 ' + fl.length + '건</b> — 규칙과 배송일이 안 맞거나 같은 기업끼리 날짜를 못 맞춘 건입니다. 조사일을 직접 고르면 표시가 사라집니다.</div>';
+    h += '<table class="wp-tbl">' + INV_TH + '<tbody>' + fl.map(invRowHtml).join('') + '</tbody></table>';
+    b.innerHTML = h;
+    invBindRows(b);
+  }
+  /* 달력 칩 클릭 — 작은 편집창 */
+  function invEditor(bid) {
+    var t = invTargetMap()[bid]; if (!t) return;
+    var old = document.getElementById('__wpInvEd'); if (old) old.remove();
+    var it = INV.plan[bid] || (INV.plan[bid] = {}), cf = INV.cfg[bid] || {}, ds = INV.dates[INV.ym + ':' + bid] || [];
+    var box = document.createElement('div'); box.id = '__wpInvEd';
+    box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,94vw);background:#fff;border:1px solid #CBD5E1;border-radius:10px;box-shadow:0 24px 60px rgba(2,8,20,.35);padding:16px 18px;z-index:2147483647;font-size:13.5px';
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><b style="font-size:15px">' + esc(t.name) + '</b><div style="color:#94a3b8;font-size:12px">' + esc(t.comp) + ' · ' + esc(t.mgmt) + ' · ' + esc(t.cycle || '-') + (INV.prev && INV.prev[bid] && INV.prev[bid].d ? ' · 전월 조사 ' + invShort(INV.prev[bid].d) : '') + '</div></div><button id="__wpInvEdX" class="wp-act">✕</button></div>' +
+      (it.w ? '<div style="color:#DC2626;font-size:12.5px;margin-top:6px">⚠ ' + esc(it.w) + '</div>' : '') +
+      '<div style="margin-top:10px;font-weight:600;font-size:12.5px;color:#475569">조사일 (이달 배송일 중 선택)</div><div style="margin-top:4px">' + (ds.length ? ds.map(function(d) { return '<button class="wp-day __wpInvEdD' + (it.d === d ? ' on' : '') + '" data-d="' + d + '">' + invShort(d) + '</button>'; }).join('') : '<span style="color:#b45309">이달 배송 없음</span>') + '</div>' +
+      '<div class="wp-fld"><span style="width:70px">상태</span><select id="__wpInvEdS" class="wp-inp" style="height:35px"><option value=""' + (!it.s ? ' selected' : '') + '>예정</option><option value="done"' + (it.s === 'done' ? ' selected' : '') + '>완료</option><option value="skip"' + (it.s === 'skip' ? ' selected' : '') + '>미실시</option></select></div>' +
+      '<div class="wp-fld"><span style="width:70px">규칙</span><input id="__wpInvEdR" class="wp-inp" style="height:35px" value="' + esc(cf.rule || '') + '" placeholder="3주차 · 마지막 배송 · 25일 전 · 10~15일 · 묶음:이름"></div>' +
+      '<div class="wp-fld"><span style="width:70px">메모</span><input id="__wpInvEdM" class="wp-inp" style="height:35px" value="' + esc(it.m || cf.m || '') + '" placeholder="참관 필요 · 사전 연락 등"></div>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:8px"><label style="font-size:12.5px;color:#475569"><input type="checkbox" id="__wpInvEdX2"' + (invIsExcl(t) ? ' checked' : '') + '> 재고조사 대상에서 제외</label><button id="__wpInvEdOk" class="wp-btn pri">적용</button></div>';
+    (document.getElementById('__wp') || document.body).appendChild(box);
+    var pick = it.d;
+    [].forEach.call(box.querySelectorAll('.__wpInvEdD'), function(bt) { bt.onclick = function() { pick = bt.getAttribute('data-d'); [].forEach.call(box.querySelectorAll('.__wpInvEdD'), function(x) { x.className = 'wp-day __wpInvEdD' + (x === bt ? ' on' : ''); }); }; });
+    document.getElementById('__wpInvEdX').onclick = function() { box.remove(); };
+    document.getElementById('__wpInvEdOk').onclick = function() {
+      if (!INV.canEdit) { toast('수정 권한이 없습니다', '#c0392b'); return; }
+      if (pick !== it.d) { it.d = pick; it.a = 'm'; it.w = ''; }
+      it.s = document.getElementById('__wpInvEdS').value;
+      it.m = document.getElementById('__wpInvEdM').value.trim();
+      var c = invCfgOf(bid); c.rule = document.getElementById('__wpInvEdR').value.trim(); c.m = it.m;
+      c.ex = document.getElementById('__wpInvEdX2').checked ? 1 : 0; if (c.ex) delete INV.plan[bid];
+      INV.dirty = true; box.remove(); invRender();
+    };
+  }
+  function invExcel() {
+    if (!INV.targets) return;
+    var ym = INV.ym, tm = invTargetMap(), nd = invMonthDays(ym);
+    ensureExcel().then(function() {
+      var wb = new ExcelJS.Workbook();
+      var ws = wb.addWorksheet(ym.slice(2, 4) + '년 ' + (+ym.slice(5)) + '월 재고조사');
+      var byDay = {};
+      Object.keys(INV.plan).forEach(function(bid) { var it = INV.plan[bid]; if (!it || !it.d || !tm[bid] || invIsExcl(tm[bid])) return; (byDay[it.d] = byDay[it.d] || []).push(tm[bid].name + (it.s === 'done' ? ' ✓' : '')); });
+      ws.addRow(['', (+ym.slice(5)) + '월 재고조사 일정']);
+      var hr = ws.addRow(['', '월', '화', '수', '목', '금', '', '메모']);
+      hr.eachCell(function(c) { c.font = { bold: true }; c.alignment = { horizontal: 'center' }; });
+      var p = ym.split('-'); var first = new Date(+p[0], +p[1] - 1, 1); var off = (first.getDay() + 6) % 7;
+      var weeks = invWeekRow(ym + '-' + ('0' + nd).slice(-2));
+      for (var w = 0; w < weeks; w++) {
+        var nums = [''], names = [''];
+        for (var dow = 0; dow < 5; dow++) { var dom = w * 7 + dow - off + 1; if (dom < 1 || dom > nd) { nums.push(''); names.push(''); continue; } var ymd = ym + '-' + ('0' + dom).slice(-2); nums.push(dom); names.push((HOLIDAYS[ymd] ? '휴무\n' : '') + (byDay[ymd] || []).sort().join('\n')); }
+        nums.push(''); nums.push('메모'); ws.addRow(nums).eachCell(function(c) { c.font = { bold: true }; });
+        var r = ws.addRow(names); r.eachCell({ includeEmpty: true }, function(c) { c.alignment = { wrapText: true, vertical: 'top' }; });
+      }
+      ws.getColumn(1).width = 3; for (var i = 2; i <= 6; i++) ws.getColumn(i).width = 36; ws.getColumn(8).width = 30;
+      var ws2 = wb.addWorksheet('목록');
+      ws2.addRow(['기업', '거래처', 'branch_id', '관리종류', '배송주기', '이달 배송일', '조사일', '상태', '규칙', '메모', '검토']).eachCell(function(c) { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } }; });
+      INV.targets.filter(function(t) { return !invIsExcl(t); }).sort(function(x, y) { var a = (INV.plan[x.bid] || {}).d || '9', c = (INV.plan[y.bid] || {}).d || '9'; return a < c ? -1 : a > c ? 1 : 0; }).forEach(function(t) {
+        var it = INV.plan[t.bid] || {}, cf = INV.cfg[t.bid] || {};
+        ws2.addRow([t.comp, t.name, +t.bid, t.mgmt, t.cycle, (INV.dates[ym + ':' + t.bid] || []).join(', '), it.d || '', it.s === 'done' ? '완료' : it.s === 'skip' ? '미실시' : '예정', cf.rule || '', it.m || cf.m || '', it.w || '']);
+      });
+      [14, 40, 10, 9, 18, 40, 12, 7, 20, 30, 30].forEach(function(w, i) { ws2.getColumn(i + 1).width = w; });
+      return wb.xlsx.writeBuffer();
+    }).then(function(buf) {
+      var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '재고조사_' + ym + '.xlsx'; document.body.appendChild(a); a.click();
+      setTimeout(function() { a.remove(); URL.revokeObjectURL(a.href); }, 1200);
+    });
   }
 
   function viewTracking() {
