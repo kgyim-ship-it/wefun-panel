@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1748';
+  var PANEL_BUILD = '20261007-1800';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9205,6 +9205,7 @@ document.getElementById('__wpSave').onclick = function() {
      저장 = 큐 워커 게시판(type=inv)을 KV처럼 사용: 'cfg'(거래처별 규칙/제외/메모), 'plan:YYYY-MM'(월별 조사일)
      배치 = 규칙 > 전월 조사일(같은 주차·요일) > 2주차 첫 배송일. 같은 기업은 공통 배송일이 있으면 같은 날. */
   var INV = { targets: null, tAt: 0, dates: {}, cfg: null, plan: null, prev: null, posts: null, ym: '', sub: 'cal', dirty: false, filter: '', fsel: '전체', canEdit: false };
+  var INV_MGRS = ['심윤보'];   /* 재고조사 담당 관리자 (사업추진본부) */
   var INV_EXCL_RE = /발주용|정산용|_정산|파쇄기|프리오더|위펀\(|위펀풀필먼트|테스트|TEST/i;
   function invEnc(s) { return encodeURIComponent(s); }
   function invYmAdd(ym, n) { var p = ym.split('-'); var d = new Date(+p[0], +p[1] - 1 + n, 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
@@ -9429,7 +9430,8 @@ document.getElementById('__wpSave').onclick = function() {
 
   /* ---------- 화면 ---------- */
   function viewInventory() {
-    INV.canEdit = IS_ADMIN || /사업추진|물류|운영/.test(String(REQ.dept || ''));
+    /* 재고조사 관리자: 물류 관리자 + 아래 명단. 그 외는 보기만 */
+    INV.canEdit = IS_ADMIN || INV_MGRS.indexOf(String(REQ.name || '').trim()) > -1;
     if (!INV.ym) { var k = kstDate(); INV.ym = k.getFullYear() + '-' + ('0' + (k.getMonth() + 1)).slice(-2); }
     VIEW.innerHTML = '<div id="__wpInvHead"></div><div id="__wpInvBody" class="wp-scroll" style="background:#fff"></div>';
     invRenderHead();
@@ -9444,6 +9446,7 @@ document.getElementById('__wpSave').onclick = function() {
       '<button class="wp-btn gh __wpInvSub" data-s="cal"' + (INV.sub === 'cal' ? ' style="background:#0B1220;color:#fff"' : '') + '>달력</button>' +
       '<button class="wp-btn gh __wpInvSub" data-s="list"' + (INV.sub === 'list' ? ' style="background:#0B1220;color:#fff"' : '') + '>목록</button>' +
       '<button class="wp-btn gh __wpInvSub" data-s="new"' + (INV.sub === 'new' ? ' style="background:#0B1220;color:#fff"' : '') + '>신규·검토' + (s && (s.nw + s.flag) ? ' <span style="background:#EF4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:4px">' + (s.nw + s.flag) + '</span>' : '') + '</button>' +
+      '<span style="margin-left:10px;font-size:12.5px;color:#475569;background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:5px 10px">관리자 <b style="color:#0F172A">' + esc(INV_MGRS.join(', ')) + '</b>' + (INV.canEdit ? '' : ' · <span style="color:#94a3b8">보기 전용</span>') + '</span>' +
       '<span style="flex:1"></span>' +
       (INV.canEdit ? '<button id="__wpInvAuto" class="wp-btn gh">자동 배치</button><button id="__wpInvSave" class="wp-btn ' + (INV.dirty ? 'ok' : 'gh') + '">저장' + (INV.dirty ? ' ●' : '') + '</button>' : '') +
       '<button id="__wpInvXls" class="wp-btn gh">⬇ 엑셀</button><button id="__wpInvRe" class="wp-btn gh" title="오피스에서 대상·배송일을 다시 읽습니다">↻ 오피스</button></div>' +
