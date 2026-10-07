@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1811';
+  var PANEL_BUILD = '20261007-1815';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9295,6 +9295,13 @@ document.getElementById('__wpSave').onclick = function() {
       ds.sort(); INV.dates[key] = ds; return ds;
     });
   }
+  /* 배송일 목록에서 휴무일(주말·공휴일)은 다음 영업일(대체 배송일)로 바꿔 쓴다 — 빨간 날엔 조사일을 잡지 않는다 */
+  function invDs(bid, ym) {
+    ym = ym || INV.ym;
+    var raw = INV.dates[ym + ':' + bid] || [], out = [];
+    raw.forEach(function(d) { var x = HOLIDAYS[d] || offDayLabel(d) ? pushOffDay(d) : d; if (x.slice(0, 7) === ym && out.indexOf(x) < 0) out.push(x); });
+    return out.sort();
+  }
   function invDatesCacheLoad(ym) { try { var j = JSON.parse(localStorage.getItem('__wpInvD:' + ym) || 'null'); if (j && Date.now() - j.at < 6 * 3600000) { Object.keys(j.map).forEach(function(b) { INV.dates[ym + ':' + b] = j.map[b]; }); return true; } } catch (e) {} return false; }
   function invDatesCacheSave(ym) { try { var map = {}; Object.keys(INV.dates).forEach(function(k) { if (k.indexOf(ym + ':') === 0) map[k.slice(ym.length + 1)] = INV.dates[k]; }); localStorage.setItem('__wpInvD:' + ym, JSON.stringify({ at: Date.now(), map: map })); } catch (e) {} }
 
@@ -9348,7 +9355,7 @@ document.getElementById('__wpSave').onclick = function() {
     live.forEach(function(t) {
       var it = plan[t.bid]; if (it && (it.a === 'm' || it.a === 'sheet' || it.s === 'done')) return;
       if (onlyEmpty && it && it.d) return;
-      var ds = INV.dates[ym + ':' + t.bid] || [];
+      var ds = invDs(t.bid, ym);
       var cf = INV.cfg[t.bid] || {};
       var ref = INV.prev && INV.prev[t.bid] && INV.prev[t.bid].d;
       var pk = invPick(ds, invRule(cf.rule), ref);
@@ -9364,7 +9371,7 @@ document.getElementById('__wpSave').onclick = function() {
       var uniq = picks.filter(function(x, i) { return picks.indexOf(x) === i; });
       if (uniq.length <= 1) return;
       var common = null;
-      ms.forEach(function(t) { var ds = INV.dates[ym + ':' + t.bid] || []; common = common === null ? ds.slice() : common.filter(function(x) { return ds.indexOf(x) > -1; }); });
+      ms.forEach(function(t) { var ds = invDs(t.bid, ym); common = common === null ? ds.slice() : common.filter(function(x) { return ds.indexOf(x) > -1; }); });
       if (common && common.length) {
         var cnt = {}; picks.forEach(function(d) { cnt[d] = (cnt[d] || 0) + 1; });
         var tgt = common.filter(function(d) { return cnt[d]; }).sort(function(a, b) { return cnt[b] - cnt[a]; })[0] || common[0];
@@ -9397,7 +9404,11 @@ document.getElementById('__wpSave').onclick = function() {
     }).then(function() {
       var hasPlan = Object.keys(INV.plan).filter(function(k) { return k !== '_meta'; }).length > 0;
       if (!hasPlan) { invAutoPlace(false); INV.dirty = true; }
-      else { /* 저장된 계획에 없는 새 대상만 채운다 */ invAutoPlace(true); }
+      else {
+        /* 빨간 날에 잡힌 건: 자동 배치분은 비워서 다시 배치, 직접 지정한 건은 검토 표시 */
+        Object.keys(INV.plan).forEach(function(bid) { var it = INV.plan[bid]; if (!it || !it.d || bid === '_meta' || it.s === 'done') return; if (HOLIDAYS[it.d] || offDayLabel(it.d)) { if (it.a === 'm') { it.w = '휴무일(' + invShort(it.d) + ')에 잡혀 있음'; } else { it.d = ''; it.a = 'auto'; INV.dirty = true; } } });
+        /* 저장된 계획에 없는 새 대상만 채운다 */ invAutoPlace(true);
+      }
       invRender();
     });
   }
@@ -9423,7 +9434,7 @@ document.getElementById('__wpSave').onclick = function() {
       if (it && it.d) s.placed++;
       if (it && it.w) s.flag++;
       if (it && it.s === 'done') s.done++;
-      if (!(INV.dates[ym + ':' + t.bid] || []).length) s.nod++;
+      if (!invDs(t.bid, ym).length) s.nod++;
     });
     return s;
   }
@@ -9587,7 +9598,7 @@ document.getElementById('__wpSave').onclick = function() {
     [].forEach.call(b.querySelectorAll('.__wpInvChip'), function(c) { c.onclick = function() { invEditor(c.getAttribute('data-b')); }; });
   }
   function invRowHtml(t) {
-    var ym = INV.ym, it = INV.plan[t.bid] || {}, cf = INV.cfg[t.bid] || {}, ds = INV.dates[ym + ':' + t.bid] || [], ex = invIsExcl(t);
+    var ym = INV.ym, it = INV.plan[t.bid] || {}, cf = INV.cfg[t.bid] || {}, ds = invDs(t.bid, ym), ex = invIsExcl(t);
     var opts = '<option value="">—</option>' + ds.map(function(d) { return '<option value="' + d + '"' + (it.d === d ? ' selected' : '') + '>' + invShort(d) + '</option>'; }).join('') + (it.d && ds.indexOf(it.d) < 0 ? '<option value="' + it.d + '" selected>' + invShort(it.d) + ' (배송일 아님)</option>' : '');
     return '<tr data-b="' + t.bid + '" style="' + (ex ? 'opacity:.45' : '') + '">' +
       '<td style="font-size:12.5px;color:#475569">' + esc(t.comp) + '</td>' +
@@ -9644,7 +9655,7 @@ document.getElementById('__wpSave').onclick = function() {
   function invEditor(bid) {
     var t = invTargetMap()[bid]; if (!t) return;
     var old = document.getElementById('__wpInvEd'); if (old) old.remove();
-    var it = INV.plan[bid] || (INV.plan[bid] = {}), cf = INV.cfg[bid] || {}, ds = INV.dates[INV.ym + ':' + bid] || [];
+    var it = INV.plan[bid] || (INV.plan[bid] = {}), cf = INV.cfg[bid] || {}, ds = invDs(bid);
     var box = document.createElement('div'); box.id = '__wpInvEd';
     box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,94vw);background:#fff;border:1px solid #CBD5E1;border-radius:10px;box-shadow:0 24px 60px rgba(2,8,20,.35);padding:16px 18px;z-index:2147483647;font-size:13.5px';
     box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><b style="font-size:15px">' + esc(t.name) + '</b><div style="color:#94a3b8;font-size:12px">' + esc(t.comp) + ' · ' + esc(t.mgmt) + ' · ' + esc(t.cycle || '-') + (INV.prev && INV.prev[bid] && INV.prev[bid].d ? ' · 전월 조사 ' + invShort(INV.prev[bid].d) : '') + '</div></div><button id="__wpInvEdX" class="wp-act">✕</button></div>' +
@@ -9693,7 +9704,7 @@ document.getElementById('__wpSave').onclick = function() {
       ws2.addRow(['기업', '거래처', 'branch_id', '관리종류', '배송주기', '이달 배송일', '조사일', '상태', '규칙', '메모', '검토']).eachCell(function(c) { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } }; });
       INV.targets.filter(function(t) { return !invIsExcl(t); }).sort(function(x, y) { var a = (INV.plan[x.bid] || {}).d || '9', c = (INV.plan[y.bid] || {}).d || '9'; return a < c ? -1 : a > c ? 1 : 0; }).forEach(function(t) {
         var it = INV.plan[t.bid] || {}, cf = INV.cfg[t.bid] || {};
-        ws2.addRow([t.comp, t.name, +t.bid, t.mgmt, t.cycle, (INV.dates[ym + ':' + t.bid] || []).join(', '), it.d || '', it.s === 'done' ? '완료' : it.s === 'skip' ? '미실시' : '예정', cf.rule || '', it.m || cf.m || '', it.w || '']);
+        ws2.addRow([t.comp, t.name, +t.bid, t.mgmt, t.cycle, invDs(t.bid, ym).join(', '), it.d || '', it.s === 'done' ? '완료' : it.s === 'skip' ? '미실시' : '예정', cf.rule || '', it.m || cf.m || '', it.w || '']);
       });
       [14, 40, 10, 9, 18, 40, 12, 7, 20, 30, 30].forEach(function(w, i) { ws2.getColumn(i + 1).width = w; });
       return wb.xlsx.writeBuffer();
