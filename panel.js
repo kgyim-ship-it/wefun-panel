@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1830';
+  var PANEL_BUILD = '20261007-1833';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9318,30 +9318,42 @@ document.getElementById('__wpSave').onclick = function() {
     var t = String(txt || ''), r = {}, m;
     if ((m = /([1-5])\s*(?:째|번째)?\s*주/.exec(t))) r.week = +m[1];
     if (/마지막\s*주|말\s*주/.test(t)) r.week = 'last';
+    if ((m = /([월화수목금])\s*요일/.exec(t))) r.dow = '일월화수목금토'.indexOf(m[1]);
     if (/첫\s*배송|월초|매월\s*초|첫\s*번째\s*배송/.test(t)) r.pos = 'first';
-    if (/마지막\s*배송|월말|마지막\s*전주/.test(t)) r.pos = 'last';
+    if (/마지막\s*배송|월말|말일/.test(t)) r.pos = 'last';
     if (/마지막\s*전주/.test(t)) r.pos = 'last2';
-    if ((m = /(\d{1,2})\s*일\s*(전|이전|까지)/.exec(t))) r.before = +m[1];
+    if (/마지막\s*[월화수목금]\s*요일/.test(t)) { r.pos = 'last'; delete r.week; }
+    if ((m = /(\d{1,2})\s*일\s*(전|이전|까지)/.exec(t))) { r.before = +m[1]; r.incl = m[2] === '까지'; }
     if ((m = /(\d{1,2})\s*일\s*(이후|부터)/.exec(t))) r.after = +m[1];
     if ((m = /(\d{1,2})\s*~\s*(\d{1,2})\s*일/.exec(t))) { r.from = +m[1]; r.to = +m[2]; }
+    /* "21일 재고조사 고정" "매월 21일 고정" — 날짜 자체가 고정(배송일이 아니어도 그날) */
+    if (!r.before && !r.after && !r.from && (m = /(\d{1,2})\s*일\s*(재고조사\s*)?고정/.exec(t))) r.on = +m[1];
     if ((m = /묶음\s*[:：]\s*([^\s,·]+)/.exec(t))) r.grp = m[1];
+    if (/영남\s*예외/.test(t)) r.noYn = true;
     return r;
   }
-  function invHasRule(r) { return !!(r.week || r.pos || r.before || r.after || r.from); }
+  function invHasRule(r) { return !!(r.week || r.pos || r.before || r.after || r.from || r.on || r.dow != null); }
   /* 조사일 고르기: ds = 이달 배송일(정렬), rule = 규칙, ref = 전월 조사일 */
   function invPick(ds, rule, ref, ctx) {
     ctx = ctx || {};
     if (!ds.length) return { d: '', why: '이달 배송 없음' };
-    var r = rule || {}, c;
+    var r = rule || {}, c, all = ds;
     function dom(x) { return +x.slice(8); }
-    if (r.week === 'last') return { d: ds[ds.length - 1] };
+    if (r.on) {
+      var ymOn = ds[0].slice(0, 7), od = ymOn + '-' + ('0' + r.on).slice(-2), od2 = pushOffDay(od);
+      return { d: od2, info: r.on + '일 고정' + (od2 !== od ? ' (휴무 → ' + invShort(od2) + ')' : '') + (ds.indexOf(od2) < 0 ? ' · 배송일 아님' : '') };
+    }
+    /* 요일 지정이 있으면 그 요일 배송일 안에서만 고른다 */
+    if (r.dow != null) { c = ds.filter(function(x) { return invDow(x) === r.dow; }); if (c.length) ds = c; else return { d: all[all.length - 1], why: '그 요일 배송일 없음' }; }
+    if (r.week === 'last') return { d: ds.filter(function(x) { return invWeekRow(x) === invWeekRow(ds[ds.length - 1]); })[0] };
     if (typeof r.week === 'number') { c = ds.filter(function(x) { return invWeekRow(x) === r.week; }); if (c.length) return { d: c[0] }; return { d: invNearest(ds, r.week * 7 - 3), why: r.week + '주차에 배송일 없음' }; }
     if (r.pos === 'first') return { d: ds[0] };
     if (r.pos === 'last') return { d: ds[ds.length - 1] };
     if (r.pos === 'last2') return { d: ds.length > 1 ? ds[ds.length - 2] : ds[0] };
-    if (r.before) { c = ds.filter(function(x) { return dom(x) <= r.before; }); if (c.length) return { d: c[c.length - 1] }; return { d: ds[0], why: r.before + '일 전 배송일 없음' }; }
+    if (r.before) { c = ds.filter(function(x) { return dom(x) < r.before || (r.incl && dom(x) === r.before); }); if (c.length) return { d: c[c.length - 1] }; return { d: ds[0], why: r.before + '일 전 배송일 없음' }; }
     if (r.after) { c = ds.filter(function(x) { return dom(x) >= r.after; }); if (c.length) return { d: c[0] }; return { d: ds[ds.length - 1], why: r.after + '일 이후 배송일 없음' }; }
     if (r.from) { c = ds.filter(function(x) { return dom(x) >= r.from && dom(x) <= r.to; }); if (c.length) return { d: c[0] }; return { d: invNearest(ds, r.from), why: r.from + '~' + r.to + '일 배송일 없음' }; }
+    ds = all;
     var load = ctx.load || {};
     function light(arr) { var b = arr[0]; arr.forEach(function(x) { if ((load[x] || 0) < (load[b] || 0)) b = x; }); return b; }
     /* 영남 스팟: 3~5주차에 몰아서 (전월 요일이 그 안에 있으면 그대로) */
@@ -9368,7 +9380,9 @@ document.getElementById('__wpSave').onclick = function() {
   function invNearest(ds, dom0) { var best = ds[0], bd = 99; ds.forEach(function(x) { var g = Math.abs(+x.slice(8) - dom0); if (g < bd) { bd = g; best = x; } }); return best; }
 
   function invCfgOf(bid) { if (!INV.cfg) INV.cfg = {}; return INV.cfg[bid] || (INV.cfg[bid] = {}); }
-  function invIsExcl(t) { var c = INV.cfg && INV.cfg[t.bid]; if (c && c.ex === 1) return true; if (c && c.ex === 0) return false; return INV_EXCL_RE.test(t.name) || /계획일정없음|수기일정생성/.test(t.cycle); }
+  /* 연1회(1월만) 거래처: 1월이 아니면 제외 */
+  function invIsYearly(t) { var c = INV.cfg && INV.cfg[t.bid]; return !!(c && c.yr); }
+  function invIsExcl(t) { var c = INV.cfg && INV.cfg[t.bid]; if (c && c.yr && String(INV.ym || '').slice(5) !== '01') return true; if (c && c.ex === 1) return true; if (c && c.ex === 0) return false; return INV_EXCL_RE.test(t.name) || /계획일정없음|수기일정생성/.test(t.cycle); }
   function invIsNew(t) { var c = INV.cfg && INV.cfg[t.bid]; return !(c && c.seen); }
 
   /* 자동 배치 — 수동(a:'m')·완료 건은 건드리지 않는다 */
@@ -9384,7 +9398,8 @@ document.getElementById('__wpSave').onclick = function() {
       var ds = invDs(t.bid, ym);
       var cf = INV.cfg[t.bid] || {};
       var ref = INV.prev && INV.prev[t.bid] && INV.prev[t.bid].d;
-      var pk = invPick(ds, invRule(cf.rule), ref, { yn: t.yn, load: load });
+      var rl = invRule(cf.rule);
+      var pk = invPick(ds, rl, ref, { yn: t.yn && !rl.noYn && !/^매월1회/.test(t.cycle || ''), load: load });
       if (pk.d) load[pk.d] = (load[pk.d] || 0) + 1;
       plan[t.bid] = { d: pk.d, s: (it && it.s) || '', m: (it && it.m) || '', w: pk.why || '', i: pk.info || '', a: 'auto' };
       n++;
@@ -9691,7 +9706,7 @@ document.getElementById('__wpSave').onclick = function() {
       '<div class="wp-fld"><span style="width:70px">상태</span><select id="__wpInvEdS" class="wp-inp" style="height:35px"><option value=""' + (!it.s ? ' selected' : '') + '>예정</option><option value="done"' + (it.s === 'done' ? ' selected' : '') + '>완료</option><option value="skip"' + (it.s === 'skip' ? ' selected' : '') + '>미실시</option></select></div>' +
       '<div class="wp-fld"><span style="width:70px">규칙</span><input id="__wpInvEdR" class="wp-inp" style="height:35px" value="' + esc(cf.rule || '') + '" placeholder="3주차 · 마지막 배송 · 25일 전 · 10~15일 · 묶음:이름"></div>' +
       '<div class="wp-fld"><span style="width:70px">메모</span><input id="__wpInvEdM" class="wp-inp" style="height:35px" value="' + esc(it.m || cf.m || '') + '" placeholder="참관 필요 · 사전 연락 등"></div>' +
-      '<div style="display:flex;justify-content:space-between;margin-top:8px"><label style="font-size:12.5px;color:#475569"><input type="checkbox" id="__wpInvEdX2"' + (invIsExcl(t) ? ' checked' : '') + '> 재고조사 대상에서 제외</label><button id="__wpInvEdOk" class="wp-btn pri">적용</button></div>';
+      '<div style="display:flex;justify-content:space-between;margin-top:8px"><span><label style="font-size:12.5px;color:#475569;margin-right:12px"><input type="checkbox" id="__wpInvEdX2"' + ((INV.cfg[bid] || {}).ex === 1 || (!(INV.cfg[bid] || {}).yr && invIsExcl(t)) ? ' checked' : '') + '> 재고조사 대상에서 제외</label><label style="font-size:12.5px;color:#475569"><input type="checkbox" id="__wpInvEdY"' + ((INV.cfg[bid] || {}).yr ? ' checked' : '') + '> 연1회(1월만)</label></span><button id="__wpInvEdOk" class="wp-btn pri">적용</button></div>';
     (document.getElementById('__wp') || document.body).appendChild(box);
     var pick = it.d;
     [].forEach.call(box.querySelectorAll('.__wpInvEdD'), function(bt) { bt.onclick = function() { pick = bt.getAttribute('data-d'); [].forEach.call(box.querySelectorAll('.__wpInvEdD'), function(x) { x.className = 'wp-day __wpInvEdD' + (x === bt ? ' on' : ''); }); }; });
@@ -9702,7 +9717,7 @@ document.getElementById('__wpSave').onclick = function() {
       it.s = document.getElementById('__wpInvEdS').value;
       it.m = document.getElementById('__wpInvEdM').value.trim();
       var c = invCfgOf(bid); c.rule = document.getElementById('__wpInvEdR').value.trim(); c.m = it.m;
-      c.ex = document.getElementById('__wpInvEdX2').checked ? 1 : 0; if (c.ex) delete INV.plan[bid];
+      c.ex = document.getElementById('__wpInvEdX2').checked ? 1 : 0; c.yr = document.getElementById('__wpInvEdY').checked ? 1 : 0; if (c.ex || (c.yr && INV.ym.slice(5) !== '01')) delete INV.plan[bid];
       INV.dirty = true; box.remove(); invRender();
     };
   }
