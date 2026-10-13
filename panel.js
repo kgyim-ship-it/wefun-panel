@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261013-1751';
+  var PANEL_BUILD = '20261013-1756';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9906,7 +9906,7 @@ document.getElementById('__wpSave').onclick = function() {
     box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><b style="font-size:15px">' + esc(t.name) + '</b><div style="color:#94a3b8;font-size:12px">' + esc(t.comp) + ' · ' + esc(t.mgmt) + ' · ' + esc(t.cycle || '-') + (INV.prev && INV.prev[bid] && INV.prev[bid].d ? ' · 전월 조사 ' + invShort(INV.prev[bid].d) : '') + '</div></div><button id="__wpInvEdX" class="wp-act">✕</button></div>' +
       (it.w ? '<div style="color:#DC2626;font-size:12.5px;margin-top:6px">⚠ ' + esc(it.w) + '</div>' : '') + (it.i ? '<div style="color:#64748b;font-size:12px;margin-top:4px">' + esc(it.i) + '</div>' : '') +
       (LK ? '<div style="margin-top:8px;padding:8px 10px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E">🔒 확정된 일정입니다. 날짜·제외를 바꾸면 <b>변경 요청</b>으로 접수되고 물류팀 승인 후 월력표에 반영됩니다. 상태·메모는 바로 저장됩니다.</div>' : '') +
-      '<div style="margin-top:10px;font-weight:600;font-size:12.5px;color:#475569">조사일 (이달 배송일 중 선택)</div><div style="margin-top:4px">' + (ds.length ? ds.map(function(d) { return '<button class="wp-day __wpInvEdD' + (it.d === d ? ' on' : '') + '" data-d="' + d + '">' + invShort(d) + '</button>'; }).join('') : '<span style="color:#b45309">이달 배송 없음</span>') + ' <input type="date" id="__wpInvEdDI" class="wp-inp" style="height:28px;width:150px;font-size:12.5px;vertical-align:middle" title="배송일이 아닌 날짜를 직접 지정" value="' + esc(it.d && ds.indexOf(it.d) < 0 ? it.d : '') + '"></div>' +
+      '<div style="margin-top:10px;font-weight:600;font-size:12.5px;color:#475569">조사일 (이달 배송일 중 선택)</div><div style="margin-top:4px">' + (ds.length ? ds.map(function(d) { return '<button class="wp-day __wpInvEdD' + (it.d === d ? ' on' : '') + '" data-d="' + d + '">' + invShort(d) + '</button>'; }).join('') : '<span style="color:#b45309">이달 배송 없음</span>') + ' <input type="date" id="__wpInvEdDI" class="wp-inp" style="height:28px;width:150px;font-size:12.5px;vertical-align:middle" title="배송일이 아닌 날짜를 직접 지정" value="' + esc(it.d && ds.indexOf(it.d) < 0 ? it.d : '') + '">' + (it.d ? ' <button id="__wpInvEdDel" class="wp-day" style="border-color:#DC2626;color:#DC2626" title="이달 조사에서 뺍니다(미실시). 대상에서는 안 빠집니다">✕ 이달 삭제</button>' : '') + '</div>' +
       '<div class="wp-fld"><span style="width:70px">상태</span><select id="__wpInvEdS" class="wp-inp" style="height:35px"><option value=""' + (!it.s ? ' selected' : '') + '>예정</option><option value="done"' + (it.s === 'done' ? ' selected' : '') + '>완료</option><option value="skip"' + (it.s === 'skip' ? ' selected' : '') + '>미실시</option></select></div>' +
       '<div class="wp-fld"><span style="width:70px">규칙</span><input id="__wpInvEdR" class="wp-inp" style="height:35px" value="' + esc(cf.rule || '') + '" placeholder="3주차 · 마지막 배송 · 25일 전 · 21일 고정 · 21일 근처 · 묶음:이름"></div>' +
       '<div class="wp-fld"><span style="width:70px">메모</span><input id="__wpInvEdM" class="wp-inp" style="height:35px" value="' + esc(it.m || cf.m || '') + '" placeholder="참관 필요 · 사전 연락 등"></div>' +
@@ -9916,6 +9916,7 @@ document.getElementById('__wpSave').onclick = function() {
     var pick = it.d;
     [].forEach.call(box.querySelectorAll('.__wpInvEdD'), function(bt) { bt.onclick = function() { pick = bt.getAttribute('data-d'); [].forEach.call(box.querySelectorAll('.__wpInvEdD'), function(x) { x.className = 'wp-day __wpInvEdD' + (x === bt ? ' on' : ''); }); }; });
     document.getElementById('__wpInvEdX').onclick = function() { box.remove(); };
+    var delB = document.getElementById('__wpInvEdDel'); if (delB) delB.onclick = function() { pick = ''; [].forEach.call(box.querySelectorAll('.__wpInvEdD'), function(x) { x.className = 'wp-day __wpInvEdD'; }); delB.className = 'wp-day on'; delB.style.background = '#DC2626'; delB.style.borderColor = '#DC2626'; delB.style.color = '#fff'; };
     document.getElementById('__wpInvEdDI').onchange = function() { var v = this.value; if (v && v.slice(0, 7) === INV.ym) { pick = v; [].forEach.call(box.querySelectorAll('.__wpInvEdD'), function(x) { x.className = 'wp-day __wpInvEdD'; }); } else if (v) { toast('이달(' + INV.ym + ') 날짜만 됩니다', '#c0392b'); this.value = ''; } };
     document.getElementById('__wpInvEdOk').onclick = function() {
       if (!INV.canEdit) { toast('수정 권한이 없습니다', '#c0392b'); return; }
@@ -9923,7 +9924,7 @@ document.getElementById('__wpSave').onclick = function() {
         /* 확정 후: 날짜·제외 변경은 요청으로. 상태·메모·규칙은 바로 */
         var exNow = (INV.cfg[bid] || {}).ex === 1 || (!(INV.cfg[bid] || {}).yr && invIsExcl(t));
         var exNew = document.getElementById('__wpInvEdX2').checked;
-        var kind = exNew && !exNow ? '삭제' : (pick !== it.d ? (it.d ? '변경' : '추가') : '');
+        var kind = exNew && !exNow ? '삭제' : (pick !== it.d ? (it.d ? (pick ? '변경' : '삭제') : '추가') : '');
         if (!exNew && exNow && pick) kind = '추가';
         it.s = document.getElementById('__wpInvEdS').value; it.m = document.getElementById('__wpInvEdM').value.trim();
         var c0 = invCfgOf(bid); c0.rule = document.getElementById('__wpInvEdR').value.trim(); c0.m = it.m; INV.dirty = true;
@@ -9934,8 +9935,8 @@ document.getElementById('__wpSave').onclick = function() {
         invSubmitReq(t, kind, it.d, kind === '삭제' ? '' : pick, why).then(function() { toast('✓ ' + kind + ' 요청 접수 · 물류팀 승인 대기', '#0a7d47'); box.remove(); invRender(); invCountReqs(); }).catch(function(e) { okb.disabled = false; okb.textContent = '적용'; alert('요청 실패: ' + ((e && e.message) || e)); });
         return;
       }
-      if (pick !== it.d) { it.d = pick; it.a = 'm'; it.w = ''; }
-      it.s = document.getElementById('__wpInvEdS').value;
+      if (pick !== it.d) { it.d = pick; it.a = 'm'; it.w = ''; it.i = pick ? (it.i || '') : '이달 삭제 (' + (REQ.name || '') + ')'; }
+      it.s = pick ? document.getElementById('__wpInvEdS').value : 'skip';
       it.m = document.getElementById('__wpInvEdM').value.trim();
       var c = invCfgOf(bid); c.rule = document.getElementById('__wpInvEdR').value.trim(); c.m = it.m;
       c.ex = document.getElementById('__wpInvEdX2').checked ? 1 : 0; c.yr = document.getElementById('__wpInvEdY').checked ? 1 : 0; if (c.ex || (c.yr && INV.ym.slice(5) !== '01')) delete INV.plan[bid];
