@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261007-1854';
+  var PANEL_BUILD = '20261013-1349';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -1124,6 +1124,7 @@
       ['voc', '배송 VOC'],
       ['tracking', '운송장조회'],
       ['inventory', '재고조사'],
+      ['cold', '저온 발주'],
       ['mine', '내 요청 상태']
     ],
     admin: [
@@ -1133,6 +1134,7 @@
       ['find', '거래처 조회'],
       ['tracking', '운송장조회'],
       ['inventory', '재고조사'],
+      ['cold', '저온 발주'],
       ['bulk', '배송정보 일괄입력'],
       ['sched_bulk', '배송일정 일괄'],
       ['stats', '배송통계'],
@@ -1179,6 +1181,7 @@
     else if (t === 'ticket') viewTicket();
     else if (t === 'tracking') viewTracking();
     else if (t === 'inventory') viewInventory();
+    else if (t === 'cold') viewCold();
     else if (t === 'visits') viewVisits();
     else if (t === 'voc') viewVoc();
     else if (t === 'newcode') viewNewCode();
@@ -9888,6 +9891,279 @@ document.getElementById('__wpSave').onclick = function() {
     }).then(function(buf) {
       var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '재고조사_' + ym + '.xlsx'; document.body.appendChild(a); a.click();
+      setTimeout(function() { a.remove(); URL.revokeObjectURL(a.href); }, 1200);
+    });
+  }
+
+  /* ================= 저온 발주 (직배송_저온 납품처별 발주자료 자동 생성) =================
+     김명인(사업추진본부) 수기 루틴을 그대로 옮김:
+       구매발주자료(고객사배송일 = 발주일+3, D-2 납품처는 +2) → 납품처/브랜드 필터 → 직배송_저온 품목만
+       → 큐레이션 제외(조식24 전체 · 토스/비바 전체 · 제외 스팟 마스터 · 거래명세서와 중복) → 납품처별 품목 합계 엑셀
+     설정 저장 = 게시판 type=cold 의 'cfg' (제외 스팟, 제외 품목, 납품처 on/off) */
+  var COLD = { ym: '', date: '', date2: '', raw: null, raw2: null, items: null, cfg: null, posts: null, res: null, sub: 'run', canEdit: false, q: '' };
+  var COLD_MGRS = ['김명인'];
+  /* 납품처: 구매처 기준(p) / 브랜드 기준(b). d2=D-2 발주. grp=브랜드 소계 표시. rows=거래처별 로우 시트 추가 */
+  var COLD_VENDORS = [
+    { k: '현대그린푸드', p: ['현대그린푸드'] },
+    { k: '엘푸드', p: ['엘푸드'], rows: 1 },
+    { k: '영우', b: ['영우'] },
+    { k: '그린델리카', b: ['그린'] },
+    { k: '신세계푸드', p: ['신세계푸드'] },
+    { k: '삼성웰스토리', p: ['삼성웰스토리'], grp: 1 },
+    { k: '삼립', p: ['삼립'] },
+    { k: '스윗밸런스', p: ['스윗밸런스'] },
+    { k: '샐러드판다', p: ['샐러드판다'] },
+    { k: '푸드팩토리', p: ['푸드팩토리'] },
+    { k: '참선진녹즙', p: ['참선진녹즙'], d2: 1 },
+    { k: '한국델몬트', p: ['한국델몬트'], d2: 1 },
+    { k: '한국야쿠르트', p: ['한국야쿠르트'], off: 1 }   /* 오한나m 별도 발주 — 기본 꺼짐 */
+  ];
+  function coldNn(s) { return String(s || '').replace(/[\s ]+/g, ''); }
+  function coldSpot(name) { var s = String(name || ''); var i = s.indexOf(' - '); return coldNn(i > -1 ? s.slice(i + 3) : s); }
+  function coldAddDays(ymd, n) { var p = ymd.split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2] + n); return ymdOf(d); }
+
+  /* ---- KV ---- */
+  function coldKvLoad(force) { if (COLD.posts && !force) return Promise.resolve(COLD.posts); return boardList('cold').then(function(ps) { COLD.posts = ps || []; return COLD.posts; }); }
+  function coldCfgGet() {
+    return coldKvLoad(true).then(function(ps) {
+      var parts = ps.filter(function(x) { return x.title === 'cfg' || String(x.title).indexOf('cfg#') === 0; });
+      var out = { ex: {}, exAll: {}, exItem: {}, voff: {} };
+      parts.forEach(function(p) { try { var o = JSON.parse(p.body || '{}'); Object.keys(o).forEach(function(k) { out[k] = o[k]; }); } catch (e) {} });
+      return out;
+    });
+  }
+  function coldCfgSet(cfg) {
+    var body = JSON.stringify(cfg);
+    return coldKvLoad(true).then(function(ps) {
+      var p = ps.filter(function(x) { return x.title === 'cfg'; })[0];
+      return (p ? boardEdit(p.id, 'cfg', body) : boardAdd('cold', 'cfg', body)).then(function() { COLD.posts = null; });
+    });
+  }
+
+  /* ---- 오피스: 직배송_저온 품목 마스터 (12시간 캐시) ---- */
+  function coldItems(force) {
+    if (COLD.items && !force) return Promise.resolve(COLD.items);
+    try { var c = JSON.parse(localStorage.getItem('__wpColdItems2') || 'null'); if (c && !force && Date.now() - c.at < 12 * 3600000) { COLD.items = c.map; return Promise.resolve(c.map); } } catch (e) {}
+    var map = {};
+    function page(p) {
+      return fetch('/office/item/item?searchYN=Y&size=500&page=' + p + '&searchParamItemStorages=' + encodeURIComponent('직배송_저온')).then(function(r) { return r.text(); }).then(function(h) {
+        var d = new DOMParser().parseFromString(h, 'text/html');
+        var t = [].slice.call(d.querySelectorAll('table')).filter(function(x) { return /상품코드/.test(x.innerText); })[0];
+        var trs = t ? [].slice.call(t.querySelectorAll('tr')).filter(function(x) { return x.querySelectorAll('td').length > 10; }) : [];
+        trs.forEach(function(tr) {
+          var td = tr.querySelectorAll('td'); var g = function(i) { return td[i] ? td[i].innerText.trim().replace(/\s+/g, ' ') : ''; };
+          var nm = g(4); if (!nm) return;
+          /* 같은 품목명이 브랜드마다 있어서(참치마요샌드위치: 삼립=직배송, 엘푸드=풀필) 브랜드+품목으로 키를 잡는다 */
+          map[coldNn(g(2)) + '|' + coldNn(nm)] = { name: nm, brand: g(2), min: g(7), use: /판매중/.test(g(18)) };
+        });
+        return trs.length >= 500 ? page(p + 1) : map;
+      });
+    }
+    return page(1).then(function(m) { COLD.items = m; try { localStorage.setItem('__wpColdItems2', JSON.stringify({ at: Date.now(), map: m })); } catch (e) {} return m; });
+  }
+
+  /* ---- 오피스: 구매발주자료 (고객사배송일 기준 하루치 전체) ---- */
+  function coldRaw(date) {
+    return fetch('/office/order/orderInfo/branch?workDateBegin=' + date + '&workDateAfter=' + date).then(function(r) { return r.text(); }).then(function(h) {
+      var i = h.indexOf('id="datatable"'); if (i < 0) throw new Error('구매발주자료 표를 찾지 못했습니다');
+      var s = h.lastIndexOf('<table', i), e = h.indexOf('</table>', i);
+      var d = new DOMParser().parseFromString('<table' + h.slice(s + 6, e) + '</table>', 'text/html');
+      var H = ['no', 'agg', 'dday', 'cday', 'brand', 'vendor', 'item', 'box', 'vol', 'svc', 'cust', 'qty', 'price'];
+      var out = [];
+      [].forEach.call(d.querySelectorAll('tbody tr'), function(tr) {
+        var td = tr.querySelectorAll('td'); if (td.length < 12) return;
+        var o = {}; H.forEach(function(k, j) { o[k] = td[j] ? td[j].textContent.trim().replace(/\s+/g, ' ') : ''; });
+        o.qty = parseInt(String(o.qty).replace(/[^0-9-]/g, ''), 10) || 0;
+        o.box = parseInt(String(o.box).replace(/[^0-9]/g, ''), 10) || '';
+        out.push(o);
+      });
+      return out;
+    });
+  }
+
+  /* ---- 규칙 적용 ---- */
+  function coldItemOf(items, r) { var k = coldNn(r.item); return items[coldNn(r.brand) + '|' + k] || items[coldNn(r.vendor) + '|' + k] || null; }
+  function coldVendorOf(r) {
+    for (var i = 0; i < COLD_VENDORS.length; i++) {
+      var v = COLD_VENDORS[i];
+      if (v.p && v.p.indexOf(r.vendor) > -1) return v;
+      if (v.b && v.b.indexOf(r.brand) > -1) return v;
+    }
+    return null;
+  }
+  function coldApply(rows, date, items, cfg, forD2) {
+    var has = {}; /* 거래처+품목 거래명세서 존재 */
+    rows.forEach(function(r) { if (r.agg === '거래명세서') has[coldNn(r.cust) + '|' + coldNn(r.item)] = 1; });
+    var inc = [], exc = [];
+    rows.forEach(function(r) {
+      var v = coldVendorOf(r); if (!v) return;
+      if (!!v.d2 !== !!forD2) return;                       /* D-2 납품처는 두 번째 날짜에서만, 나머지는 첫 날짜에서만 */
+      var on = cfg.voff[v.k] ? false : !v.off; if (cfg.von && cfg.von[v.k]) on = true;
+      if (!on) return;
+      r.vk = v.k; var why = '';
+      var spot = coldSpot(r.cust), cn = coldNn(r.cust);
+      if (cfg.exAll[spot]) why = '제외 스팟(전체)';
+      else if (v.p && !coldItemOf(items, r)) why = '직배송_저온 품목 아님(풀필)';
+      else if (cfg.exItem[coldNn(r.item)]) why = '제외 품목(부자재)';
+      else if (r.agg === '큐레이션') {
+        if (r.svc === '조식24') why = '조식24 큐레이션';
+        else if (/토스|비바리퍼블리카/.test(cn)) why = '토스·비바 큐레이션';
+        else if (cfg.ex[spot]) why = '제외 스팟 큐레이션';
+        else if (has[cn + '|' + coldNn(r.item)]) why = '거래명세서와 중복';
+      }
+      if (why) { r.why = why; exc.push(r); } else inc.push(r);
+    });
+    return { inc: inc, exc: exc };
+  }
+  function coldRun() {
+    var d1 = COLD.date, d2 = COLD.date2, box = document.getElementById('__wpColdBody');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d1)) { toast('고객사배송일을 확인하세요', '#c0392b'); return; }
+    function msg(s) { if (box) box.innerHTML = '<div style="color:#94a3b8;padding:14px">' + s + '</div>'; }
+    msg('직배송_저온 품목 마스터 불러오는 중…');
+    var items, cfg;
+    return coldItems(false).then(function(m) { items = m; return coldCfgGet(); }).then(function(c) {
+      cfg = c; COLD.cfg = c;
+      msg('구매발주자료 조회 중 (' + d1 + ') — 1만 행 넘어서 5~10초 걸립니다');
+      return coldRaw(d1);
+    }).then(function(rows) {
+      COLD.raw = rows;
+      var A = coldApply(rows, d1, items, cfg, false);
+      var needD2 = COLD_VENDORS.some(function(v) { return v.d2 && !cfg.voff[v.k]; });
+      if (!needD2 || !/^\d{4}-\d{2}-\d{2}$/.test(d2)) return { A: A, B: { inc: [], exc: [] }, rows2: [] };
+      msg('구매발주자료 조회 중 (D-2 납품처 · ' + d2 + ')');
+      return coldRaw(d2).then(function(rows2) { COLD.raw2 = rows2; return { A: A, B: coldApply(rows2, d2, items, cfg, true), rows2: rows2 }; });
+    }).then(function(R) {
+      COLD.res = { inc: R.A.inc.concat(R.B.inc), exc: R.A.exc.concat(R.B.exc), n1: COLD.raw.length, n2: R.rows2.length, at: now() };
+      coldRender();
+    }).catch(function(e) { msg('<span style="color:#b00">실패: ' + esc((e && e.message) || e) + '</span>'); });
+  }
+
+  /* ---- 화면 ---- */
+  function viewCold() {
+    COLD.canEdit = IS_ADMIN || COLD_MGRS.indexOf(String(REQ.name || '').trim()) > -1;
+    if (!COLD.date) { COLD.date = coldAddDays(todayStr(), 3); COLD.date2 = coldAddDays(todayStr(), 2); }
+    VIEW.innerHTML = '<div id="__wpColdHead"></div><div id="__wpColdBody" class="wp-scroll" style="background:#fff"></div>';
+    coldRenderHead();
+    if (COLD.res) coldRender(); else {
+      document.getElementById('__wpColdBody').innerHTML = '<div style="padding:16px;color:#475569;font-size:13px;line-height:1.8">' +
+        '<b>고객사배송일</b>을 확인하고 <b>[생성]</b>을 누르면 오피스 구매발주자료를 읽어 납품처별 발주 수량을 만듭니다.<br>' +
+        '기본값은 오늘+3일(D-3 발주). 참선진녹즙·한국델몬트는 D-2라 오늘+2일 자료를 따로 읽습니다.<br>' +
+        '규칙: 직배송_저온 품목만 · 큐레이션 중 조식24/토스·비바/제외 스팟/거래명세서 중복 건 제외 · 납품처별 품목 합계</div>';
+    }
+  }
+  function coldRenderHead() {
+    var h = document.getElementById('__wpColdHead'); if (!h) return;
+    var r = COLD.res;
+    h.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
+      '<span style="font-size:13px;color:#475569">고객사배송일</span><input id="__wpColdD1" class="wp-inp" type="date" value="' + esc(COLD.date) + '" style="width:160px">' +
+      '<span style="font-size:13px;color:#475569;margin-left:6px">D-2 납품처</span><input id="__wpColdD2" class="wp-inp" type="date" value="' + esc(COLD.date2) + '" style="width:160px">' +
+      '<button id="__wpColdGo" class="wp-btn pri" style="padding:0 20px">생성</button>' +
+      '<button class="wp-btn gh __wpColdSub" data-s="run"' + (COLD.sub === 'run' ? ' style="background:#0B1220;color:#fff"' : '') + '>결과</button>' +
+      '<button class="wp-btn gh __wpColdSub" data-s="cfg"' + (COLD.sub === 'cfg' ? ' style="background:#0B1220;color:#fff"' : '') + '>제외 설정</button>' +
+      '<span style="margin-left:4px;font-size:12.5px;color:#475569;background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:5px 10px">관리자 <b style="color:#0F172A">' + esc(COLD_MGRS.join(', ')) + '</b>' + (COLD.canEdit ? '' : ' · <span style="color:#94a3b8">보기 전용</span>') + '</span>' +
+      '<span style="flex:1"></span>' +
+      (r ? '<button id="__wpColdXls" class="wp-btn ok">⬇ 발주 엑셀</button>' : '') +
+      '<button id="__wpColdRe" class="wp-btn gh" title="품목 마스터를 오피스에서 다시 읽습니다">↻ 품목</button></div>' +
+      (r ? '<div class="wp-meta" style="margin:0 0 8px;padding:8px 12px;font-size:12.5px">원본 ' + r.n1.toLocaleString() + '행' + (r.n2 ? ' + D-2 ' + r.n2.toLocaleString() + '행' : '') + ' · 발주 대상 <b>' + r.inc.length + '</b>행 · 제외 <b>' + r.exc.length + '</b>행 · 생성 ' + esc(r.at) + '</div>' : '');
+    document.getElementById('__wpColdD1').onchange = function() { COLD.date = this.value; COLD.date2 = coldAddDays(this.value, -1); var d2 = document.getElementById('__wpColdD2'); if (d2) d2.value = COLD.date2; };
+    document.getElementById('__wpColdD2').onchange = function() { COLD.date2 = this.value; };
+    document.getElementById('__wpColdGo').onclick = function() { COLD.sub = 'run'; coldRenderHead(); coldRun(); };
+    [].forEach.call(h.querySelectorAll('.__wpColdSub'), function(b) { b.onclick = function() { COLD.sub = b.getAttribute('data-s'); coldRenderHead(); coldRender(); }; });
+    var x = document.getElementById('__wpColdXls'); if (x) x.onclick = coldExcel;
+    document.getElementById('__wpColdRe').onclick = function() { coldItems(true).then(function(m) { toast('직배송_저온 품목 ' + Object.keys(m).length + '개 갱신', '#0a7d47'); }); };
+  }
+  function coldRender() {
+    coldRenderHead();
+    var b = document.getElementById('__wpColdBody'); if (!b) return;
+    if (COLD.sub === 'cfg') return coldRenderCfg(b);
+    var r = COLD.res; if (!r) { b.innerHTML = '<div style="padding:14px;color:#94a3b8">먼저 [생성]을 누르세요.</div>'; return; }
+    var byV = {};
+    r.inc.forEach(function(x) { var o = byV[x.vk] || (byV[x.vk] = { n: 0, q: 0, items: {}, custs: {} }); o.n++; o.q += x.qty; o.items[x.item] = 1; o.custs[x.cust] = 1; });
+    var exV = {}; r.exc.forEach(function(x) { exV[x.vk] = (exV[x.vk] || 0) + 1; });
+    var h = '<table class="wp-tbl"><thead><tr><th>납품처</th><th style="text-align:right">품목</th><th style="text-align:right">거래처</th><th style="text-align:right">수량</th><th style="text-align:right">행</th><th style="text-align:right">제외 행</th><th>비고</th></tr></thead><tbody>';
+    COLD_VENDORS.forEach(function(v) {
+      var o = byV[v.k], off = COLD.cfg && COLD.cfg.voff[v.k] || (v.off && !(COLD.cfg && COLD.cfg.von && COLD.cfg.von[v.k]));
+      h += '<tr style="' + (off ? 'opacity:.45' : '') + '"><td><b>' + esc(v.k) + '</b>' + (v.d2 ? ' <span style="font-size:10.5px;color:#B45309;background:#FEF3C7;border-radius:3px;padding:0 4px">D-2</span>' : '') + (v.b ? ' <span style="font-size:10.5px;color:#475569;background:#F1F5F9;border-radius:3px;padding:0 4px">브랜드 기준</span>' : '') + '</td>' +
+        '<td style="text-align:right">' + (o ? Object.keys(o.items).length : '-') + '</td><td style="text-align:right">' + (o ? Object.keys(o.custs).length : '-') + '</td><td style="text-align:right"><b>' + (o ? o.q.toLocaleString() : '-') + '</b></td><td style="text-align:right">' + (o ? o.n : '-') + '</td><td style="text-align:right;color:#94a3b8">' + (exV[v.k] || '') + '</td>' +
+        '<td style="color:#94a3b8;font-size:12px">' + (off ? '꺼짐' : v.k === '한국야쿠르트' ? '' : '') + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    /* 제외 사유 요약 */
+    var byW = {}; r.exc.forEach(function(x) { byW[x.why] = (byW[x.why] || 0) + 1; });
+    h += '<div style="padding:10px 12px;font-size:12.5px;color:#475569;border-top:1px solid #E2E8F0"><b>제외 ' + r.exc.length + '행</b> — ' + Object.keys(byW).map(function(k) { return esc(k) + ' ' + byW[k]; }).join(' · ') + '</div>';
+    h += '<div class="wp-scroll" style="max-height:40vh;border:0;border-top:1px solid #E2E8F0"><table class="wp-tbl" style="font-size:12.5px"><thead><tr><th>납품처</th><th>집계</th><th>서비스</th><th>거래처</th><th>품목</th><th style="text-align:right">수량</th><th>제외 사유</th></tr></thead><tbody>' +
+      r.exc.slice(0, 400).map(function(x) { return '<tr><td>' + esc(x.vk) + '</td><td>' + esc(x.agg) + '</td><td>' + esc(x.svc) + '</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(x.cust) + '">' + esc(x.cust) + '</td><td>' + esc(x.item) + '</td><td style="text-align:right">' + x.qty + '</td><td style="color:#DC2626">' + esc(x.why) + '</td></tr>'; }).join('') +
+      '</tbody></table></div>';
+    b.innerHTML = h;
+  }
+  function coldRenderCfg(b) {
+    var cfg = COLD.cfg, ed = COLD.canEdit;
+    if (!cfg) { coldCfgGet().then(function(c) { COLD.cfg = c; coldRenderCfg(b); }); b.innerHTML = '<div style="padding:14px;color:#94a3b8">설정 불러오는 중…</div>'; return; }
+    var q = COLD.q.toLowerCase();
+    var spots = Object.keys(cfg.ex).concat(Object.keys(cfg.exAll)).filter(function(x, i, a) { return a.indexOf(x) === i; }).sort();
+    var h = '<div style="padding:10px 12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0;font-size:12.5px;color:#475569;line-height:1.7">' +
+      '<b>납품처</b>: ' + COLD_VENDORS.map(function(v) { var on = cfg.voff[v.k] ? false : !v.off; if (cfg.von && cfg.von[v.k]) on = true; return '<label style="margin-right:10px;white-space:nowrap"><input type="checkbox" class="__wpColdV" data-k="' + esc(v.k) + '"' + (on ? ' checked' : '') + (ed ? '' : ' disabled') + '> ' + esc(v.k) + '</label>'; }).join('') +
+      '<br><b>항상 제외</b>: 조식24 큐레이션 전체 · 거래처명에 토스/비바리퍼블리카 포함 큐레이션 · 거래명세서와 중복된 큐레이션 · 직배송_저온이 아닌 품목</div>';
+    h += '<div style="display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #E2E8F0"><b style="font-size:13px">제외 스팟 ' + spots.length + '</b><input id="__wpColdQ" class="wp-inp" placeholder="검색" value="' + esc(COLD.q) + '" style="width:200px;height:32px">' +
+      (ed ? '<input id="__wpColdAdd" class="wp-inp" placeholder="스팟명 (거래처명의 " - " 뒤 부분)" style="width:300px;height:32px"><label style="font-size:12px"><input type="checkbox" id="__wpColdAddAll"> 거래명세서까지 전체 제외</label><button id="__wpColdAddBtn" class="wp-btn gh" style="height:32px">추가</button>' : '') +
+      '<span style="flex:1"></span>' + (ed ? '<button id="__wpColdSave" class="wp-btn ok" style="height:32px">저장</button>' : '') + '</div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:2px 10px;padding:8px 12px;font-size:12.5px;max-height:46vh;overflow:auto">' +
+      spots.filter(function(s) { return !q || s.toLowerCase().indexOf(q) > -1; }).map(function(s) { return '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px solid #F1F5F9"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(s) + '">' + esc(s) + '</span>' + (cfg.exAll[s] ? '<span style="font-size:10.5px;color:#991B1B;background:#FEE2E2;border-radius:3px;padding:0 4px">전체</span>' : '<span style="font-size:10.5px;color:#475569;background:#F1F5F9;border-radius:3px;padding:0 4px">큐레이션</span>') + (ed ? '<button class="wp-act __wpColdDel" data-s="' + esc(s) + '" style="height:22px;padding:0 6px">✕</button>' : '') + '</div>'; }).join('') + '</div>';
+    var exi = Object.keys(cfg.exItem).sort();
+    h += '<div style="padding:8px 12px;border-top:1px solid #E2E8F0;font-size:12.5px"><b>제외 품목(부자재)</b> ' + exi.map(function(s) { return '<span style="display:inline-block;margin:2px 4px 2px 0;padding:1px 7px;background:#F1F5F9;border-radius:4px">' + esc(cfg.exItem[s] || s) + (ed ? ' <a href="#" class="__wpColdDelI" data-s="' + esc(s) + '" style="color:#94a3b8;text-decoration:none">✕</a>' : '') + '</span>'; }).join('') +
+      (ed ? '<div style="margin-top:6px"><input id="__wpColdAddI" class="wp-inp" placeholder="품목명 정확히" style="width:300px;height:30px"><button id="__wpColdAddIBtn" class="wp-btn gh" style="height:30px;margin-left:6px">추가</button></div>' : '') + '</div>';
+    b.innerHTML = h;
+    var qi = document.getElementById('__wpColdQ'); qi.oninput = function() { COLD.q = qi.value; clearTimeout(qi._t); qi._t = setTimeout(function() { coldRenderCfg(b); var q2 = document.getElementById('__wpColdQ'); if (q2) { q2.focus(); q2.setSelectionRange(q2.value.length, q2.value.length); } }, 250); };
+    if (!ed) return;
+    [].forEach.call(b.querySelectorAll('.__wpColdV'), function(c) { c.onchange = function() { var k = c.getAttribute('data-k'), v = COLD_VENDORS.filter(function(x) { return x.k === k; })[0]; cfg.von = cfg.von || {}; if (c.checked) { delete cfg.voff[k]; if (v.off) cfg.von[k] = 1; } else { cfg.voff[k] = 1; delete cfg.von[k]; } }; });
+    document.getElementById('__wpColdAddBtn').onclick = function() { var s = coldNn(document.getElementById('__wpColdAdd').value); if (!s) return; if (document.getElementById('__wpColdAddAll').checked) cfg.exAll[s] = 1; else cfg.ex[s] = 1; coldRenderCfg(b); };
+    [].forEach.call(b.querySelectorAll('.__wpColdDel'), function(x) { x.onclick = function() { var s = x.getAttribute('data-s'); delete cfg.ex[s]; delete cfg.exAll[s]; coldRenderCfg(b); }; });
+    document.getElementById('__wpColdAddIBtn').onclick = function() { var s = document.getElementById('__wpColdAddI').value.trim(); if (!s) return; cfg.exItem[coldNn(s)] = s; coldRenderCfg(b); };
+    [].forEach.call(b.querySelectorAll('.__wpColdDelI'), function(x) { x.onclick = function(e) { e.preventDefault(); delete cfg.exItem[x.getAttribute('data-s')]; coldRenderCfg(b); }; });
+    document.getElementById('__wpColdSave').onclick = function() { var bt = this; bt.disabled = true; bt.textContent = '저장 중…'; coldCfgSet(cfg).then(function() { toast('✓ 저장했습니다', '#0a7d47'); }).catch(function(e) { alert('저장 실패: ' + ((e && e.message) || e)); }).then(function() { bt.disabled = false; bt.textContent = '저장'; }); };
+  }
+  /* ---- 엑셀: 납품처별 시트(품목 합계) + 엘푸드 로우 + 대상 원본 + 제외 ---- */
+  function coldExcel() {
+    var r = COLD.res; if (!r) return;
+    ensureExcel().then(function() {
+      var wb = new ExcelJS.Workbook();
+      function head(ws, cols) { var row = ws.addRow(cols); row.eachCell(function(c) { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } }; c.alignment = { horizontal: 'center' }; }); }
+      COLD_VENDORS.forEach(function(v) {
+        var L = r.inc.filter(function(x) { return x.vk === v.k; }); if (!L.length) return;
+        var ws = wb.addWorksheet(v.k.slice(0, 28));
+        var d = L[0];
+        ws.addRow(['고객사배송일', d.dday]); ws.addRow(['센터입고일', d.cday]); ws.addRow([]);
+        head(ws, ['행 레이블', '합계 : 주문수량']);
+        var tot = 0;
+        var nb = {}; L.forEach(function(x) { nb[x.brand] = 1; });
+        if (v.grp || Object.keys(nb).length > 1) {
+          var byB = {}; L.forEach(function(x) { (byB[x.brand] = byB[x.brand] || {})[x.item] = (byB[x.brand][x.item] || 0) + x.qty; });
+          Object.keys(byB).sort().forEach(function(bn) { var sub = 0; Object.keys(byB[bn]).forEach(function(k) { sub += byB[bn][k]; }); var br = ws.addRow([bn, sub]); br.font = { bold: true }; Object.keys(byB[bn]).sort().forEach(function(k) { ws.addRow([k, byB[bn][k]]); }); tot += sub; });
+        } else {
+          var agg = {}; L.forEach(function(x) { agg[x.item] = (agg[x.item] || 0) + x.qty; });
+          Object.keys(agg).sort().forEach(function(k) { ws.addRow([k, agg[k]]); tot += agg[k]; });
+        }
+        var tr = ws.addRow(['총합계', tot]); tr.font = { bold: true };
+        ws.getColumn(1).width = 44; ws.getColumn(2).width = 16;
+        if (v.rows) {
+          var ws2 = wb.addWorksheet(v.k.slice(0, 24) + ' 로우');
+          head(ws2, ['고객사배송일', '센터입고일', '브랜드', '품목명', '박스입수', '용량', '거래처명', '주문수량']);
+          L.slice().sort(function(a, b2) { return a.item < b2.item ? -1 : a.item > b2.item ? 1 : a.cust < b2.cust ? -1 : 1; }).forEach(function(x) { ws2.addRow([x.dday, x.cday, x.brand, x.item, x.box, x.vol, x.cust, x.qty]); });
+          [12, 12, 12, 40, 8, 8, 56, 10].forEach(function(w, i) { ws2.getColumn(i + 1).width = w; });
+        }
+      });
+      var wsA = wb.addWorksheet('대상 원본');
+      head(wsA, ['납품처', '번호', '집계기준', '고객사배송일', '센터입고일', '브랜드', '구매처', '품목명', '박스입수', '용량', '서비스구분', '거래처명', '주문수량', '입고단가', '최소주문']);
+      r.inc.forEach(function(x) { var it = COLD.items && coldItemOf(COLD.items, x); wsA.addRow([x.vk, +x.no || x.no, x.agg, x.dday, x.cday, x.brand, x.vendor, x.item, x.box, x.vol, x.svc, x.cust, x.qty, x.price, it ? it.min : '']); });
+      [12, 8, 10, 12, 12, 12, 12, 40, 8, 8, 9, 56, 9, 10, 9].forEach(function(w, i) { wsA.getColumn(i + 1).width = w; });
+      var wsX = wb.addWorksheet('제외');
+      head(wsX, ['납품처', '번호', '집계기준', '서비스구분', '브랜드', '구매처', '품목명', '거래처명', '주문수량', '제외 사유']);
+      r.exc.forEach(function(x) { wsX.addRow([x.vk, +x.no || x.no, x.agg, x.svc, x.brand, x.vendor, x.item, x.cust, x.qty, x.why]); });
+      [12, 8, 10, 9, 12, 12, 40, 56, 9, 24].forEach(function(w, i) { wsX.getColumn(i + 1).width = w; });
+      return wb.xlsx.writeBuffer();
+    }).then(function(buf) {
+      var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '저온발주_' + COLD.date.replace(/-/g, '') + '_D3.xlsx'; document.body.appendChild(a); a.click();
       setTimeout(function() { a.remove(); URL.revokeObjectURL(a.href); }, 1200);
     });
   }
