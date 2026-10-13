@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261013-1744';
+  var PANEL_BUILD = '20261013-1751';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9538,7 +9538,7 @@ document.getElementById('__wpSave').onclick = function() {
   function invSave() {
     if (!INV.canEdit) { toast('수정 권한이 없습니다', '#c0392b'); return Promise.resolve(); }
     var btn = document.getElementById('__wpInvSave'); if (btn) { btn.disabled = true; btn.textContent = '저장 중…'; }
-    INV.targets.forEach(function(t) { var c = invCfgOf(t.bid); c.seen = 1; if (!c.n) c.n = t.name; });
+    /* 처음 보는 대상(seen) 표시는 [신규·검토]의 '확인 완료' 버튼으로만 지운다 — 저장할 때마다 지우면 검토 전에 사라진다 */
     var plan = {}; Object.keys(INV.plan).forEach(function(k) { if (k === '_meta') return; var it = INV.plan[k]; if (it && (it.d || (it.a === 'm' && it.s === 'skip'))) plan[k] = it; });
     var om = INV.plan._meta || {};
     plan._meta = { by: REQ.name || '', at: now(), fixed: om.fixed || 0, fixedBy: om.fixedBy || '', fixedAt: om.fixedAt || '' };
@@ -9576,7 +9576,7 @@ document.getElementById('__wpSave').onclick = function() {
      월력표를 [확정]하면 그 뒤 날짜 추가·변경·삭제는 바로 고치지 않고 '재고조사변경' 요청으로 큐에 올린다(슬랙 알림 동일).
      물류 관리자가 [배송요청검토]에서 승인하면 invApplyReq 가 계획(KV)에 반영한다. 물류 관리자 본인은 확정 후에도 바로 고친다. */
   function invFixed() { return !!(INV.plan && INV.plan._meta && INV.plan._meta.fixed); }
-  function invLocked() { return invFixed() && !IS_ADMIN; }
+  function invLocked() { return invFixed() && (!IS_ADMIN || MODE === 'requester'); }   /* 관리자도 요청자용 모드에선 요청으로 */
   function invShort2(d) { return d ? invShort(d) : '(없음)'; }
   function invSubmitReq(t, kind, oldD, newD, reason) {
     var detail = ['월: ' + INV.ym, '구분: ' + kind, '기존: ' + (oldD || '없음'), '변경: ' + (newD || '없음'), '사유: ' + (reason || '-')].join(' · ');
@@ -9625,7 +9625,7 @@ document.getElementById('__wpSave').onclick = function() {
       '<span style="margin-left:10px;font-size:12.5px;color:#475569;background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:5px 10px">관리자 <b style="color:#0F172A">' + esc(INV_MGRS.join(', ')) + '</b>' + (INV.canEdit ? '' : ' · <span style="color:#94a3b8">보기 전용</span>') + '</span>' +
       '<span style="flex:1"></span>' +
       (INV.reqN ? '<button id="__wpInvReqs" class="wp-btn gh" style="border-color:#F59E0B;color:#B45309" title="확정 후 들어온 월력표 변경 요청 (물류 승인 대기)">변경요청 대기 <b>' + INV.reqN + '</b></button>' : '') +
-      (invFixed() ? '<span style="font-size:12.5px;color:#0a7d47;background:#DCFCE7;border-radius:6px;padding:5px 10px" title="' + esc((INV.plan._meta.fixedBy || '') + ' ' + (INV.plan._meta.fixedAt || '')) + '">✔ 확정됨' + (invLocked() ? ' · 날짜 변경은 요청으로' : '') + '</span>' + (IS_ADMIN ? '<button id="__wpInvUnfix" class="wp-btn gh">확정 해제</button>' : '') : (INV.canEdit && INV.saved ? '<button id="__wpInvFix" class="wp-btn gh" style="border-color:#0a7d47;color:#0a7d47" title="확정하면 이후 날짜 변경은 물류팀 승인 요청으로 접수됩니다">확정</button>' : '')) +
+      (invFixed() ? '<span style="font-size:12.5px;color:#0a7d47;background:#DCFCE7;border-radius:6px;padding:5px 10px" title="' + esc((INV.plan._meta.fixedBy || '') + ' ' + (INV.plan._meta.fixedAt || '')) + '">✔ 확정됨' + (invLocked() ? ' · 날짜 변경은 요청으로' : '') + '</span>' + (IS_ADMIN && MODE !== 'requester' ? '<button id="__wpInvUnfix" class="wp-btn gh">확정 해제</button>' : '') : (INV.canEdit && INV.saved ? '<button id="__wpInvFix" class="wp-btn gh" style="border-color:#0a7d47;color:#0a7d47" title="확정하면 이후 날짜 변경은 물류팀 승인 요청으로 접수됩니다">확정</button>' : '')) +
       (INV.canEdit ? (invLocked() ? '' : '<button id="__wpInvAuto" class="wp-btn gh">자동 배치</button>') + '<button id="__wpInvSave" class="wp-btn ' + (INV.dirty ? 'ok' : 'gh') + '">저장' + (INV.dirty ? ' ●' : '') + '</button>' : '') +
       '<button id="__wpInvXls" class="wp-btn gh">⬇ 엑셀</button><button id="__wpInvRe" class="wp-btn gh" title="오피스에서 대상·배송일을 다시 읽습니다">↻ 오피스</button></div>' +
       (s ? '<div class="wp-meta" style="margin:0 0 8px;padding:8px 12px;font-size:12.5px">대상 <b>' + s.live + '</b> (스/밸 활동 ' + s.all + ' − 제외 ' + s.ex + ') · 배치 <b>' + s.placed + '</b> · 완료 <b style="color:#16A34A">' + s.done + '</b> · 검토 <b style="color:#DC2626">' + s.flag + '</b> · 이달 배송 없음 ' + s.nod + ' · 처음 보는 대상 <b>' + s.nw + '</b>' +
@@ -9641,7 +9641,7 @@ document.getElementById('__wpSave').onclick = function() {
       invSave().then(function() { invRender(); });
     };
     var ufx = document.getElementById('__wpInvUnfix'); if (ufx) ufx.onclick = function() { if (!confirm('확정을 해제합니다. 다시 자유롭게 편집할 수 있게 됩니다.')) return; INV.plan._meta.fixed = 0; INV.dirty = true; invSave().then(function() { invRender(); }); };
-    var rq = document.getElementById('__wpInvReqs'); if (rq) rq.onclick = function() { if (IS_ADMIN) { REV_STATUS = '대기'; REV_ACTION = '재고조사변경'; showTab('review_deliv'); } else { alert('물류팀이 [배송요청검토]에서 승인하면 월력표에 반영됩니다.\n내 요청은 요청자 화면의 요청 내역에서 볼 수 있습니다.'); } };
+    var rq = document.getElementById('__wpInvReqs'); if (rq) rq.onclick = function() { if (IS_ADMIN && MODE !== 'requester') { REV_STATUS = '대기'; REV_ACTION = '재고조사변경'; showTab('review_deliv'); } else { alert('물류팀이 [배송요청검토]에서 승인하면 월력표에 반영됩니다.\n내 요청은 요청자 화면의 요청 내역에서 볼 수 있습니다.'); } };
     document.getElementById('__wpInvXls').onclick = invExcel;
     document.getElementById('__wpInvRe').onclick = function() { invLoadMonth(INV.ym, true); };
   }
@@ -9888,10 +9888,12 @@ document.getElementById('__wpSave').onclick = function() {
     var h = '<div style="padding:10px 12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0;font-size:12.5px;color:#475569;line-height:1.6"><b>처음 보는 대상 ' + nw.length + '건</b> — 오피스 관리종류가 스타트·밸런스인데 아직 한 번도 확인하지 않은 거래처입니다. 재고조사 대상이 아니면 <b>제외</b>에 체크하세요. 저장하면 다음부터 안 보입니다.<br>' +
       '자동 제외 규칙: 이름에 발주용 · 정산 · 파쇄기 · 프리오더 · 위펀 · 테스트 가 들어가거나 주기가 계획일정없음·수기일정생성이면 기본 제외(체크 해제로 되살릴 수 있음).</div>';
     h += '<table class="wp-tbl">' + INV_TH + '<tbody>' + nw.map(invRowHtml).join('') + '</tbody></table>';
+    if (nw.length && INV.canEdit) h += '<div style="padding:8px 12px;border-bottom:1px solid #E2E8F0"><button id="__wpInvSeen" class="wp-btn gh" style="border-color:#0a7d47;color:#0a7d47">✓ 위 ' + nw.length + '건 확인 완료 (다음부터 처음 보는 대상에서 제외)</button> <span style="font-size:12px;color:#94a3b8">누른 뒤 [저장]해야 반영됩니다</span></div>';
     h += '<div style="padding:10px 12px;background:#FEF2F2;border-top:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;font-size:12.5px;color:#991B1B"><b>검토 필요 ' + fl.length + '건</b> — 규칙과 배송일이 안 맞거나 같은 기업끼리 날짜를 못 맞춘 건입니다. 조사일을 직접 고르면 표시가 사라집니다.</div>';
     h += '<table class="wp-tbl">' + INV_TH + '<tbody>' + fl.map(invRowHtml).join('') + '</tbody></table>';
     b.innerHTML = h;
     invBindRows(b);
+    var sb = document.getElementById('__wpInvSeen'); if (sb) sb.onclick = function() { if (!confirm(nw.length + '건을 확인 완료로 표시합니다. 제외할 곳은 먼저 체크했는지 확인하세요.')) return; nw.forEach(function(t) { var c = invCfgOf(t.bid); c.seen = 1; if (!c.n) c.n = t.name; }); INV.dirty = true; invRender(); };
   }
   /* 달력 칩 클릭 — 작은 편집창 */
   function invEditor(bid) {
