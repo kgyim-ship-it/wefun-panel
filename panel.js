@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261013-1359';
+  var PANEL_BUILD = '20261013-1740';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -3127,7 +3127,7 @@ document.getElementById('__wpSave').onclick = function() {
     };
   var REV_GROUP = 'deliv';
   var REV_GROUPS = {
-    deliv: ['배송주기변경', '배송일정생성', '배송일정변경', '배송일정삭제', '배송메모', '배송시간문의', '배송VOC'],
+    deliv: ['배송주기변경', '배송일정생성', '배송일정변경', '배송일정삭제', '배송메모', '배송시간문의', '배송VOC', '재고조사변경'],
     syn: ['신규코드발급', '주소변경', '거래처명변경', '담당자변경', '코스변경', '피킹방법변경'],
     pick: ['수기피킹']
   };
@@ -3903,6 +3903,9 @@ document.getElementById('__wpSave').onclick = function() {
             last = '<td style="white-space:normal;line-height:1.9"><button class="wp-act __wpDtLook" data-id="' + esc(it.id) + '" style="border-color:#1f4e78;color:#1f4e78;font-weight:700">조회</button>' +
               '<button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:#0a7d47;color:#0a7d47">회신승인</button>' +
               '<button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button></td>';
+          } else if (it.action === '재고조사변경') {
+            /* 재고조사 월력표 변경 요청 — 승인하면 재고조사 계획(KV)에 바로 반영, 오피스는 건드리지 않는다 */
+            last = '<td style="white-space:normal;line-height:2.1"><button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:#0a7d47;color:#0a7d47">승인</button><button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button><div style="font-size:11px;color:#64748b;line-height:1.4;margin-top:2px">승인 → 재고조사 탭 월력표에 반영</div></td>';
           } else if (it.status === '대기' && bookedDate(it)) {
             /* 예약 건 — 승인은 이미 끝났다. 남은 건 '반영'뿐이라 버튼 이름을 그대로 쓴다.
                희망일 전에 누르면 오피스가 오늘부터 주기를 다시 만들어 그 사이 배송도 바뀐다 → 경고색 */
@@ -4360,6 +4363,7 @@ document.getElementById('__wpSave').onclick = function() {
     if (it.action === '수기피킹') {
       return Promise.resolve('수기피킹 요청 (피킹팀 처리)');
     }
+    if (it.action === '재고조사변경') { return invApplyReq(it); }
     return Promise.reject(new Error('알 수 없는 작업'));
   }
 
@@ -9525,6 +9529,7 @@ document.getElementById('__wpSave').onclick = function() {
         /* 저장된 계획에 없는 새 대상만 채운다 */ invAutoPlace(true);
       }
       invRender();
+      INV.reqN = 0; invCountReqs();
     });
   }
 
@@ -9532,8 +9537,10 @@ document.getElementById('__wpSave').onclick = function() {
     if (!INV.canEdit) { toast('수정 권한이 없습니다', '#c0392b'); return Promise.resolve(); }
     var btn = document.getElementById('__wpInvSave'); if (btn) { btn.disabled = true; btn.textContent = '저장 중…'; }
     INV.targets.forEach(function(t) { var c = invCfgOf(t.bid); c.seen = 1; if (!c.n) c.n = t.name; });
-    var plan = {}; Object.keys(INV.plan).forEach(function(k) { if (k === '_meta') return; var it = INV.plan[k]; if (it && it.d) plan[k] = it; });
-    plan._meta = { by: REQ.name || '', at: now() };
+    var plan = {}; Object.keys(INV.plan).forEach(function(k) { if (k === '_meta') return; var it = INV.plan[k]; if (it && (it.d || (it.a === 'm' && it.s === 'skip'))) plan[k] = it; });
+    var om = INV.plan._meta || {};
+    plan._meta = { by: REQ.name || '', at: now(), fixed: om.fixed || 0, fixedBy: om.fixedBy || '', fixedAt: om.fixedAt || '' };
+    INV.plan._meta = plan._meta;
     return invKvSet('cfg', INV.cfg).then(function() { return invKvSet('plan:' + INV.ym, plan); }).then(function() {
       INV.dirty = false; toast('✓ 저장했습니다', '#0a7d47');
     }).catch(function(e) { alert('저장 실패: ' + ((e && e.message) || e)); }).then(function() { if (btn) { btn.disabled = false; btn.textContent = '저장'; } invRenderHead(); });
@@ -9563,6 +9570,46 @@ document.getElementById('__wpSave').onclick = function() {
     invRenderHead();
     invLoadMonth(INV.ym, false).catch(function(e) { var b = document.getElementById('__wpInvBody'); if (b) b.innerHTML = '<div style="color:#b00;padding:14px">불러오기 실패: ' + esc((e && e.message) || e) + '</div>'; });
   }
+  /* ===== 확정·변경 요청 =====
+     월력표를 [확정]하면 그 뒤 날짜 추가·변경·삭제는 바로 고치지 않고 '재고조사변경' 요청으로 큐에 올린다(슬랙 알림 동일).
+     물류 관리자가 [배송요청검토]에서 승인하면 invApplyReq 가 계획(KV)에 반영한다. 물류 관리자 본인은 확정 후에도 바로 고친다. */
+  function invFixed() { return !!(INV.plan && INV.plan._meta && INV.plan._meta.fixed); }
+  function invLocked() { return invFixed() && !IS_ADMIN; }
+  function invShort2(d) { return d ? invShort(d) : '(없음)'; }
+  function invSubmitReq(t, kind, oldD, newD, reason) {
+    var detail = ['월: ' + INV.ym, '구분: ' + kind, '기존: ' + (oldD || '없음'), '변경: ' + (newD || '없음'), '사유: ' + (reason || '-')].join(' · ');
+    return submitReq({ ts: now(), dept: REQ.dept, name: REQ.name, email: REQ.email, action: '재고조사변경', hot: '', cold: '', branchId: t.bid, branchName: t.name, detail: detail });
+  }
+  function invCountReqs() {
+    return listReq({ status: '대기' }).then(function(items) {
+      INV.reqN = (items || []).filter(function(it) { return it.action === '재고조사변경' && it.status === '대기' && detailGet(it.detail, '월') === INV.ym; }).length;
+      invRenderHead();
+    }).catch(function() {});
+  }
+  function invApplyReq(it) {
+    var ym = detailGet(it.detail, '월'), kind = detailGet(it.detail, '구분'), nd = detailGet(it.detail, '변경'), bid = String(it.branchId || '');
+    if (!/^\d{4}-\d{2}$/.test(ym) || !bid) return Promise.reject(new Error('요청 내용에 월/거래처가 없습니다'));
+    if (kind !== '삭제' && !/^\d{4}-\d{2}-\d{2}$/.test(nd)) return Promise.reject(new Error('변경 날짜가 없습니다'));
+    var plan, cfg, cfgTouched = false;
+    return invKvLoad(true).then(function() { return invKvGet('plan:' + ym); }).then(function(p) { plan = p || {}; return invKvGet('cfg'); }).then(function(c) {
+      cfg = c || {};
+      var cur = plan[bid] || {};
+      var tag = kind + ' 요청 승인 (' + (it.name || '') + ')';
+      if (kind === '삭제') {
+        plan[bid] = { d: '', s: 'skip', m: cur.m || '', w: '', i: tag, a: 'm' };
+      } else {
+        plan[bid] = { d: nd, s: cur.s === 'done' ? 'done' : '', m: cur.m || '', w: '', i: tag, a: 'm' };
+        var cc = cfg[bid] || (cfg[bid] = {});
+        if (cc.ex === 1 || (cc.k && cc.k.fq === 'ex') || !cc.seen) { cc.ex = 0; cc.seen = 1; if (cc.k && cc.k.fq === 'ex') cc.k.fq = ''; if (!cc.n) cc.n = it.branchName || ''; cfgTouched = true; }
+      }
+      plan._meta = plan._meta || {}; plan._meta.by = REQ.name || ''; plan._meta.at = now();
+      return invKvSet('plan:' + ym, plan);
+    }).then(function() { return cfgTouched ? invKvSet('cfg', cfg) : null; }).then(function() {
+      /* 재고조사 탭이 같은 달을 열어 두고 있으면 화면도 맞춘다 */
+      if (INV.ym === ym && INV.plan) { INV.plan[bid] = plan[bid]; if (cfgTouched && INV.cfg) INV.cfg[bid] = cfg[bid]; if (document.getElementById('__wpInvBody')) { try { invRender(); } catch (_ir) {} } }
+      return '재고조사 ' + ym.slice(5) + '월 ' + kind + ' → ' + (kind === '삭제' ? '이달 미실시' : invShort(nd)) + ' 반영';
+    });
+  }
   function invRenderHead() {
     var h = document.getElementById('__wpInvHead'); if (!h) return;
     var s = INV.targets ? invStats() : null;
@@ -9575,7 +9622,9 @@ document.getElementById('__wpSave').onclick = function() {
       '<button class="wp-btn gh __wpInvSub" data-s="new"' + (INV.sub === 'new' ? ' style="background:#0B1220;color:#fff"' : '') + '>신규·검토' + (s && (s.nw + s.flag) ? ' <span style="background:#EF4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:4px">' + (s.nw + s.flag) + '</span>' : '') + '</button>' +
       '<span style="margin-left:10px;font-size:12.5px;color:#475569;background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:5px 10px">관리자 <b style="color:#0F172A">' + esc(INV_MGRS.join(', ')) + '</b>' + (INV.canEdit ? '' : ' · <span style="color:#94a3b8">보기 전용</span>') + '</span>' +
       '<span style="flex:1"></span>' +
-      (INV.canEdit ? '<button id="__wpInvAuto" class="wp-btn gh">자동 배치</button><button id="__wpInvSave" class="wp-btn ' + (INV.dirty ? 'ok' : 'gh') + '">저장' + (INV.dirty ? ' ●' : '') + '</button>' : '') +
+      (INV.reqN ? '<button id="__wpInvReqs" class="wp-btn gh" style="border-color:#F59E0B;color:#B45309" title="확정 후 들어온 월력표 변경 요청 (물류 승인 대기)">변경요청 대기 <b>' + INV.reqN + '</b></button>' : '') +
+      (invFixed() ? '<span style="font-size:12.5px;color:#0a7d47;background:#DCFCE7;border-radius:6px;padding:5px 10px" title="' + esc((INV.plan._meta.fixedBy || '') + ' ' + (INV.plan._meta.fixedAt || '')) + '">✔ 확정됨' + (invLocked() ? ' · 날짜 변경은 요청으로' : '') + '</span>' + (IS_ADMIN ? '<button id="__wpInvUnfix" class="wp-btn gh">확정 해제</button>' : '') : (INV.canEdit && INV.saved ? '<button id="__wpInvFix" class="wp-btn gh" style="border-color:#0a7d47;color:#0a7d47" title="확정하면 이후 날짜 변경은 물류팀 승인 요청으로 접수됩니다">확정</button>' : '')) +
+      (INV.canEdit ? (invLocked() ? '' : '<button id="__wpInvAuto" class="wp-btn gh">자동 배치</button>') + '<button id="__wpInvSave" class="wp-btn ' + (INV.dirty ? 'ok' : 'gh') + '">저장' + (INV.dirty ? ' ●' : '') + '</button>' : '') +
       '<button id="__wpInvXls" class="wp-btn gh">⬇ 엑셀</button><button id="__wpInvRe" class="wp-btn gh" title="오피스에서 대상·배송일을 다시 읽습니다">↻ 오피스</button></div>' +
       (s ? '<div class="wp-meta" style="margin:0 0 8px;padding:8px 12px;font-size:12.5px">대상 <b>' + s.live + '</b> (스/밸 활동 ' + s.all + ' − 제외 ' + s.ex + ') · 배치 <b>' + s.placed + '</b> · 완료 <b style="color:#16A34A">' + s.done + '</b> · 검토 <b style="color:#DC2626">' + s.flag + '</b> · 이달 배송 없음 ' + s.nod + ' · 처음 보는 대상 <b>' + s.nw + '</b>' +
         (INV.prev || INV.saved ? '' : ' · <span style="color:#b45309">전월 계획 없음 → 신규는 2주차 기준 배치</span>') + '</div>' : '');
@@ -9584,6 +9633,13 @@ document.getElementById('__wpSave').onclick = function() {
     [].forEach.call(h.querySelectorAll('.__wpInvSub'), function(b) { b.onclick = function() { INV.sub = b.getAttribute('data-s'); invRenderHead(); invRender(); }; });
     var a = document.getElementById('__wpInvAuto'); if (a) a.onclick = function() { if (!confirm('규칙·전월 기준으로 다시 배치합니다.\n수동으로 고친 날짜와 완료 건은 그대로 둡니다. 진행할까요?')) return; var n = invAutoPlace(false); toast(n + '건 배치', '#1f4e78'); invRenderHead(); invRender(); };
     var sv = document.getElementById('__wpInvSave'); if (sv) sv.onclick = invSave;
+    var fx = document.getElementById('__wpInvFix'); if (fx) fx.onclick = function() {
+      if (!confirm(INV.ym + ' 재고조사 일정을 확정합니다.\n\n확정 후에는 날짜 추가·변경·삭제가 "변경 요청"으로 접수되고, 물류팀이 [배송요청검토]에서 승인해야 월력표에 반영됩니다.\n(상태 완료/미실시 · 메모는 계속 바로 수정됩니다)\n\n진행할까요?')) return;
+      INV.plan._meta = INV.plan._meta || {}; INV.plan._meta.fixed = 1; INV.plan._meta.fixedBy = REQ.name || ''; INV.plan._meta.fixedAt = now(); INV.dirty = true;
+      invSave().then(function() { invRender(); });
+    };
+    var ufx = document.getElementById('__wpInvUnfix'); if (ufx) ufx.onclick = function() { if (!confirm('확정을 해제합니다. 다시 자유롭게 편집할 수 있게 됩니다.')) return; INV.plan._meta.fixed = 0; INV.dirty = true; invSave().then(function() { invRender(); }); };
+    var rq = document.getElementById('__wpInvReqs'); if (rq) rq.onclick = function() { if (IS_ADMIN) { REV_STATUS = '대기'; REV_ACTION = '재고조사변경'; showTab('review_deliv'); } else { alert('물류팀이 [배송요청검토]에서 승인하면 월력표에 반영됩니다.\n내 요청은 요청자 화면의 요청 내역에서 볼 수 있습니다.'); } };
     document.getElementById('__wpInvXls').onclick = invExcel;
     document.getElementById('__wpInvRe').onclick = function() { invLoadMonth(INV.ym, true); };
   }
@@ -9714,21 +9770,21 @@ document.getElementById('__wpSave').onclick = function() {
     [].forEach.call(b.querySelectorAll('.__wpInvChip'), function(c) { c.onclick = function() { invEditor(c.getAttribute('data-b')); }; });
   }
   function invRowHtml(t) {
-    var ym = INV.ym, it = INV.plan[t.bid] || {}, cf = INV.cfg[t.bid] || {}, ds = invDs(t.bid, ym), ex = invIsExcl(t);
+    var ym = INV.ym, it = INV.plan[t.bid] || {}, cf = INV.cfg[t.bid] || {}, ds = invDs(t.bid, ym), ex = invIsExcl(t), LK = invLocked();
     var opts = '<option value="">—</option>' + ds.map(function(d) { return '<option value="' + d + '"' + (it.d === d ? ' selected' : '') + '>' + invShort(d) + '</option>'; }).join('') + (it.d && ds.indexOf(it.d) < 0 ? '<option value="' + it.d + '" selected>' + invShort(it.d) + ' (배송일 아님)</option>' : '');
     return '<tr data-b="' + t.bid + '" style="' + (ex ? 'opacity:.45' : '') + '">' +
       '<td style="font-size:12.5px;color:#475569">' + esc(t.comp) + '</td>' +
       '<td><b style="font-size:13px">' + esc(t.name) + '</b>' + (invIsNew(t) ? ' <span style="background:#0EA5E9;color:#fff;border-radius:4px;padding:0 5px;font-size:10.5px">NEW</span>' : '') + '<div style="font-size:11px;color:#94a3b8">' + esc(t.mgmt) + ' · ' + esc(t.cycle || '-') + '</div></td>' +
       '<td style="font-size:12px;color:#475569;white-space:normal">' + (ds.length ? ds.map(function(d) { return '<span class="__wpInvDs" data-b="' + t.bid + '" data-d="' + d + '" style="display:inline-block;cursor:pointer;padding:1px 5px;margin:1px;border-radius:4px;border:1px solid ' + (it.d === d ? '#0B1220;background:#0B1220;color:#fff' : '#CBD5E1') + '">' + invShort(d) + '</span>'; }).join('') : '<span style="color:#b45309">이달 배송 없음</span>') + '</td>' +
-      '<td><select class="wp-inp __wpInvD" data-b="' + t.bid + '" style="height:31px;font-size:13px;padding:0 6px"' + (INV.canEdit ? '' : ' disabled') + '>' + opts + '</select>' + (it.w ? '<div style="color:#DC2626;font-size:11.5px;margin-top:2px">⚠ ' + esc(it.w) + '</div>' : '') + (it.i ? '<div style="color:#94a3b8;font-size:11px;margin-top:2px">' + esc(it.i) + '</div>' : '') + '</td>' +
+      '<td><select class="wp-inp __wpInvD" data-b="' + t.bid + '" style="height:31px;font-size:13px;padding:0 6px"' + (INV.canEdit && !LK ? '' : ' disabled') + (LK ? ' title="확정된 일정 — 거래처명을 눌러 변경 요청"' : '') + '>' + opts + '</select>' + (it.w ? '<div style="color:#DC2626;font-size:11.5px;margin-top:2px">⚠ ' + esc(it.w) + '</div>' : '') + (it.i ? '<div style="color:#94a3b8;font-size:11px;margin-top:2px">' + esc(it.i) + '</div>' : '') + '</td>' +
       '<td><select class="wp-inp __wpInvS" data-b="' + t.bid + '" style="height:31px;font-size:13px;padding:0 6px"' + (INV.canEdit ? '' : ' disabled') + '><option value=""' + (!it.s ? ' selected' : '') + '>예정</option><option value="done"' + (it.s === 'done' ? ' selected' : '') + '>완료</option><option value="skip"' + (it.s === 'skip' ? ' selected' : '') + '>미실시</option></select></td>' +
       '<td><input class="wp-inp __wpInvR" data-b="' + t.bid + '" value="' + esc(cf.rule || '') + '" placeholder="예: 3주차 · 마지막 배송 · 25일 전" style="height:31px;font-size:12.5px;width:100%"' + (INV.canEdit ? '' : ' disabled') + '></td>' +
       '<td><input class="wp-inp __wpInvM" data-b="' + t.bid + '" value="' + esc(it.m || cf.m || '') + '" style="height:31px;font-size:12.5px;width:100%"' + (INV.canEdit ? '' : ' disabled') + '></td>' +
-      '<td style="text-align:center"><input type="checkbox" class="__wpInvX" data-b="' + t.bid + '"' + (ex ? ' checked' : '') + (INV.canEdit ? '' : ' disabled') + '></td></tr>';
+      '<td style="text-align:center"><input type="checkbox" class="__wpInvX" data-b="' + t.bid + '"' + (ex ? ' checked' : '') + (INV.canEdit && !LK ? '' : ' disabled') + '></td></tr>';
   }
   function invBindRows(b) {
     [].forEach.call(b.querySelectorAll('.__wpInvD'), function(s) { s.onchange = function() { var it = INV.plan[s.getAttribute('data-b')] || (INV.plan[s.getAttribute('data-b')] = {}); it.d = s.value; it.a = 'm'; it.w = ''; INV.dirty = true; invRenderHead(); }; });
-    [].forEach.call(b.querySelectorAll('.__wpInvDs'), function(s) { s.onclick = function() { if (!INV.canEdit) return; var bid = s.getAttribute('data-b'); var it = INV.plan[bid] || (INV.plan[bid] = {}); it.d = s.getAttribute('data-d'); it.a = 'm'; it.w = ''; INV.dirty = true; var tr = s.closest('tr'); var t = invTargetMap()[bid]; if (tr && t) { tr.outerHTML = invRowHtml(t); invBindRows(b); } invRenderHead(); }; });
+    [].forEach.call(b.querySelectorAll('.__wpInvDs'), function(s) { s.onclick = function() { if (!INV.canEdit) return; var bid = s.getAttribute('data-b'); if (invLocked()) { invEditor(bid); return; } var it = INV.plan[bid] || (INV.plan[bid] = {}); it.d = s.getAttribute('data-d'); it.a = 'm'; it.w = ''; INV.dirty = true; var tr = s.closest('tr'); var t = invTargetMap()[bid]; if (tr && t) { tr.outerHTML = invRowHtml(t); invBindRows(b); } invRenderHead(); }; });
     [].forEach.call(b.querySelectorAll('.__wpInvS'), function(s) { s.onchange = function() { var it = INV.plan[s.getAttribute('data-b')] || (INV.plan[s.getAttribute('data-b')] = {}); it.s = s.value; INV.dirty = true; invRenderHead(); }; });
     [].forEach.call(b.querySelectorAll('.__wpInvR'), function(s) { s.onchange = function() { invCfgOf(s.getAttribute('data-b')).rule = s.value.trim(); INV.dirty = true; invRenderHead(); }; });
     [].forEach.call(b.querySelectorAll('.__wpInvM'), function(s) { s.onchange = function() { var bid = s.getAttribute('data-b'); var it = INV.plan[bid] || (INV.plan[bid] = {}); it.m = s.value.trim(); invCfgOf(bid).m = s.value.trim(); INV.dirty = true; invRenderHead(); }; });
@@ -9840,14 +9896,17 @@ document.getElementById('__wpSave').onclick = function() {
     var t = invTargetMap()[bid]; if (!t) return;
     var old = document.getElementById('__wpInvEd'); if (old) old.remove();
     var it = INV.plan[bid] || (INV.plan[bid] = {}), cf = INV.cfg[bid] || {}, ds = invDs(bid);
+    var LK = invLocked();
     var box = document.createElement('div'); box.id = '__wpInvEd';
     box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,94vw);background:#fff;border:1px solid #CBD5E1;border-radius:10px;box-shadow:0 24px 60px rgba(2,8,20,.35);padding:16px 18px;z-index:2147483647;font-size:13.5px';
     box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><b style="font-size:15px">' + esc(t.name) + '</b><div style="color:#94a3b8;font-size:12px">' + esc(t.comp) + ' · ' + esc(t.mgmt) + ' · ' + esc(t.cycle || '-') + (INV.prev && INV.prev[bid] && INV.prev[bid].d ? ' · 전월 조사 ' + invShort(INV.prev[bid].d) : '') + '</div></div><button id="__wpInvEdX" class="wp-act">✕</button></div>' +
       (it.w ? '<div style="color:#DC2626;font-size:12.5px;margin-top:6px">⚠ ' + esc(it.w) + '</div>' : '') + (it.i ? '<div style="color:#64748b;font-size:12px;margin-top:4px">' + esc(it.i) + '</div>' : '') +
+      (LK ? '<div style="margin-top:8px;padding:8px 10px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:7px;font-size:12.5px;color:#92400E">🔒 확정된 일정입니다. 날짜·제외를 바꾸면 <b>변경 요청</b>으로 접수되고 물류팀 승인 후 월력표에 반영됩니다. 상태·메모는 바로 저장됩니다.</div>' : '') +
       '<div style="margin-top:10px;font-weight:600;font-size:12.5px;color:#475569">조사일 (이달 배송일 중 선택)</div><div style="margin-top:4px">' + (ds.length ? ds.map(function(d) { return '<button class="wp-day __wpInvEdD' + (it.d === d ? ' on' : '') + '" data-d="' + d + '">' + invShort(d) + '</button>'; }).join('') : '<span style="color:#b45309">이달 배송 없음</span>') + ' <input type="date" id="__wpInvEdDI" class="wp-inp" style="height:28px;width:150px;font-size:12.5px;vertical-align:middle" title="배송일이 아닌 날짜를 직접 지정" value="' + esc(it.d && ds.indexOf(it.d) < 0 ? it.d : '') + '"></div>' +
       '<div class="wp-fld"><span style="width:70px">상태</span><select id="__wpInvEdS" class="wp-inp" style="height:35px"><option value=""' + (!it.s ? ' selected' : '') + '>예정</option><option value="done"' + (it.s === 'done' ? ' selected' : '') + '>완료</option><option value="skip"' + (it.s === 'skip' ? ' selected' : '') + '>미실시</option></select></div>' +
       '<div class="wp-fld"><span style="width:70px">규칙</span><input id="__wpInvEdR" class="wp-inp" style="height:35px" value="' + esc(cf.rule || '') + '" placeholder="3주차 · 마지막 배송 · 25일 전 · 21일 고정 · 21일 근처 · 묶음:이름"></div>' +
       '<div class="wp-fld"><span style="width:70px">메모</span><input id="__wpInvEdM" class="wp-inp" style="height:35px" value="' + esc(it.m || cf.m || '') + '" placeholder="참관 필요 · 사전 연락 등"></div>' +
+      (LK ? '<div class="wp-fld"><span style="width:70px">요청 사유</span><input id="__wpInvEdWhy" class="wp-inp" style="height:35px" placeholder="예: 고객사 요청으로 날짜 변경"></div>' : '') +
       '<div style="display:flex;justify-content:space-between;margin-top:8px"><span><label style="font-size:12.5px;color:#475569;margin-right:12px"><input type="checkbox" id="__wpInvEdX2"' + ((INV.cfg[bid] || {}).ex === 1 || (!(INV.cfg[bid] || {}).yr && invIsExcl(t)) ? ' checked' : '') + '> 재고조사 대상에서 제외</label><label style="font-size:12.5px;color:#475569"><input type="checkbox" id="__wpInvEdY"' + ((INV.cfg[bid] || {}).yr ? ' checked' : '') + '> 연1회(1월만)</label></span><button id="__wpInvEdOk" class="wp-btn pri">적용</button></div>';
     (document.getElementById('__wp') || document.body).appendChild(box);
     var pick = it.d;
@@ -9856,6 +9915,21 @@ document.getElementById('__wpSave').onclick = function() {
     document.getElementById('__wpInvEdDI').onchange = function() { var v = this.value; if (v && v.slice(0, 7) === INV.ym) { pick = v; [].forEach.call(box.querySelectorAll('.__wpInvEdD'), function(x) { x.className = 'wp-day __wpInvEdD'; }); } else if (v) { toast('이달(' + INV.ym + ') 날짜만 됩니다', '#c0392b'); this.value = ''; } };
     document.getElementById('__wpInvEdOk').onclick = function() {
       if (!INV.canEdit) { toast('수정 권한이 없습니다', '#c0392b'); return; }
+      if (LK) {
+        /* 확정 후: 날짜·제외 변경은 요청으로. 상태·메모·규칙은 바로 */
+        var exNow = (INV.cfg[bid] || {}).ex === 1 || (!(INV.cfg[bid] || {}).yr && invIsExcl(t));
+        var exNew = document.getElementById('__wpInvEdX2').checked;
+        var kind = exNew && !exNow ? '삭제' : (pick !== it.d ? (it.d ? '변경' : '추가') : '');
+        if (!exNew && exNow && pick) kind = '추가';
+        it.s = document.getElementById('__wpInvEdS').value; it.m = document.getElementById('__wpInvEdM').value.trim();
+        var c0 = invCfgOf(bid); c0.rule = document.getElementById('__wpInvEdR').value.trim(); c0.m = it.m; INV.dirty = true;
+        if (!kind) { box.remove(); invRender(); return; }
+        var why = (document.getElementById('__wpInvEdWhy').value || '').trim();
+        if (!confirm('[재고조사 ' + kind + ' 요청]\n' + t.name + '\n' + invShort2(it.d) + ' → ' + (kind === '삭제' ? '이달 미실시' : invShort2(pick)) + '\n\n물류팀 승인 후 월력표에 반영됩니다. 요청할까요?')) return;
+        var okb = document.getElementById('__wpInvEdOk'); okb.disabled = true; okb.textContent = '요청 중…';
+        invSubmitReq(t, kind, it.d, kind === '삭제' ? '' : pick, why).then(function() { toast('✓ ' + kind + ' 요청 접수 · 물류팀 승인 대기', '#0a7d47'); box.remove(); invRender(); invCountReqs(); }).catch(function(e) { okb.disabled = false; okb.textContent = '적용'; alert('요청 실패: ' + ((e && e.message) || e)); });
+        return;
+      }
       if (pick !== it.d) { it.d = pick; it.a = 'm'; it.w = ''; }
       it.s = document.getElementById('__wpInvEdS').value;
       it.m = document.getElementById('__wpInvEdM').value.trim();
