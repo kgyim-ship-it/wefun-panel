@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261013-1740';
+  var PANEL_BUILD = '20261013-1744';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9245,14 +9245,16 @@ document.getElementById('__wpSave').onclick = function() {
     chunks.push(cur);
     return invKvLoad(true).then(function(ps) {
       var old = ps.filter(function(x) { return x.title === key || String(x.title).indexOf(key + '#') === 0; });
-      var byTitle = {}; old.forEach(function(p) { byTitle[p.title] = p; });
+      /* 같은 제목이 여러 개면(과거 버그로 생긴 중복) 하나만 남기고 나머지는 지운다 */
+      var byTitle = {}, extra = []; old.forEach(function(p) { if (byTitle[p.title]) extra.push(byTitle[p.title]); byTitle[p.title] = p; });
       var pr = Promise.resolve();
       chunks.forEach(function(c, i) {
         var t = i ? key + '#' + (i + 1) : key; var body = JSON.stringify(c);
-        pr = pr.then(function() { return byTitle[t] ? boardEdit(byTitle[t].id, t, body) : boardAdd('inv', t, body); });
-        delete byTitle[t];
+        var target = byTitle[t]; delete byTitle[t];   /* then 안에서 참조하면 이미 지워져 있어 매번 새 글이 생겼다 */
+        pr = pr.then(function() { return target ? boardEdit(target.id, t, body) : boardAdd('inv', t, body); });
       });
-      Object.keys(byTitle).forEach(function(t) { pr = pr.then(function() { return boardDelete(byTitle[t].id); }); });
+      Object.keys(byTitle).forEach(function(t) { extra.push(byTitle[t]); });
+      extra.forEach(function(p) { pr = pr.then(function() { return boardDelete(p.id).catch(function() {}); }); });
       return pr.then(function() { INV.posts = null; });
     });
   }
