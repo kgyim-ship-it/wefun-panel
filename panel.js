@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261014-1112';
+  var PANEL_BUILD = '20261014-1115';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -5709,11 +5709,11 @@ document.getElementById('__wpSave').onclick = function() {
   /* ---------- 대시보드 (관리자) — 월별 스낵/조식 KPI: 일평균 착지 · 착지당 금액 · 거래처 기준 ----------
      원천: 배송일정 등록(착지, 방문) + 거래명세서(금액, 방문·취소 제외). 기사통계와 같은 집계.
      중분류 주간/야간: 기사명이 '야간'으로 시작하면 야간 (기사통계와 동일). 금액은 거래명세서를 착지의 기사에 조인해 주/야로 나눈다.
-     월 캐시 localStorage '__wpDash3:YYYY-MM' = { days: {dd: {sd:[착지,금액,원가], sn:[...], jd:[...], jn:[...]}}, br: {sd:[거래처...], ...}, dr: {sd:[기사...], ...}, t }
+     월 캐시 localStorage '__wpDash4:YYYY-MM' = { days: {dd: {sd:[착지,금액,원가,{기사:[착지,금액,원가]}], sn:[...], jd:[...], jn:[...]}}, br: {sd:[거래처...], ...}, dr: {sd:[기사...], ...}, t }
      원가 = 거래명세서 '원가' 열(td[19]) 합계
      오늘·어제는 확정이 아니라 매번 다시 읽는다. */
   var DASH = { ym: '', seq: 0, busy: {}, mem: {} };
-  function dashKey(ym) { return '__wpDash3:' + ym; }
+  function dashKey(ym) { return '__wpDash4:' + ym; }
   function dashGet(ym) { if (DASH.mem[ym]) return DASH.mem[ym]; try { var o = JSON.parse(localStorage.getItem(dashKey(ym))); if (o) DASH.mem[ym] = o; return o || null; } catch (e) { return null; } }
   function dashSet(ym, o) { DASH.mem[ym] = o; try { localStorage.setItem(dashKey(ym), JSON.stringify(o)); } catch (e) {} }
   function dashNn(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
@@ -5767,8 +5767,8 @@ document.getElementById('__wpSave').onclick = function() {
   /* 하루치: 서비스별 착지 목록 + 거래명세서 맵 → 주/야 × (착지, 금액, 거래처명) */
   function dashDay(d) {
     function split(list, sm) {
-      var o = { d: [0, 0, 0, [], []], n: [0, 0, 0, [], []] };   /* [착지, 금액, 원가, 거래처들, 기사들] */
-      list.forEach(function(x) { var t = x.n ? o.n : o.d; t[0]++; var k = dashNn(x.br); var amt = sm.map[k]; if (typeof amt === 'number') { t[1] += amt; t[2] += sm.cmap[k] || 0; } t[3].push(k); t[4].push(x.drv); });
+      var o = { d: [0, 0, 0, [], [], {}], n: [0, 0, 0, [], [], {}] };   /* [착지, 금액, 원가, 거래처들, 기사들, 기사별 {착지,금액,원가}] */
+      list.forEach(function(x) { var t = x.n ? o.n : o.d; t[0]++; var k = dashNn(x.br); var amt = sm.map[k], cst = 0; if (typeof amt === 'number') { t[1] += amt; cst = sm.cmap[k] || 0; t[2] += cst; } else amt = 0; t[3].push(k); t[4].push(x.drv); var dv = t[5][x.drv] || (t[5][x.drv] = [0, 0, 0]); dv[0]++; dv[1] += amt; dv[2] += cst; });
       return o;
     }
     return dashStops('스낵24', d).then(function(s) { return dashStops('조식24', d).then(function(j) {
@@ -5795,7 +5795,7 @@ document.getElementById('__wpSave').onclick = function() {
     return mapLimit(need, 4, function(ds) {
       return dashDay(ds).then(function(r) {
         var M = { sd: r.s.d, sn: r.s.n, jd: r.j.d, jn: r.j.n }, rec = {};
-        DASH_SEG.forEach(function(k) { rec[k] = [M[k][0], M[k][1], M[k][2]]; M[k][3].forEach(function(x) { sets[k][x] = 1; }); M[k][4].forEach(function(x) { dsets[k][x] = 1; }); });
+        DASH_SEG.forEach(function(k) { rec[k] = [M[k][0], M[k][1], M[k][2], M[k][5]]; M[k][3].forEach(function(x) { sets[k][x] = 1; }); M[k][4].forEach(function(x) { dsets[k][x] = 1; }); });
         c.days[ds.slice(8)] = rec;
       }).catch(function() { c.days[ds.slice(8)] = c.days[ds.slice(8)] || { sd: [0, 0, 0], sn: [0, 0, 0], jd: [0, 0, 0], jn: [0, 0, 0], err: 1 }; });
     }, onProg).then(function() {
@@ -5805,22 +5805,31 @@ document.getElementById('__wpSave').onclick = function() {
       return dashCalc(ym, c);
     });
   }
+  /* 월 집계. 기사별 월 착지가 DASH_MIN 이하인 기사는 '기타'로 분리 — 본 수치(기사·착지·금액·원가)에서 빼고 기타 열에 따로 보여준다 */
+  var DASH_MIN = 10;
   function dashCalc(ym, c) {
-    var seg = {}; DASH_SEG.forEach(function(k) { seg[k] = { days: 0, stops: 0, amt: 0, cost: 0, br: ((c.br || {})[k] || []).length, drv: ((c.dr || {})[k] || []).length }; });
-    var errs = 0, cnt = 0;
+    var errs = 0, cnt = 0, days = {}, dstat = {};   /* dstat[seg][drv] = [착지, 금액, 원가]; days[seg] = 착지 있는 날 수 */
+    DASH_SEG.forEach(function(k) { days[k] = 0; dstat[k] = {}; });
     Object.keys(c.days || {}).forEach(function(dd) {
       var v = c.days[dd]; cnt++; if (v.err) errs++;
-      DASH_SEG.forEach(function(k) { var a = v[k] || [0, 0, 0]; if (a[0] > 0) { seg[k].days++; seg[k].stops += a[0]; } seg[k].amt += a[1] || 0; seg[k].cost += a[2] || 0; });
+      DASH_SEG.forEach(function(k) { var a = v[k] || [0, 0, 0, {}]; if (a[0] > 0) days[k]++; var dm = a[3] || {}; Object.keys(dm).forEach(function(dn) { var t = dstat[k][dn] || (dstat[k][dn] = [0, 0, 0]); t[0] += dm[dn][0]; t[1] += dm[dn][1]; t[2] += dm[dn][2]; }); });
     });
-    function fin(o) { o.avgStops = o.days ? o.stops / o.days : NaN; o.perStop = o.stops ? o.amt / o.stops : NaN; o.costPerStop = o.stops ? o.cost / o.stops : NaN; o.perBr = o.br ? o.amt / o.br : NaN; o.stopsPerBr = o.br ? o.stops / o.br : NaN; o.margin = o.amt ? (o.amt - o.cost) / o.amt * 100 : NaN; return o; }
-    function sum(a, b, brUnion, drUnion) { return { days: Math.max(a.days, b.days), stops: a.stops + b.stops, amt: a.amt + b.amt, cost: a.cost + b.cost, br: brUnion, drv: drUnion }; }
-    function uni(src, k1, k2, strip) { var m = {}; ((c[src] || {})[k1] || []).concat((c[src] || {})[k2] || []).forEach(function(x) { m[strip ? String(x).replace(/^야간/, '') : x] = 1; }); return Object.keys(m).length; }
-    function uniAll(src, strip) { var m = {}; DASH_SEG.forEach(function(k) { ((c[src] || {})[k] || []).forEach(function(x) { m[strip ? String(x).replace(/^야간/, '') : x] = 1; }); }); return Object.keys(m).length; }
-    var s = fin(sum(seg.sd, seg.sn, uni('br', 'sd', 'sn'), uni('dr', 'sd', 'sn', true))), j = fin(sum(seg.jd, seg.jn, uni('br', 'jd', 'jn'), uni('dr', 'jd', 'jn', true)));
-    var t = fin(sum(s, j, s.br + j.br, uniAll('dr', true)));
-    return { ym: ym, s: s, sd: fin(seg.sd), sn: fin(seg.sn), j: j, jd: fin(seg.jd), jn: fin(seg.jn), t: t, n: cnt, errs: errs, at: c.t || 0 };
+    /* 기사별 통계를 합쳐서 본/기타로 나눈다. keys = 세그먼트들, strip = 야간 접두 제거해 같은 사람으로 */
+    function agg(keys, strip, brN, dayN) {
+      var m = {};
+      keys.forEach(function(k) { Object.keys(dstat[k]).forEach(function(dn) { var nm = strip ? String(dn).replace(/^야간/, '') : dn; var t = m[nm] || (m[nm] = [0, 0, 0]); var v = dstat[k][dn]; t[0] += v[0]; t[1] += v[1]; t[2] += v[2]; }); });
+      var o = { days: dayN, stops: 0, amt: 0, cost: 0, br: brN, drv: 0, etcDrv: 0, etcStops: 0, etcAmt: 0 };
+      Object.keys(m).forEach(function(nm) { var v = m[nm]; if (v[0] <= DASH_MIN) { o.etcDrv++; o.etcStops += v[0]; o.etcAmt += v[1]; } else { o.drv++; o.stops += v[0]; o.amt += v[1]; o.cost += v[2]; } });
+      o.avgStops = o.days ? o.stops / o.days : NaN; o.perStop = o.stops ? o.amt / o.stops : NaN; o.costPerStop = o.stops ? o.cost / o.stops : NaN; o.perBr = o.br ? o.amt / o.br : NaN; o.stopsPerBr = o.br ? o.stops / o.br : NaN;
+      return o;
+    }
+    function uni(src, keys, strip) { var m = {}; keys.forEach(function(k) { ((c[src] || {})[k] || []).forEach(function(x) { m[strip ? String(x).replace(/^야간/, '') : x] = 1; }); }); return Object.keys(m).length; }
+    var sd = agg(['sd'], false, uni('br', ['sd']), days.sd), sn = agg(['sn'], false, uni('br', ['sn']), days.sn), jd = agg(['jd'], false, uni('br', ['jd']), days.jd), jn = agg(['jn'], false, uni('br', ['jn']), days.jn);
+    var sA = agg(['sd', 'sn'], true, uni('br', ['sd', 'sn']), Math.max(days.sd, days.sn)), jA = agg(['jd', 'jn'], true, uni('br', ['jd', 'jn']), Math.max(days.jd, days.jn));
+    var t = agg(DASH_SEG, true, sA.br + jA.br, Math.max(days.sd, days.sn, days.jd, days.jn));
+    return { ym: ym, s: sA, sd: sd, sn: sn, j: jA, jd: jd, jn: jn, t: t, n: cnt, errs: errs, at: c.t || 0 };
   }
-  function dashLoaded() { var out = {}; Object.keys(localStorage).forEach(function(k) { if (k.indexOf('__wpDash3:') === 0) { var ym = k.slice(10); var c = dashGet(ym); if (c) out[ym] = dashCalc(ym, c); } }); return out; }
+  function dashLoaded() { var out = {}; Object.keys(localStorage).forEach(function(k) { if (k.indexOf('__wpDash4:') === 0) { var ym = k.slice(10); var c = dashGet(ym); if (c) out[ym] = dashCalc(ym, c); } }); return out; }
 
   function viewDash() {
     if (!DASH.ym) DASH.ym = dashYm(kstDate());
@@ -5837,7 +5846,7 @@ document.getElementById('__wpSave').onclick = function() {
       delete DASH.busy[ym]; dashRender();
     }).catch(function(e) { delete DASH.busy[ym]; dashRender(); alert('조회 실패: ' + ((e && e.message) || e)); });
   }
-  var DASH_COLS = [['근무일', 'days', 0], ['총 기사', 'drv', 0], ['총 착지', 'stops', 0], ['일평균 착지', 'avgStops', 1], ['총 금액(VAT)', 'amt', 'w'], ['총 원가', 'cost', 'w'], ['착지당 금액', 'perStop', 'w'], ['착지당 원가', 'costPerStop', 'w'], ['거래처 수', 'br', 0], ['거래처당 착지', 'stopsPerBr', 1], ['거래처당 금액', 'perBr', 'w']];
+  var DASH_COLS = [['근무일', 'days', 0], ['총 기사', 'drv', 0], ['총 착지', 'stops', 0], ['일평균 착지', 'avgStops', 1], ['총 금액(VAT)', 'amt', 'w'], ['총 원가', 'cost', 'w'], ['착지당 금액', 'perStop', 'w'], ['착지당 원가', 'costPerStop', 'w'], ['거래처 수', 'br', 0], ['거래처당 착지', 'stopsPerBr', 1], ['거래처당 금액', 'perBr', 'w'], ['기타 기사', 'etcDrv', 0], ['기타 착지', 'etcStops', 0], ['기타 매출', 'etcAmt', 'w']];
   function dashVal(o, c) { var v = o[c[1]]; return c[2] === 'w' ? (isFinite(v) ? dashWon(v) : '-') : dashN(v, c[2]); }
   function dashRender() {
     var h = document.getElementById('__wpDhHead'), b = document.getElementById('__wpDhBody'); if (!h || !b) return;
@@ -5850,7 +5859,7 @@ document.getElementById('__wpSave').onclick = function() {
       '<span style="flex:1"></span>' +
       '<button id="__wpDhAll" class="wp-btn gh" title="올해 1월부터 이번 달까지 비어 있는 달을 순서대로 조회">올해 전체 조회</button>' +
       '<button id="__wpDhXls" class="wp-btn gh">⬇ 엑셀</button></div>' +
-      '<div class="wp-meta" style="margin:0 0 8px;padding:8px 12px;font-size:12.5px">착지 = 배송일정 등록(방문) · 금액 = 거래명세서 합계(VAT 포함, 취소·택배 제외) · 원가 = 거래명세서 원가 열 합계 · 총 기사 = 그 달 착지가 있는 기사 수(야간 접두 제거해 중복 합침) · 근무일 = 착지가 1건 이상인 날 · 거래처 수 = 그 달 1회 이상 배송된 거래처(중복 제거) · 야간 = 기사명이 「야간」으로 시작하는 착지(금액은 명세서를 기사에 조인) · 오늘·어제는 조회할 때마다 다시 읽음</div>';
+      '<div class="wp-meta" style="margin:0 0 8px;padding:8px 12px;font-size:12.5px">착지 = 배송일정 등록(방문) · 금액 = 거래명세서 합계(VAT 포함, 취소·택배 제외) · 원가 = 거래명세서 원가 열 합계 · 총 기사 = 그 달 착지가 있는 기사 수(야간 접두 제거해 중복 합침) · <b>기타</b> = 월 착지 ' + DASH_MIN + '건 이하 기사 — 기사·착지·금액·원가에서 빼고 기타 열에 따로 · 근무일 = 착지가 1건 이상인 날 · 거래처 수 = 그 달 1회 이상 배송된 거래처(중복 제거) · 야간 = 기사명이 「야간」으로 시작하는 착지(금액은 명세서를 기사에 조인) · 오늘·어제는 조회할 때마다 다시 읽음</div>';
     var tile = function(label, s, j, c) {
       return '<div style="flex:1;min-width:140px;background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px">' +
         '<div style="font-size:12px;color:#64748B;font-weight:600">' + label + '</div>' +
