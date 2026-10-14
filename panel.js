@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261014-1115';
+  var PANEL_BUILD = '20261014-1132';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -5789,19 +5789,20 @@ document.getElementById('__wpSave').onclick = function() {
       var ds = ym + '-' + ('0' + i).slice(-2);
       if (ds > today) break;
       var cached = c.days[('0' + i).slice(-2)];
-      if (!cached || ds >= yest) need.push(ds);   /* 오늘·어제는 확정 전이라 다시 */
+      if (!cached || cached.err || ds >= today || (ds === yest && !cached.fin)) need.push(ds);   /* 오늘은 매번, 어제는 확정 전 1회만 다시 */
     }
     var sets = {}, dsets = {}; DASH_SEG.forEach(function(k) { sets[k] = {}; (c.br[k] || []).forEach(function(x) { sets[k][x] = 1; }); dsets[k] = {}; (c.dr[k] || []).forEach(function(x) { dsets[k][x] = 1; }); });
-    return mapLimit(need, 4, function(ds) {
+    var t0 = Date.now(), doneN = 0;
+    function flush() { DASH_SEG.forEach(function(k) { c.br[k] = Object.keys(sets[k]); c.dr[k] = Object.keys(dsets[k]); }); c.t = Date.now(); dashSet(ym, c); }
+    /* 거래명세서 페이지가 하루 10초 안팎으로 무거워서(3MB) 한 달이 2분 가까이 걸린다 → 6개 동시 + 날짜 끝날 때마다 저장·화면 갱신(중단해도 이어서) */
+    return mapLimit(need, 6, function(ds) {
       return dashDay(ds).then(function(r) {
-        var M = { sd: r.s.d, sn: r.s.n, jd: r.j.d, jn: r.j.n }, rec = {};
+        var M = { sd: r.s.d, sn: r.s.n, jd: r.j.d, jn: r.j.n }, rec = { fin: ds < yest ? 1 : 0 };
         DASH_SEG.forEach(function(k) { rec[k] = [M[k][0], M[k][1], M[k][2], M[k][5]]; M[k][3].forEach(function(x) { sets[k][x] = 1; }); M[k][4].forEach(function(x) { dsets[k][x] = 1; }); });
         c.days[ds.slice(8)] = rec;
-      }).catch(function() { c.days[ds.slice(8)] = c.days[ds.slice(8)] || { sd: [0, 0, 0], sn: [0, 0, 0], jd: [0, 0, 0], jn: [0, 0, 0], err: 1 }; });
-    }, onProg).then(function() {
-      DASH_SEG.forEach(function(k) { c.br[k] = Object.keys(sets[k]); c.dr[k] = Object.keys(dsets[k]); });
-      c.t = Date.now();
-      dashSet(ym, c);
+      }).catch(function() { c.days[ds.slice(8)] = c.days[ds.slice(8)] || { sd: [0, 0, 0], sn: [0, 0, 0], jd: [0, 0, 0], jn: [0, 0, 0], err: 1 }; }).then(function() { doneN++; if (doneN % 3 === 0) flush(); });
+    }, function(d, n) { var el = Math.round((Date.now() - t0) / 1000), eta = d ? Math.round(el / d * (n - d)) : 0; if (onProg) onProg(d, n, el, eta); }).then(function() {
+      flush();
       return dashCalc(ym, c);
     });
   }
@@ -5842,7 +5843,7 @@ document.getElementById('__wpSave').onclick = function() {
     if (DASH.busy[ym]) return;
     DASH.busy[ym] = true; var seq = ++DASH.seq;
     dashRender();
-    dashMonth(ym, force, function(d, n) { var pe = document.getElementById('__wpDhProg'); if (pe) pe.textContent = ym + ' 조회 ' + d + '/' + n; }).then(function() {
+    dashMonth(ym, force, function(d, n, el, eta) { var pe = document.getElementById('__wpDhProg'); if (pe) pe.textContent = ym + ' 조회 ' + d + '/' + n + '일 · ' + el + '초 경과' + (eta ? ' · 약 ' + eta + '초 남음' : ''); if (d % 3 === 0 && d < n) { dashRender(); } }).then(function() {
       delete DASH.busy[ym]; dashRender();
     }).catch(function(e) { delete DASH.busy[ym]; dashRender(); alert('조회 실패: ' + ((e && e.message) || e)); });
   }
@@ -5851,6 +5852,7 @@ document.getElementById('__wpSave').onclick = function() {
   function dashRender() {
     var h = document.getElementById('__wpDhHead'), b = document.getElementById('__wpDhBody'); if (!h || !b) return;
     var all = dashLoaded(), ym = DASH.ym, cur = all[ym], busy = !!DASH.busy[ym];
+    if (!cur && DASH.mem[ym] && Object.keys(DASH.mem[ym].days || {}).length) { cur = dashCalc(ym, DASH.mem[ym]); all[ym] = cur; }
     var months = Object.keys(all).sort().reverse();
     h.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
       '<button id="__wpDhPrev" class="wp-btn gh" style="padding:0 11px">◀</button><b style="font-size:17px;min-width:92px;text-align:center">' + esc(ym) + '</b><button id="__wpDhNext" class="wp-btn gh" style="padding:0 11px">▶</button>' +
@@ -5869,7 +5871,7 @@ document.getElementById('__wpSave').onclick = function() {
     };
     var body = '';
     if (cur) {
-      body += '<div style="padding:12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0"><div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px">' + esc(ym) + ' 요약' + (cur.errs ? ' <span style="color:#DC2626;font-size:12px">· 조회 실패 ' + cur.errs + '일 (다시 조회)</span>' : '') + ' <span style="font-size:11.5px;color:#94A3B8;font-weight:400">집계 ' + cur.n + '일 · 갱신 ' + (cur.at ? new Date(cur.at).toLocaleString() : '-') + '</span></div>' +
+      body += '<div style="padding:12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0"><div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px">' + esc(ym) + ' 요약' + (busy ? ' <span style="color:#B45309;font-size:12px">· 조회 중 — 지금까지 읽은 날만 집계</span>' : '') + (cur.errs ? ' <span style="color:#DC2626;font-size:12px">· 조회 실패 ' + cur.errs + '일 (다시 조회)</span>' : '') + ' <span style="font-size:11.5px;color:#94A3B8;font-weight:400">집계 ' + cur.n + '일 · 갱신 ' + (cur.at ? new Date(cur.at).toLocaleString() : '-') + '</span></div>' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap">' + DASH_COLS.map(function(c) { return tile(c[0], cur.s, cur.j, c); }).join('') + '</div></div>';
     } else {
       body += '<div style="padding:14px;color:#94a3b8">' + (busy ? '조회 중… 처음 한 번은 한 달치를 읽어서 1~2분 걸립니다.' : '이 달 데이터가 없습니다. [이 달 조회]를 누르세요.') + '</div>';
@@ -5880,6 +5882,7 @@ document.getElementById('__wpSave').onclick = function() {
     list.sort().reverse();
     list.forEach(function(k) {
       var r = all[k];
+      if (!r && DASH.busy[k] && DASH.mem[k] && Object.keys(DASH.mem[k].days || {}).length) r = dashCalc(k, DASH.mem[k]);
       if (!r) { body += '<tr><td><b>' + esc(k) + '</b></td><td colspan="' + (DASH_COLS.length + 1) + '" style="color:#94a3b8">미조회</td><td><button class="wp-act __wpDhGo" data-ym="' + k + '"' + (DASH.busy[k] ? ' disabled' : '') + '>' + (DASH.busy[k] ? '조회 중' : '조회') + '</button></td></tr>'; return; }
       var RS = [['스낵', r.s, '#0369A1', 0], ['└ 주간', r.sd, '#0369A1', 1], ['└ 야간', r.sn, '#0369A1', 1], ['조식', r.j, '#B45309', 0], ['└ 주간', r.jd, '#B45309', 1], ['└ 야간', r.jn, '#B45309', 1], ['합계', r.t, '#0F172A', 2]];
       RS.forEach(function(x, i) {
