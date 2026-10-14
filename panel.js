@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261014-1132';
+  var PANEL_BUILD = '20261014-1619';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -615,7 +615,9 @@
     f = f || {};
     f.e = 'list';
     return api(f).then(function(j) {
-      return j.items || [];
+      var items = j.items || [];
+      items.forEach(function(it) { var e = it && EDITED[it.id]; if (e) { if (it.status !== '대기' || e.detail === it.detail) { delete EDITED[it.id]; } else { editedApply(it); } } });
+      return items;
     });
   }
 
@@ -3813,8 +3815,12 @@ document.getElementById('__wpSave').onclick = function() {
     });
   }
 
-    function editDetail(id, detail, admin) {
-    return api({ e: 'editdetail', id: id, detail: detail, admin: admin });
+    /* 수정한 요청내용은 서버(KV)가 잠깐 옛 값을 돌려줄 수 있어(최대 1분) 로컬에도 들고 있다가 목록·승인에 덮어쓴다.
+     → '수정승인으로 요일 넣었는데 반영 안 됨' 재발 방지 */
+  var EDITED = {};
+  function editedApply(it) { var e = it && EDITED[it.id]; if (e && Date.now() - e.t < 15 * 60000) { it.detail = e.detail; } return it; }
+  function editDetail(id, detail, admin) {
+    return api({ e: 'editdetail', id: id, detail: detail, admin: admin }).then(function(j) { EDITED[id] = { detail: detail, t: Date.now() }; return j; });
   }
   function editApprove(id, detail, admin, note) {
     return api({ e: 'editapprove', id: id, detail: detail, admin: admin, note: note || '' });
@@ -4122,6 +4128,20 @@ document.getElementById('__wpSave').onclick = function() {
     }
     next(); next(); /* 2개 동시 — 오피스 부하 배려 */
   } /* 실제 위펀 오피스 반영 (확인창 없음) — 요청자(관리자) 직접반영·관리자 승인 공용 */
+  /* 첫배송일(begin)이 정기요일이 아닐 때 중복이 되는 정기배송 일정 — 매월1회: begin 달의 begin 이후 전부, 그 외: begin 과 같은 주(월~일)의 begin 이후 */
+  function firstSlotDupes(evs, begin, cyc) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(begin || '') || !cyc || /^(매일|수기일정생성|계획일정없음)$/.test(cyc)) return [];
+    var b = new Date(+begin.slice(0, 4), +begin.slice(5, 7) - 1, +begin.slice(8, 10));
+    var monthly1 = /^매월1회/.test(cyc);
+    var dowB = (b.getDay() + 6) % 7;                           /* 월=0 … 일=6 */
+    var wkEnd = new Date(b.getTime() + (6 - dowB) * 86400000);
+    var wkEndS = ymdOf(wkEnd);
+    return (evs || []).filter(function(e) {
+      var d = e.deliveryDate; if (!d || d <= begin) return false;
+      if (monthly1) return d.slice(0, 7) === begin.slice(0, 7);
+      return d <= wkEndS;
+    });
+  }
   function waitScheduleReady(sid, tries) {
     return new Promise(function(rs) { setTimeout(rs, 600); }).then(function() {
       return getScheduleEvents(sid);
@@ -4331,12 +4351,26 @@ document.getElementById('__wpSave').onclick = function() {
                   throw new Error('첫배송일(' + begin + ') 이전 일정 삭제 실패: ' + failed.join(', ') + '\n재시도까지 실패했습니다. 오피스 배송일정에서 해당 날짜를 직접 삭제한 뒤, 패널에서 다시 승인하세요.\n(다시 승인해도 주기 재생성으로 같은 날짜가 다시 생기니, 승인 → 실패 시 그때 지우는 순서가 맞습니다)');
                 }
                 if (!hasFirst) { return createDelivery(sid, begin); }
+              }).then(function() {
+                /* 2차 확인 — 서버 후처리로 뒤늦게 생기는 첫배송일 이전 일정(예: 첫배송 10/22인데 10/19 월요일이 남음)을 한 번 더 지운다 */
+                return new Promise(function(rs) { setTimeout(rs, 2500); }).then(function() { return getScheduleEvents(sid); }).then(function(evs2) {
+                  var late = (evs2 || []).filter(function(e) { return e.deliveryDate >= t && e.deliveryDate < begin; });
+                  /* 첫배송일이 정기요일이 아닌 날이면 그 '슬롯'의 정기배송은 뺀다 — 매월1회는 같은 달의 다른 정기일, 그 외(매월2~4회·매주·격주)는 같은 주(월~일)의 정기일.
+                     예) 매월1회_넷째주 금 · 첫배송 10/20(화) → 10/23(금)까지 생성되면 한 달에 두 번 → 10/23 삭제 */
+                  var dupes = firstSlotDupes(evs2 || [], begin, cyc2);
+                  var ch2 = Promise.resolve(), bad = [], cut = [];
+                  late.concat(dupes).forEach(function(e) { ch2 = ch2.then(function() { return deleteDelivery(sid, e.orderScheduleId, e.deliveryDate).then(function() { if (dupes.indexOf(e) > -1) cut.push(e.deliveryDate); }).catch(function() { bad.push(e.deliveryDate); }); }); });
+                  return ch2.then(function() {
+                    if (bad.length) throw new Error('첫배송일(' + begin + ') 기준 정리 실패: ' + bad.sort().join(', ') + ' — 오피스에서 직접 삭제 후 다시 승인하세요.');
+                    if (cut.length) it._slotCut = cut.sort();
+                  });
+                });
               });
             });
           }
         }
         return chain.then(function() {
-          return '우린담당=' + (driver || '-') + ' · 주기=' + (cyc2 ? cyc2 + (days2.length ? '(' + days2.join(',') + ')' : '') : '-') + ' · 첫배송=' + (begin || '-') + ' · 주기시작=' + (okBegin ? begin1 : '-');
+          return '우린담당=' + (driver || '-') + ' · 주기=' + (cyc2 ? cyc2 + (days2.length ? '(' + days2.join(',') + ')' : '') : '-') + ' · 첫배송=' + (begin || '-') + ' · 주기시작=' + (okBegin ? begin1 : '-') + (it._slotCut ? ' · 첫배송 대체로 제외=' + it._slotCut.join(',') : '');
         });
       });
     }
@@ -4382,6 +4416,7 @@ document.getElementById('__wpSave').onclick = function() {
 
   function approve(it, btn) {
     if (!it || btn.disabled) return;
+    editedApply(it);
     var passthru = (it.action === '주소변경' || it.action === '거래처명변경' || it.action === '담당자변경' || it.action === '피킹방법변경');
     if (it.action === '신규코드발급') {
       /* 영업이 요일을 비워 보낸 건 — 그냥 승인하면 주기만 돌고 요일이 없어 일정이 안 찍힌다.
@@ -4463,6 +4498,19 @@ document.getElementById('__wpSave').onclick = function() {
   function approveStage(it, stage, btn) {
     if (!it || btn.disabled) return;
     stage = '물류';
+    editedApply(it);
+    /* 요일 없는 신규코드발급은 승인 차단 — 주기만 돌고 일정이 안 찍힌다. [수정승인]에서 요일(금→목→화)·첫배송일 넣고 승인 */
+    var cycS = String(detailGet(it.detail, '요청주기') || '');
+    var dayS = String(detailGet(it.detail, '정기배송요일') || '').split(',').filter(Boolean);
+    var isJS = /조식/.test(String(detailGet(it.detail, '서비스구분') || '')) || /조식/.test(String(it.branchName || ''));
+    if (!isJS && cycS && !/^(매일|수기일정생성|계획일정없음)$/.test(cycS) && !dayS.length) {
+      alert('⛔ 배송요일이 없는 신규코드발급입니다.\n\n주기 ' + cycS + '만 있고 요일이 없어 승인하면 일정이 안 찍힙니다.\n[수정승인]을 눌러 배송요일(캐파 순: 금 → 목 → 화)과 첫 배송희망일을 넣은 뒤 승인하세요.');
+      return;
+    }
+    if (!isJS && cycS && !/^(매일|수기일정생성|계획일정없음)$/.test(cycS)) {
+      var bgS = String(detailGet(it.detail, '첫배송희망일') || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(bgS)) { alert('⛔ 첫 배송희망일이 없는 신규코드발급입니다.\n[수정승인]에서 첫 배송희망일을 넣은 뒤 승인하세요.'); return; }
+    }
     var drv = prompt('우린배송담당(코스)을 입력하세요.\n거래처 배송정보의 우린배송담당에 반영됩니다.', '');
     if (drv === null) return;
     it._driver = drv.trim();
