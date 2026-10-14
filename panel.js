@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261014-1619';
+  var PANEL_BUILD = '20261014-1643';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -730,6 +730,12 @@
       });
     }).catch(function(e) { alert('엑셀 생성 실패: ' + (e && e.message || e)); });
   }
+  /* 승인 직전에 고친 요청내용은 서버가 승인 처리하면서 옛 값으로 되돌리는 경합이 있다(KV 지연) → 승인 뒤 한 번 더 써서 되살린다 */
+  function reassertEdited(id) {
+    var e = (typeof EDITED !== 'undefined') && EDITED[id];
+    if (!e) return Promise.resolve();
+    return new Promise(function(rs) { setTimeout(rs, 1500); }).then(function() { return api({ e: 'editdetail', id: id, detail: e.detail, admin: REQ.name || '' }); }).catch(function() {});
+  }
   function decideReq(id, status, note, threadTs) {
     return api({
       e: 'decide',
@@ -738,7 +744,7 @@
       note: note || '',
       admin: REQ.name,
       threadTs: threadTs || ''
-    });
+    }).then(function(j) { return reassertEdited(id).then(function() { return j; }); });
   }
 
   function decideStage(id, stage, note, threadTs) {
@@ -749,7 +755,7 @@
       note: note || '',
       admin: REQ.name,
       threadTs: threadTs || ''
-    });
+    }).then(function(j) { return reassertEdited(id).then(function() { return j; }); });
   } /* ---------- 스타일 ---------- */
   var st = document.createElement('style');
   st.id = '__wpStyle';
@@ -4316,7 +4322,12 @@ document.getElementById('__wpSave').onclick = function() {
             return driveCycle(sid, cyc2, days2, begin1);
           });
           if (okBegin && noGen) {
-            chain = chain.then(function() { return createDelivery(sid, begin); });
+            /* 수기/계획없음도 영업이 미리 만든 주기(예: 매일)로 첫배송일 전 일정이 남아 있을 수 있다 → 먼저 지우고 첫배송일 생성 */
+            chain = chain.then(function() { return getScheduleEvents(sid); }).then(function(evs0) {
+              var t0 = todayStr(), ch0 = Promise.resolve();
+              (evs0 || []).filter(function(e) { return e.deliveryDate >= t0 && e.deliveryDate < begin && !e.orderId; }).forEach(function(e) { ch0 = ch0.then(function() { return deleteDelivery(sid, e.orderScheduleId, e.deliveryDate).catch(function() {}); }); });
+              return ch0;
+            }).then(function() { return createDelivery(sid, begin); });
           } else if (okBegin) {
             chain = chain.then(function() {
               return waitScheduleReady(sid, 7);
