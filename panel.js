@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261013-1756';
+  var PANEL_BUILD = '20261014-0959';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -2213,6 +2213,17 @@
         branchName: br.name,
         detail: detail
       };
+      /* 반영 희망일을 기본값(평일 D+1 / 오늘)과 다르게 골랐으면 한 번 더 확인 —
+         "왜 아직 반영 안 됐냐" 문의의 대부분이 희망일을 뒤로 잡아놓고 잊는 경우라, 날짜를 눈에 박고 제출하게 한다. */
+      var _d1v = String(detailGet(detail, '반영예정일') || '').trim().slice(0, 10);
+      var _d1sp = ACTIONS[action];
+      var _d1def = (_d1sp && _d1sp.d1) ? (_d1sp.passthru ? workdayD1Str() : workdayTodayStr()) : '';
+      if (_d1v && _d1def && _d1v !== _d1def && !(IS_ADMIN && !ASK)) {
+        var _d1g = dayGap(_d1v), _d1dow = DOWK[new Date(+_d1v.slice(0, 4), +_d1v.slice(5, 7) - 1, +_d1v.slice(8, 10)).getDay()];
+        if (!confirm('⚠ 반영 희망일 확인\n\n[' + action + '] ' + br.name + '\n\n이 요청은 ' + _d1v + '(' + _d1dow + ')' + (_d1g > 0 ? ' · D-' + _d1g : '') + '에 위펀 오피스에 반영됩니다.\n' +
+            '그 전까지는 지금 정보 그대로 배송되고, 그날 이전에는 반영되지 않습니다.\n\n' +
+            '이 날짜가 맞으면 [확인]을 눌러 요청하세요.\n바로 반영하려는 거면 [취소] 후 반영 희망일을 ' + _d1def + '로 바꿔주세요.')) { return; }
+      }
       if (edit && edit.id) o.id = edit.id;
       if (edit && edit.adminEditOnly) {
         sb.disabled = true;
