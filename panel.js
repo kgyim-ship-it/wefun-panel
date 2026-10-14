@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261014-1047';
+  var PANEL_BUILD = '20261014-1103';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -5708,10 +5708,11 @@ document.getElementById('__wpSave').onclick = function() {
 
   /* ---------- 대시보드 (관리자) — 월별 스낵/조식 KPI: 일평균 착지 · 착지당 금액 · 거래처 기준 ----------
      원천: 배송일정 등록(착지, 방문) + 거래명세서(금액, 방문·취소 제외). 기사통계와 같은 집계.
-     월 캐시 localStorage '__wpDash:YYYY-MM' = { days: {dd: {ss, js, as, aj}}, brS: [...], brJ: [...], t }
+     중분류 주간/야간: 기사명이 '야간'으로 시작하면 야간 (기사통계와 동일). 금액은 거래명세서를 착지의 기사에 조인해 주/야로 나눈다.
+     월 캐시 localStorage '__wpDash2:YYYY-MM' = { days: {dd: {sd:[착지,금액], sn:[...], jd:[...], jn:[...]}}, br: {sd:[...], sn:[...], jd:[...], jn:[...]}, t }
      오늘·어제는 확정이 아니라 매번 다시 읽는다. */
   var DASH = { ym: '', seq: 0, busy: {}, mem: {} };
-  function dashKey(ym) { return '__wpDash:' + ym; }
+  function dashKey(ym) { return '__wpDash2:' + ym; }
   function dashGet(ym) { if (DASH.mem[ym]) return DASH.mem[ym]; try { var o = JSON.parse(localStorage.getItem(dashKey(ym))); if (o) DASH.mem[ym] = o; return o || null; } catch (e) { return null; } }
   function dashSet(ym, o) { DASH.mem[ym] = o; try { localStorage.setItem(dashKey(ym), JSON.stringify(o)); } catch (e) {} }
   function dashNn(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
@@ -5727,9 +5728,10 @@ document.getElementById('__wpSave').onclick = function() {
       var rows = [].slice.call(doc.querySelectorAll('table tbody tr')).filter(function(tr) { return tr.querySelectorAll('td').length >= 14; });
       rows.forEach(function(tr) {
         var td = tr.querySelectorAll('td');
+        var drv = (td[3].innerText || '').replace(/\s+/g, ' ').trim() || '(미지정)';
         var raw = (td[5].innerText || '').replace(/\s+/g, ' ').trim();
         var i = raw.indexOf(' - ');
-        acc.list.push(i > -1 ? raw.slice(i + 3) : raw);
+        acc.list.push({ drv: drv, br: i > -1 ? raw.slice(i + 3) : raw, n: /^야간/.test(drv) });
       });
       var tm = t.match(/총\s*([\d,]+)\s*건/);
       var total = tm ? parseInt(tm[1].replace(/,/g, ''), 10) : 0;
@@ -5738,7 +5740,7 @@ document.getElementById('__wpSave').onclick = function() {
     });
   }
   function dashStmts(sv, d, page, acc) {
-    page = page || 1; acc = acc || { sum: 0, n: 0 };
+    page = page || 1; acc = acc || { sum: 0, n: 0, map: {} };
     var u = '/office/order/order?searchYN=Y&deliveryDateBegin=' + d + '&deliveryDateEnd=' + d + '&serviceTypes=' + encodeURIComponent(sv) + '&size=1000&page=' + page;
     return fetch(u).then(function(r) { return r.text(); }).then(function(t) {
       var doc = new DOMParser().parseFromString(t, 'text/html');
@@ -5748,8 +5750,11 @@ document.getElementById('__wpSave').onclick = function() {
         if (td.length < 15) return;
         if ((td[10] ? td[10].textContent.trim() : '') === '택배') return;
         for (var i = 0; i < td.length; i++) { if (td[i].textContent.trim() === '주문취소') return; }
+        var a = td[3].querySelector('a');
+        var name = (a ? a.textContent : (td[3].textContent.split('\n')[0] || '')).replace(/\s+/g, ' ').trim();
         var m = (td[4].textContent.match(/₩\s*([\d,]+)/) || [])[1];
-        acc.sum += m ? parseInt(m.replace(/,/g, ''), 10) : 0; acc.n++;
+        var v = m ? parseInt(m.replace(/,/g, ''), 10) : 0;
+        acc.sum += v; acc.n++; var k = dashNn(name); acc.map[k] = (acc.map[k] || 0) + v;
       });
       var tm = t.match(/총\s*([\d,]+)\s*건/);
       var total = tm ? parseInt(tm[1].replace(/,/g, ''), 10) : 0;
@@ -5757,19 +5762,25 @@ document.getElementById('__wpSave').onclick = function() {
       return acc;
     });
   }
-  /* 하루치: 착지(스낵/조식) + 금액(스낵/조식) + 거래처명 목록. 금액은 배송통계 캐시(as/aj)가 있으면 재사용 */
+  /* 하루치: 서비스별 착지 목록 + 거래명세서 맵 → 주/야 × (착지, 금액, 거래처명) */
   function dashDay(d) {
-    var st = null; try { st = (JSON.parse(localStorage.getItem('__wpStats3')) || {})[d] || null; } catch (e) {}
-    var haveAmt = st && typeof st.as === 'number' && typeof st.aj === 'number' && d < todayStr();
+    function split(list, map) {
+      var o = { d: [0, 0, []], n: [0, 0, []] };
+      list.forEach(function(x) { var t = x.n ? o.n : o.d; t[0]++; var amt = map[dashNn(x.br)]; if (typeof amt === 'number') t[1] += amt; t[2].push(dashNn(x.br)); });
+      return o;
+    }
     return dashStops('스낵24', d).then(function(s) { return dashStops('조식24', d).then(function(j) {
-      var pa = haveAmt ? Promise.resolve({ as: st.as, aj: st.aj }) : dashStmts('스낵24', d).then(function(sm) { return dashStmts('조식24', d).then(function(jm) { return { as: sm.sum, aj: jm.sum }; }); });
-      return pa.then(function(a) { return { ss: s.list.length, js: j.list.length, as: a.as, aj: a.aj, bs: s.list, bj: j.list }; });
+      return dashStmts('스낵24', d).then(function(sm) { return dashStmts('조식24', d).then(function(jm) {
+        return { s: split(s.list, sm.map), j: split(j.list, jm.map) };
+      }); });
     }); });
   }
   /* 월 집계 — 캐시에 없는 날만 읽어서 합친다. onProg(done, total) */
+  var DASH_SEG = ['sd', 'sn', 'jd', 'jn'];
   function dashMonth(ym, force, onProg) {
     var today = todayStr(), yest = ymdOf(new Date(kstDate().getTime() - 86400000));
-    var c = (!force && dashGet(ym)) || { days: {}, brS: [], brJ: [], t: 0 };
+    var c = (!force && dashGet(ym)) || { days: {}, br: {}, t: 0 };
+    c.br = c.br || {};
     var p = ym.split('-'), nd = new Date(+p[0], +p[1], 0).getDate();
     var need = [];
     for (var i = 1; i <= nd; i++) {
@@ -5778,30 +5789,35 @@ document.getElementById('__wpSave').onclick = function() {
       var cached = c.days[('0' + i).slice(-2)];
       if (!cached || ds >= yest) need.push(ds);   /* 오늘·어제는 확정 전이라 다시 */
     }
-    var bs = {}, bj = {}; c.brS.forEach(function(x) { bs[x] = 1; }); c.brJ.forEach(function(x) { bj[x] = 1; });
+    var sets = {}; DASH_SEG.forEach(function(k) { sets[k] = {}; (c.br[k] || []).forEach(function(x) { sets[k][x] = 1; }); });
     return mapLimit(need, 4, function(ds) {
       return dashDay(ds).then(function(r) {
-        c.days[ds.slice(8)] = { ss: r.ss, js: r.js, as: r.as, aj: r.aj };
-        r.bs.forEach(function(x) { bs[dashNn(x)] = 1; }); r.bj.forEach(function(x) { bj[dashNn(x)] = 1; });
-      }).catch(function() { c.days[ds.slice(8)] = c.days[ds.slice(8)] || { ss: 0, js: 0, as: 0, aj: 0, err: 1 }; });
+        c.days[ds.slice(8)] = { sd: [r.s.d[0], r.s.d[1]], sn: [r.s.n[0], r.s.n[1]], jd: [r.j.d[0], r.j.d[1]], jn: [r.j.n[0], r.j.n[1]] };
+        r.s.d[2].forEach(function(x) { sets.sd[x] = 1; }); r.s.n[2].forEach(function(x) { sets.sn[x] = 1; });
+        r.j.d[2].forEach(function(x) { sets.jd[x] = 1; }); r.j.n[2].forEach(function(x) { sets.jn[x] = 1; });
+      }).catch(function() { c.days[ds.slice(8)] = c.days[ds.slice(8)] || { sd: [0, 0], sn: [0, 0], jd: [0, 0], jn: [0, 0], err: 1 }; });
     }, onProg).then(function() {
-      c.brS = Object.keys(bs); c.brJ = Object.keys(bj); c.t = Date.now();
+      DASH_SEG.forEach(function(k) { c.br[k] = Object.keys(sets[k]); });
+      c.t = Date.now();
       dashSet(ym, c);
       return dashCalc(ym, c);
     });
   }
   function dashCalc(ym, c) {
-    var s = { days: 0, stops: 0, amt: 0, br: (c.brS || []).length }, j = { days: 0, stops: 0, amt: 0, br: (c.brJ || []).length }, errs = 0, cnt = 0;
+    var seg = {}; DASH_SEG.forEach(function(k) { seg[k] = { days: 0, stops: 0, amt: 0, br: ((c.br || {})[k] || []).length }; });
+    var errs = 0, cnt = 0;
     Object.keys(c.days || {}).forEach(function(dd) {
       var v = c.days[dd]; cnt++; if (v.err) errs++;
-      if (v.ss > 0) { s.days++; s.stops += v.ss; } s.amt += v.as || 0;
-      if (v.js > 0) { j.days++; j.stops += v.js; } j.amt += v.aj || 0;
+      DASH_SEG.forEach(function(k) { var a = v[k] || [0, 0]; if (a[0] > 0) { seg[k].days++; seg[k].stops += a[0]; } seg[k].amt += a[1] || 0; });
     });
     function fin(o) { o.avgStops = o.days ? o.stops / o.days : NaN; o.perStop = o.stops ? o.amt / o.stops : NaN; o.perBr = o.br ? o.amt / o.br : NaN; o.stopsPerBr = o.br ? o.stops / o.br : NaN; return o; }
-    var t = fin({ days: Math.max(s.days, j.days), stops: s.stops + j.stops, amt: s.amt + j.amt, br: s.br + j.br });
-    return { ym: ym, s: fin(s), j: fin(j), t: t, n: cnt, errs: errs, at: c.t || 0 };
+    function sum(a, b, brUnion) { return { days: Math.max(a.days, b.days), stops: a.stops + b.stops, amt: a.amt + b.amt, br: brUnion }; }
+    function uni(k1, k2) { var m = {}; ((c.br || {})[k1] || []).concat((c.br || {})[k2] || []).forEach(function(x) { m[x] = 1; }); return Object.keys(m).length; }
+    var s = fin(sum(seg.sd, seg.sn, uni('sd', 'sn'))), j = fin(sum(seg.jd, seg.jn, uni('jd', 'jn')));
+    var t = fin(sum(s, j, s.br + j.br));
+    return { ym: ym, s: s, sd: fin(seg.sd), sn: fin(seg.sn), j: j, jd: fin(seg.jd), jn: fin(seg.jn), t: t, n: cnt, errs: errs, at: c.t || 0 };
   }
-  function dashLoaded() { var out = {}; Object.keys(localStorage).forEach(function(k) { if (k.indexOf('__wpDash:') === 0) { var ym = k.slice(9); var c = dashGet(ym); if (c) out[ym] = dashCalc(ym, c); } }); return out; }
+  function dashLoaded() { var out = {}; Object.keys(localStorage).forEach(function(k) { if (k.indexOf('__wpDash2:') === 0) { var ym = k.slice(10); var c = dashGet(ym); if (c) out[ym] = dashCalc(ym, c); } }); return out; }
 
   function viewDash() {
     if (!DASH.ym) DASH.ym = dashYm(kstDate());
@@ -5831,13 +5847,13 @@ document.getElementById('__wpSave').onclick = function() {
       '<span style="flex:1"></span>' +
       '<button id="__wpDhAll" class="wp-btn gh" title="올해 1월부터 이번 달까지 비어 있는 달을 순서대로 조회">올해 전체 조회</button>' +
       '<button id="__wpDhXls" class="wp-btn gh">⬇ 엑셀</button></div>' +
-      '<div class="wp-meta" style="margin:0 0 8px;padding:8px 12px;font-size:12.5px">착지 = 배송일정 등록(방문) · 금액 = 거래명세서 합계(VAT 포함, 취소·택배 제외) · 근무일 = 착지가 1건 이상인 날 · 거래처 수 = 그 달 1회 이상 배송된 거래처(중복 제거) · 오늘·어제는 조회할 때마다 다시 읽음</div>';
+      '<div class="wp-meta" style="margin:0 0 8px;padding:8px 12px;font-size:12.5px">착지 = 배송일정 등록(방문) · 금액 = 거래명세서 합계(VAT 포함, 취소·택배 제외) · 근무일 = 착지가 1건 이상인 날 · 거래처 수 = 그 달 1회 이상 배송된 거래처(중복 제거) · 야간 = 기사명이 「야간」으로 시작하는 착지(금액은 명세서를 기사에 조인) · 오늘·어제는 조회할 때마다 다시 읽음</div>';
     var tile = function(label, s, j, c) {
       return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px">' +
         '<div style="font-size:12px;color:#64748B;font-weight:600">' + label + '</div>' +
         '<div style="display:flex;gap:14px;margin-top:6px;align-items:baseline;flex-wrap:wrap">' +
-        '<div><span style="font-size:11px;color:#0369A1;font-weight:700">스낵</span> <b style="font-size:19px;color:#0F172A">' + dashVal(s, c) + '</b></div>' +
-        '<div><span style="font-size:11px;color:#B45309;font-weight:700">조식</span> <b style="font-size:19px;color:#0F172A">' + dashVal(j, c) + '</b></div></div></div>';
+        '<div><span style="font-size:11px;color:#0369A1;font-weight:700">스낵</span> <b style="font-size:19px;color:#0F172A">' + dashVal(s, c) + '</b><div style="font-size:11px;color:#64748B">주 ' + dashVal(cur.sd, c) + ' · 야 ' + dashVal(cur.sn, c) + '</div></div>' +
+        '<div><span style="font-size:11px;color:#B45309;font-weight:700">조식</span> <b style="font-size:19px;color:#0F172A">' + dashVal(j, c) + '</b><div style="font-size:11px;color:#64748B">주 ' + dashVal(cur.jd, c) + ' · 야 ' + dashVal(cur.jn, c) + '</div></div></div></div>';
     };
     var body = '';
     if (cur) {
@@ -5846,17 +5862,19 @@ document.getElementById('__wpSave').onclick = function() {
     } else {
       body += '<div style="padding:14px;color:#94a3b8">' + (busy ? '조회 중… 처음 한 번은 한 달치를 읽어서 1~2분 걸립니다.' : '이 달 데이터가 없습니다. [이 달 조회]를 누르세요.') + '</div>';
     }
-    body += '<table class="wp-tbl"><thead><tr><th style="width:80px">월</th><th style="width:60px">구분</th>' + DASH_COLS.map(function(c) { return '<th style="text-align:right">' + c[0] + '</th>'; }).join('') + '<th style="width:90px"></th></tr></thead><tbody>';
+    body += '<table class="wp-tbl"><thead><tr><th style="width:80px">월</th><th style="width:70px">구분</th>' + DASH_COLS.map(function(c) { return '<th style="text-align:right">' + c[0] + '</th>'; }).join('') + '<th style="width:90px"></th></tr></thead><tbody>';
     var y = String(kstDate().getFullYear()), list = months.slice();
     for (var m = 1; m <= 12; m++) { var k = y + '-' + ('0' + m).slice(-2); if (k <= dashYm(kstDate()) && list.indexOf(k) < 0) list.push(k); }
     list.sort().reverse();
     list.forEach(function(k) {
       var r = all[k];
       if (!r) { body += '<tr><td><b>' + esc(k) + '</b></td><td colspan="' + (DASH_COLS.length + 1) + '" style="color:#94a3b8">미조회</td><td><button class="wp-act __wpDhGo" data-ym="' + k + '"' + (DASH.busy[k] ? ' disabled' : '') + '>' + (DASH.busy[k] ? '조회 중' : '조회') + '</button></td></tr>'; return; }
-      [['스낵', r.s, '#0369A1'], ['조식', r.j, '#B45309'], ['합계', r.t, '#0F172A']].forEach(function(x, i) {
-        body += '<tr' + (i === 2 ? ' style="background:#F8FAFC"' : '') + '>' + (i === 0 ? '<td rowspan="3" style="vertical-align:middle"><b>' + esc(k) + '</b>' + (r.errs ? '<div style="color:#DC2626;font-size:11px">실패 ' + r.errs + '일</div>' : '') + '</td>' : '') +
-          '<td><b style="color:' + x[2] + '">' + x[0] + '</b></td>' + DASH_COLS.map(function(c) { return '<td style="text-align:right;font-variant-numeric:tabular-nums">' + dashVal(x[1], c) + '</td>'; }).join('') +
-          (i === 0 ? '<td rowspan="3" style="vertical-align:middle"><button class="wp-act __wpDhGo" data-ym="' + k + '"' + (DASH.busy[k] ? ' disabled' : '') + '>' + (DASH.busy[k] ? '조회 중' : '↻') + '</button></td>' : '') + '</tr>';
+      var RS = [['스낵', r.s, '#0369A1', 0], ['└ 주간', r.sd, '#0369A1', 1], ['└ 야간', r.sn, '#0369A1', 1], ['조식', r.j, '#B45309', 0], ['└ 주간', r.jd, '#B45309', 1], ['└ 야간', r.jn, '#B45309', 1], ['합계', r.t, '#0F172A', 2]];
+      RS.forEach(function(x, i) {
+        var sub = x[3] === 1;
+        body += '<tr' + (x[3] === 2 ? ' style="background:#F8FAFC"' : '') + '>' + (i === 0 ? '<td rowspan="' + RS.length + '" style="vertical-align:middle"><b>' + esc(k) + '</b>' + (r.errs ? '<div style="color:#DC2626;font-size:11px">실패 ' + r.errs + '일</div>' : '') + '</td>' : '') +
+          '<td style="white-space:nowrap' + (sub ? ';padding-left:18px;font-size:12.5px' : '') + '">' + (sub ? '<span style="color:#94A3B8">' + x[0] + '</span>' : '<b style="color:' + x[2] + '">' + x[0] + '</b>') + '</td>' + DASH_COLS.map(function(c) { return '<td style="text-align:right;font-variant-numeric:tabular-nums' + (sub ? ';font-size:12.5px;color:#64748B' : '') + '">' + dashVal(x[1], c) + '</td>'; }).join('') +
+          (i === 0 ? '<td rowspan="' + RS.length + '" style="vertical-align:middle"><button class="wp-act __wpDhGo" data-ym="' + k + '"' + (DASH.busy[k] ? ' disabled' : '') + '>' + (DASH.busy[k] ? '조회 중' : '↻') + '</button></td>' : '') + '</tr>';
       });
     });
     body += '</tbody></table>';
@@ -5877,9 +5895,9 @@ document.getElementById('__wpSave').onclick = function() {
   function dashExcel() {
     var all = dashLoaded(), ks = Object.keys(all).sort();
     if (!ks.length) { alert('조회된 달이 없습니다.'); return; }
-    var rows = [['월', '구분'].concat(DASH_COLS.map(function(c) { return c[0]; }))];
-    ks.forEach(function(k) { var r = all[k]; [['스낵', r.s], ['조식', r.j], ['합계', r.t]].forEach(function(x) { rows.push([k, x[0]].concat(DASH_COLS.map(function(c) { var v = x[1][c[1]]; return isFinite(v) ? (c[2] === 'w' ? Math.round(v) : (c[2] ? Math.round(v * 10) / 10 : v)) : ''; }))); }); });
-    xlsxDownload(rows, [{ wch: 10 }, { wch: 7 }].concat(DASH_COLS.map(function() { return { wch: 14 }; })), '대시보드', '물류대시보드_' + ks[0] + '~' + ks[ks.length - 1] + '.xlsx').then(function() { toast('✓ 엑셀 ' + ks.length + '개월', '#0a7d47'); }).catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); });
+    var rows = [['월', '구분', '주/야'].concat(DASH_COLS.map(function(c) { return c[0]; }))];
+    ks.forEach(function(k) { var r = all[k]; [['스낵', '전체', r.s], ['스낵', '주간', r.sd], ['스낵', '야간', r.sn], ['조식', '전체', r.j], ['조식', '주간', r.jd], ['조식', '야간', r.jn], ['합계', '전체', r.t]].forEach(function(x0) { var x = [null, x0[2]]; rows.push([k, x0[0], x0[1]].concat(DASH_COLS.map(function(c) { var v = x[1][c[1]]; return isFinite(v) ? (c[2] === 'w' ? Math.round(v) : (c[2] ? Math.round(v * 10) / 10 : v)) : ''; }))); }); });
+    xlsxDownload(rows, [{ wch: 10 }, { wch: 7 }, { wch: 7 }].concat(DASH_COLS.map(function() { return { wch: 14 }; })), '대시보드', '물류대시보드_' + ks[0] + '~' + ks[ks.length - 1] + '.xlsx').then(function() { toast('✓ 엑셀 ' + ks.length + '개월', '#0a7d47'); }).catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); });
   }
 
   /* ---------- 기사통계 (관리자) — 월별 기사 착지·금액 (스낵/조식) ---------- */
