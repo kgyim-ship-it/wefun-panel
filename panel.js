@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261015-1333';
+  var PANEL_BUILD = '20261015-1337';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -148,6 +148,25 @@
 
   /* 오늘 — 휴무일이면 다음 영업일. 오피스에 직접 반영하는 작업의 최소 반영일. */
   function workdayTodayStr() { return pushOffDay(todayStr()); }
+
+  /* ── 발주 마감 ──
+     배송일 D의 발주는 2영업일 전 14시 배치로 만들어지고 15시에 확정된다.
+     → 지금 시각 기준으로 바꿀 수 있는 가장 빠른 배송일 = 15시 전이면 +2영업일, 15시 이후면 +3영업일.
+     그보다 이른 날짜를 건드리는 승인은 막는다(발주는 이미 나갔는데 일정만 바뀌면 오출고·미출). */
+  var ORDER_CUTOFF_MIN = 15 * 60;
+  function cutoffMinDate() {
+    var k = kstDate();
+    var n = (k.getHours() * 60 + k.getMinutes() >= ORDER_CUTOFF_MIN) ? 3 : 2;
+    return ymdOf(addWorkdays(k, n));
+  }
+  function isOrderLocked(ymd) { return !!ymd && ymd < cutoffMinDate(); }
+  function dowOf(ymd) { return DOWK[new Date(+ymd.slice(0, 4), +ymd.slice(5, 7) - 1, +ymd.slice(8, 10)).getDay()]; }
+  function lockMsg(dates) {
+    var m = cutoffMinDate();
+    return '⛔ 발주 마감 지남 — ' + dates.map(function(d) { return d + '(' + dowOf(d) + ')'; }).join(', ') +
+      ' 배송은 발주 마감(2영업일 전 15시)이 지나 변경할 수 없습니다.\n지금 바꿀 수 있는 가장 빠른 배송일: ' + m + '(' + dowOf(m) + ')\n' +
+      '요청자에게 날짜 수정을 요청하거나 [수정승인]으로 날짜를 바꿔 승인하세요.';
+  }
 
   /* ── 기일반영 ──
      거래처명·주소 변경이 "언제부터"인 경우가 있다(예: 9/29부터 8층).
@@ -1103,6 +1122,7 @@
             var me = (fresh || []).filter(function(x) { return String(x.id) === String(it.id); })[0];
             if (!me || String(me.detail || '').indexOf(stamp) < 0) { return; }     /* 남이 먼저 잡았거나 이미 처리됨 */
             it.detail = me.detail;
+            it._auto = true;
             return runActionCore(it).then(function(note) {
               return decideReq(it.id, '완료', (note || '') + ' · 예약 자동반영', it.slackTs);
             }).then(function() { ok++; });
@@ -2251,7 +2271,7 @@
          "왜 아직 반영 안 됐냐" 문의의 대부분이 희망일을 뒤로 잡아놓고 잊는 경우라, 날짜를 눈에 박고 제출하게 한다. */
       var _d1v = String(detailGet(detail, '반영예정일') || '').trim().slice(0, 10);
       var _d1sp = ACTIONS[action];
-      var _d1def = (_d1sp && _d1sp.d1) ? (_d1sp.passthru ? workdayD1Str() : workdayTodayStr()) : '';
+      var _d1def = (_d1sp && _d1sp.d1) ? (_d1sp.passthru ? workdayD1Str() : cutoffMinDate()) : '';
       if (_d1v && _d1def && _d1v !== _d1def && !(IS_ADMIN && !ASK)) {
         var _d1g = dayGap(_d1v), _d1dow = DOWK[new Date(+_d1v.slice(0, 4), +_d1v.slice(5, 7) - 1, +_d1v.slice(8, 10)).getDay()];
         if (!confirm('⚠ 반영 희망일 확인\n\n[' + action + '] ' + br.name + '\n\n이 요청은 ' + _d1v + '(' + _d1dow + ')' + (_d1g > 0 ? ' · D-' + _d1g : '') + '에 위펀 오피스에 반영됩니다.\n' +
@@ -2445,7 +2465,7 @@
             if (!el.value) { el.value = _m3; }
           }
           if (f.dmin) {
-            var _mn = f.d0 ? workdayTodayStr() : workdayD1Str();
+            var _mn = f.d0 ? cutoffMinDate() : workdayD1Str();
             el.min = _mn; el.setAttribute('data-min', _mn);
             if (!el.value) { el.value = _mn; }
           }
@@ -2472,7 +2492,7 @@
             var noteEl = document.getElementById('__wpD1Note');
             var upd2 = function() {
               if (!noteEl) return;
-              var v = el.value || (f.d0 ? workdayTodayStr() : workdayD1Str()), g = dayGap(v);
+              var v = el.value || (f.d0 ? cutoffMinDate() : workdayD1Str()), g = dayGap(v);
               noteEl.innerHTML = g > 0 ?
                 ('📅 <b>' + esc(v) + '부터</b> 적용됩니다. 그 전까지는 기존 정보 그대로 배송됩니다.' + (action === '배송주기변경' ? '<br><span style="color:#B45309">오피스 반영은 <b>' + esc(bookApplyDate(v)) + ' 10시</b>(2영업일 전, 발주 배치 전)에 자동으로 됩니다. 그날 배송부터 새 주기로 나가려면 이 날짜를 <b>첫 배송일</b>로 넣으세요.</span>' : '')) :
                 (f.d0 ?
@@ -2935,6 +2955,11 @@ document.getElementById('__wpSave').onclick = function() {
     });
   }
   function preValidateEvents(action, sid0, vals) {
+    var _lk0 = [];
+    if (action === '배송일정생성') _lk0 = String(vals['배송일'] || '').split(',').filter(isOrderLocked);
+    if (action === '배송일정삭제') _lk0 = String(vals['삭제일'] || '').split(',').filter(isOrderLocked);
+    if (action === '배송일정변경') _lk0 = [vals['기존배송일'], vals['변경배송일']].filter(isOrderLocked);
+    if (_lk0.length && !IS_ADMIN) return Promise.resolve({ ok: false, alert: true, msg: lockMsg(_lk0).replace('\n요청자에게 날짜 수정을 요청하거나 [수정승인]으로 날짜를 바꿔 승인하세요.', '\n이미 발주된 건의 출고 취소·회수는 CS/개발팀 경로로 요청해 주세요.') });
     return getScheduleEvents(sid0).then(function(evs) {
         var set = {}, byDate = {};
         evs.forEach(function(e) {
@@ -4210,6 +4235,16 @@ document.getElementById('__wpSave').onclick = function() {
     if (/조식/.test(String(it.branchName || '')) && (it.action === '배송주기변경' || it.action === '배송일정생성' || it.action === '배송일정변경' || it.action === '배송일정삭제')) {
       return Promise.resolve('조식 건 · 위펀오피스 미반영 → 조식팀 일정반영 요청');
     }
+    /* 발주 마감 지난 날짜를 건드리는 승인 차단 (요청·관리자 공통) */
+    var _lk = [];
+    if (it.action === '배송일정생성') { _lk = String(detailGet(it.detail, '배송일') || '').split(',').map(function(x) { return x.trim(); }).filter(isOrderLocked); }
+    if (it.action === '배송일정삭제') { _lk = String(detailGet(it.detail, '삭제일') || '').split(',').map(function(x) { return x.trim(); }).filter(isOrderLocked); }
+    if (it.action === '배송일정변경') { _lk = [detailGet(it.detail, '기존배송일'), detailGet(it.detail, '변경배송일')].filter(isOrderLocked); }
+    if (it.action === '신규코드발급' && !(/조식/.test(String(detailGet(it.detail, '서비스구분') || '')) || /조식/.test(String(it.branchName || '')))) {
+      var _fb = String(detailGet(it.detail, '첫배송희망일') || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(_fb) && isOrderLocked(_fb)) _lk = [_fb];
+    }
+    if (_lk.length) return Promise.reject(new Error(lockMsg(_lk)));
     if (it.action === '배송메모') {
       if (!it.branchId) return Promise.reject(new Error('거래처ID 없음'));
       return getForm(it.branchId).then(function(f) {
@@ -4279,6 +4314,15 @@ document.getElementById('__wpSave').onclick = function() {
         var noGen = (cyc === '계획일정없음' || cyc === '수기일정생성');
         /* 희망일이 미래면 새 주기는 희망일부터(배송시작일=희망일). 재생성이 지워버린 희망일 전 기존 배송은 다시 만들어 둔다 */
         var d1 = d1Of(it), tNow = todayStr(), begin = (d1 && d1 > tNow) ? d1 : '';
+        /* 희망일(없으면 오늘)이 발주 마감 안쪽이면 그 기간 일정은 건드리지 않고 마감 다음 날짜부터 새 주기 */
+        var cmin = cutoffMinDate();
+        if (!begin || begin < cmin) {
+          if (!it._auto && !confirm('⚠ 발주 마감 — [배송주기변경] ' + (it.branchName || '') + '\n\n희망일 ' + (d1 || tNow) + '은 발주 마감(2영업일 전 15시)이 지났습니다.\n' +
+              cmin + '(' + dowOf(cmin) + ') 배송부터 새 주기로 적용하고, 그 전 일정은 기존대로 둡니다.\n\n이렇게 승인할까요?')) {
+            throw new Error('발주 마감으로 승인 취소 — 가장 빠른 적용일 ' + cmin);
+          }
+          begin = cmin; it._cutShift = cmin;
+        }
         var keep = [];
         return (noGen ? Promise.resolve(null) : schedWindowGuard(sid)).then(function() {
           return begin ? getScheduleEvents(sid).then(function(evs) { keep = (evs || []).filter(function(e) { return e.deliveryDate >= tNow && e.deliveryDate < begin; }).map(function(e) { return e.deliveryDate; }); }).catch(function() {}) : null;
@@ -4299,7 +4343,7 @@ document.getElementById('__wpSave').onclick = function() {
             var t = todayStr();
             var fut = (evs || []).filter(function(e) { return e.deliveryDate >= t; });
             if (!fut.length) { throw new Error('주기를 재생성했지만 일정이 0건입니다 — [영업 > 서비스 > 정보수정]의 배송일정 생성기간을 확인하세요.'); }
-            return cyc + (days.length ? '(' + days.join(',') + ')' : '') + ' 재생성 (' + fut.length + '건 확인)' + (begin ? ' · ' + begin + '부터' : '') + (it._keptBack ? ' · 희망일 전 기존배송 유지 ' + it._keptBack.join(',') : '');
+            return cyc + (days.length ? '(' + days.join(',') + ')' : '') + ' 재생성 (' + fut.length + '건 확인)' + (begin ? ' · ' + begin + '부터' : '') + (it._cutShift ? '(발주마감으로 조정)' : '') + (it._keptBack ? ' · 희망일 전 기존배송 유지 ' + it._keptBack.join(',') : '');
           });
         });
       });
