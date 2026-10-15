@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261014-1643';
+  var PANEL_BUILD = '20261015-1123';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -171,10 +171,26 @@
   function bookedOf(it) {
     return detailGet(it && it.detail, '예약승인') || '';
   }
+  /* 오피스 반영일 = 희망일 2영업일 전. 주기 재생성 결과가 14시 발주 배치에 잡히려면 첫 새 배송(희망일)의 발주가 생성되기 전에 들어가 있어야 한다.
+     (예: 희망일 10/19(월) → 10/15(목) 10시 반영. 10/19 10시에 반영하면 그날 배송 발주는 이미 지나가 있다) */
+  var BOOK_LEAD_WD = 2;
+  function subWorkdays(ymd, n) {
+    var p = ymd.split('-'), r = new Date(+p[0], +p[1] - 1, +p[2]), a = 0;
+    while (a < n) { r.setDate(r.getDate() - 1); if (!isOffDay(r)) a++; }
+    return ymdOf(r);
+  }
+  function bookApplyDate(d1) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d1 || '')) return '';
+    var ad = subWorkdays(d1, BOOK_LEAD_WD), t = todayStr();
+    return ad < t ? t : ad;
+  }
   function bookedDate(it) {
     var v = bookedOf(it);
     var m = /(\d{4}-\d{2}-\d{2})/.exec(v);
-    return m ? m[1] : '';
+    if (!m) return '';
+    /* 예전 예약(희망일 당일로 잡힌 것)도 2영업일 전으로 당겨 돌린다 */
+    var ad = bookApplyDate(d1Of(it));
+    return (ad && ad < m[1]) ? ad : m[1];
   }
   /* 반영 희망일이 남은 주기변경은 '그날 반영'이 유일한 정답이다.
      오피스 주기 재생성은 오늘부터 전체를 다시 그리기 때문에, 미리 돌리면 희망일 이전 배송까지 바뀐다.
@@ -186,8 +202,11 @@
   function mustBook(action, detail) {
     if (action !== '배송주기변경') return '';
     var d = String(detailGet(detail, '반영예정일') || '').trim().slice(0, 10);
-    return (/^\d{4}-\d{2}-\d{2}$/.test(d) && dayGap(d) > 0) ? d : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+    var ad = bookApplyDate(d);
+    return dayGap(ad) > 0 ? ad : '';
   }
+  function bookMsg(d1, ad) { return '희망일 ' + d1 + '(' + DOWK[new Date(+d1.slice(0, 4), +d1.slice(5, 7) - 1, +d1.slice(8, 10)).getDay()] + ')부터 새 주기 → 오피스 반영은 ' + ad + ' 오전 10시 (2영업일 전 · 14시 발주 배치 전)'; }
   function canBook(it) {   /* 예약 대상 = 승인 즉시 오피스에 반영되는 주기변경 */
     return it && it.action === '배송주기변경';
   }
@@ -2251,7 +2270,7 @@
       if (edit && edit.adminEdit) {
         var _bk2 = mustBook(action, o.detail);
         if (_bk2) {
-          if (!confirm('[배송주기변경] 반영 희망일이 ' + _bk2 + '(D-' + dayGap(_bk2) + ')입니다.\n수정 내용을 저장하고 예약 승인으로 둡니다. 오피스 반영은 그날 [지금 반영]으로 합니다.\n\n진행할까요?')) return;
+          if (!confirm('[배송주기변경] 예약 승인\n' + bookMsg(d1Of(o), _bk2) + '\n수정 내용을 저장하고 예약으로 둡니다.\n\n진행할까요?')) return;
           sb.disabled = true;
           sb.textContent = '예약 중…';
           editDetail(edit.id, withBooking(o.detail, _bk2, REQ.name), REQ.name).then(function() {
@@ -2287,9 +2306,7 @@
       if (IS_ADMIN && !ASK) {
         var _bk = mustBook(action, o.detail);
         if (_bk) {
-          if (!confirm('[배송주기변경] 반영 희망일이 ' + _bk + '(D-' + dayGap(_bk) + ')입니다.\n' +
-              '오피스 주기 재생성은 오늘부터 전체를 다시 만들기 때문에 지금 반영하면 그 전 배송까지 바뀝니다.\n\n' +
-              '예약으로 등록하고 ' + _bk + ' 오전 10시에 자동 반영할까요?\n([예약] 탭에서 볼 수 있습니다)')) { return; }
+          if (!confirm('[배송주기변경] 예약\n' + bookMsg(d1Of(o), _bk) + '\n\n예약으로 등록할까요? ([예약] 탭에서 볼 수 있습니다)')) { return; }
           o.detail = withBooking(o.detail, _bk, REQ.name);
           sb.disabled = true;
           sb.textContent = '예약 중…';
@@ -2452,7 +2469,7 @@
               if (!noteEl) return;
               var v = el.value || (f.d0 ? workdayTodayStr() : workdayD1Str()), g = dayGap(v);
               noteEl.innerHTML = g > 0 ?
-                ('📅 <b>' + esc(v) + '부터</b> 적용됩니다. 그 전까지는 기존 정보 그대로 배송됩니다.') :
+                ('📅 <b>' + esc(v) + '부터</b> 적용됩니다. 그 전까지는 기존 정보 그대로 배송됩니다.' + (action === '배송주기변경' ? '<br><span style="color:#B45309">오피스 반영은 <b>' + esc(bookApplyDate(v)) + ' 10시</b>(2영업일 전, 발주 배치 전)에 자동으로 됩니다. 그날 배송부터 새 주기로 나가려면 이 날짜를 <b>첫 배송일</b>로 넣으세요.</span>' : '')) :
                 (f.d0 ?
                   ('ℹ️ <b>오늘(' + esc(v) + ')</b>부터 적용됩니다. 승인되는 즉시 위펀 오피스에 반영됩니다.<br>' +
                    '<span style="color:#B45309">나중부터 바뀌는 건이면 위 <b>반영 희망일</b>을 그 날짜로 바꿔주세요.</span>') :
@@ -3435,12 +3452,12 @@ document.getElementById('__wpSave').onclick = function() {
           (skip ? '\n\n※ 신규코드발급 ' + skip + '건 제외 (우린담당 입력이 필요해 건별 승인)' : '') +
           '\n\n배송 계열은 위펀 오피스에 바로 반영되고, 건별로 슬랙 회신이 나갑니다.\n진행할까요?';
         if (!confirm(msg)) { return; }
-        var _nb = sel.filter(function(it) { return canBook(it) && dayGap(d1Of(it)) > 0 && !bookedDate(it); }).length;
+        var _nb = sel.filter(function(it) { return canBook(it) && dayGap(bookApplyDate(d1Of(it))) > 0 && !bookedDate(it); }).length;
         if (_nb && !confirm('반영 희망일이 아직 남은 배송주기변경 ' + _nb + '건은 지금 반영하지 않고 예약으로 둡니다.\n(그날 [지금 반영]으로 반영)\n\n계속할까요?')) { return; }
         bulkRun(sel, function(it) {
-          if (canBook(it) && dayGap(d1Of(it)) > 0 && !bookedDate(it)) {
+          if (canBook(it) && dayGap(bookApplyDate(d1Of(it))) > 0 && !bookedDate(it)) {
             it._bookedNow = true;
-            return editDetail(it.id, withBooking(it.detail, d1Of(it), REQ.name), REQ.name || '');
+            return editDetail(it.id, withBooking(it.detail, bookApplyDate(d1Of(it)), REQ.name), REQ.name || '');
           }
           return runActionCore(it).then(function(note) {
             return decideReq(it.id, '완료', note || '', it.slackTs);
@@ -4255,8 +4272,21 @@ document.getElementById('__wpSave').onclick = function() {
         }).filter(Boolean) : [];
         if (!cyc) throw new Error('변경주기 없음');
         var noGen = (cyc === '계획일정없음' || cyc === '수기일정생성');
+        /* 희망일이 미래면 새 주기는 희망일부터(배송시작일=희망일). 재생성이 지워버린 희망일 전 기존 배송은 다시 만들어 둔다 */
+        var d1 = d1Of(it), tNow = todayStr(), begin = (d1 && d1 > tNow) ? d1 : '';
+        var keep = [];
         return (noGen ? Promise.resolve(null) : schedWindowGuard(sid)).then(function() {
-          return driveCycle(sid, cyc, days);
+          return begin ? getScheduleEvents(sid).then(function(evs) { keep = (evs || []).filter(function(e) { return e.deliveryDate >= tNow && e.deliveryDate < begin; }).map(function(e) { return e.deliveryDate; }); }).catch(function() {}) : null;
+        }).then(function() {
+          return driveCycle(sid, cyc, days, begin || undefined);
+        }).then(function() {
+          if (!begin || !keep.length) return;
+          return waitScheduleReady(sid, 5).then(function(evs) {
+            var have = {}; (evs || []).forEach(function(e) { have[e.deliveryDate] = 1; });
+            var ch = Promise.resolve(), back = [];
+            keep.forEach(function(d) { if (!have[d]) ch = ch.then(function() { return createDelivery(sid, d).then(function() { back.push(d); }).catch(function() {}); }); });
+            return ch.then(function() { if (back.length) it._keptBack = back; });
+          });
         }).then(function() {
           if (noGen) { return cyc + ' 재생성'; }
           /* 사후 검증 — 재생성 후 오늘 이후 일정이 실제로 찍혔는지 확인. 0건이면 승인 실패로 남긴다 */
@@ -4264,7 +4294,7 @@ document.getElementById('__wpSave').onclick = function() {
             var t = todayStr();
             var fut = (evs || []).filter(function(e) { return e.deliveryDate >= t; });
             if (!fut.length) { throw new Error('주기를 재생성했지만 일정이 0건입니다 — [영업 > 서비스 > 정보수정]의 배송일정 생성기간을 확인하세요.'); }
-            return cyc + (days.length ? '(' + days.join(',') + ')' : '') + ' 재생성 (' + fut.length + '건 확인)';
+            return cyc + (days.length ? '(' + days.join(',') + ')' : '') + ' 재생성 (' + fut.length + '건 확인)' + (begin ? ' · ' + begin + '부터' : '') + (it._keptBack ? ' · 희망일 전 기존배송 유지 ' + it._keptBack.join(',') : '');
           });
         });
       });
@@ -4453,11 +4483,10 @@ document.getElementById('__wpSave').onclick = function() {
     var dtq = (it.action === '배송시간문의');
     /* 배송주기변경은 승인하는 순간 오피스에 반영된다 → 반영 희망일이 남았으면 그날 승인해야 한다 */
     /* 반영일이 아직 남은 주기변경 → 오피스는 그대로 두고 '예약승인'만 기록한다 */
-    if (canBook(it) && !it._runBooked && dayGap(d1Of(it)) > 0 && !bookedDate(it)) {
-      var bd = d1Of(it);
+    if (canBook(it) && !it._runBooked && dayGap(bookApplyDate(d1Of(it))) > 0 && !bookedDate(it)) {
+      var bd = bookApplyDate(d1Of(it));
       if (!confirm('[배송주기변경] 예약 승인\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') +
-          '\n\n검토 승인만 해두고, 위펀 오피스 반영은 ' + bd + '(D-' + dayGap(bd) + ') 오전 10시에 자동으로 합니다.\n' +
-          '그때까지 배송은 기존 주기 그대로입니다. [예약] 탭에서 볼 수 있습니다.\n\n진행할까요?')) { return; }
+          '\n\n' + bookMsg(d1Of(it), bd) + '\n희망일 전 배송은 기존 주기 그대로 유지됩니다. [예약] 탭에서 볼 수 있습니다.\n\n진행할까요?')) { return; }
       btn.disabled = true;
       var ob = btn.textContent;
       btn.textContent = '예약 중…';
@@ -4476,7 +4505,7 @@ document.getElementById('__wpSave').onclick = function() {
     /* 예약된 건을 예약일 전에 수동 승인 → 앞당겨 반영되는 것이니 한 번 더 확인 */
     if (canBook(it) && !it._runBooked && bookedDate(it) && dayGap(bookedDate(it)) > 0) {
       if (!confirm('⚠ 예약 건 조기 반영\n' + (it.branchName || '') + '\n\n이 건은 ' + bookedDate(it) + '(D-' + dayGap(bookedDate(it)) + ') 10시 자동 반영으로 예약돼 있습니다.\n' +
-          '지금 반영하면 오피스가 "오늘부터" 주기를 다시 만들기 때문에 ' + bookedDate(it) + ' 이전 배송도 새 주기로 바뀝니다.\n\n' +
+          '지금 반영해도 희망일(' + d1Of(it) + ') 전 배송은 되살려 두지만, 발주가 안 붙은 날짜는 빠질 수 있습니다.\n\n' +
           '요청자가 "지금부터 바꿔달라"고 한 게 확실할 때만 진행하세요.\n(날짜만 당기려면 [날짜·내용 수정]에서 희망일을 고치는 게 안전합니다)\n\n그래도 지금 반영할까요?')) { return; }
       it._runBooked = true;
     }
