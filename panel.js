@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261015-1337';
+  var PANEL_BUILD = '20261019-0936';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -2148,6 +2148,28 @@
       self.disabled = true;
       var prog = document.getElementById('__wpBProg');
       var ok = 0, fail = 0, idx = 0;
+      /* 일괄도 단건과 같은 사전검증을 거친다 — 없던 배송일 변경·이미 있는 날짜 생성·발주 마감 지난 날짜 등은 여기서 걸러낸다
+         (예전엔 일괄 경로만 검증을 건너뛰어 '배송일정 없는 날짜 변경' 요청이 그대로 들어왔다) */
+      var bad = [], vi = 0;
+      function vstep() {
+        if (vi >= brs.length) { return afterValidate(); }
+        var b0 = brs[vi];
+        prog.textContent = '확인 중… ' + (vi + 1) + '/' + brs.length + ' (' + b0.name + ')';
+        preValidate(action, b0, vals).then(function(res) {
+          if (!res.ok) bad.push({ br: b0, msg: String(res.msg || '').replace(/^⛔\s*/, '') });
+        }).catch(function(e) { bad.push({ br: b0, msg: '확인 실패: ' + ((e && e.message) || e) }); }).then(function() { vi++; vstep(); });
+      }
+      function afterValidate() {
+        if (bad.length) {
+          var badIds = bad.map(function(x) { return x.br.id; });
+          var good = brs.filter(function(b1) { return badIds.indexOf(b1.id) < 0; });
+          var lines = bad.slice(0, 12).map(function(x) { return '· ' + x.br.name + ' — ' + x.msg.split('\n')[0]; }).join('\n') + (bad.length > 12 ? '\n… 외 ' + (bad.length - 12) + '곳' : '');
+          if (!good.length) { self.disabled = false; prog.textContent = ''; alert('⛔ 접수 불가 ' + bad.length + '곳 — 제출하지 않았습니다.\n\n' + lines); return; }
+          if (!confirm('⛔ 접수 불가 ' + bad.length + '곳은 빼고 제출합니다.\n\n' + lines + '\n\n나머지 ' + good.length + '곳만 제출할까요?')) { self.disabled = false; prog.textContent = ''; return; }
+          brs = good;
+        }
+        step();
+      }
       function detailFor(br) {
         if (action === '배송주기변경') {
           return getCurrentCycle(br.id).then(function(cur) { var pre = []; if (cur) { pre.push('기존주기: ' + (cur.cyc || '-')); pre.push('기존요일: ' + ((cur.days && cur.days.length) ? cur.days.map(function(x){x=String(x).trim();return /요일$/.test(x)?x:(/^[월화수목금토일]$/.test(x)?x+'요일':x);}).join(',') : '-')); } return pre.concat(parts).join(' · '); }).catch(function() { return parts.join(' · '); });
@@ -2170,7 +2192,7 @@
           return submitReq({ ts: now(), dept: REQ.dept, name: REQ.name, email: REQ.email, action: action, hot: br.hot, cold: br.cold, branchId: br.id, branchName: br.name, detail: detail });
         }).then(function() { ok++; }).catch(function() { fail++; }).then(function() { idx++; step(); });
       }
-      step();
+      vstep();
     };
   }
   function openForm(action, br, edit) {
@@ -3339,7 +3361,7 @@ document.getElementById('__wpSave').onclick = function() {
       if (soon.length) {
         soon.sort(function(x, y) { return d1Of(x).localeCompare(d1Of(y)); });
         h += '<div style="margin:8px 0;padding:10px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;font-size:12.5px;color:#475569;line-height:1.7">' +
-          '<b>🗓 예약 ' + soon.length + '건</b> — 반영일 전날 자동으로 담깁니다. 가장 이른 건 <b>' + esc(d1Of(soon[0])) + '</b> (D-' + dayGap(d1Of(soon[0])) + ')<br>' +
+          '<b>🗓 예약 ' + soon.length + '건</b> — 반영 희망일 2영업일 전 10시에 자동 반영됩니다. 가장 이른 건 <b>' + esc(d1Of(soon[0])) + '</b> (D-' + dayGap(d1Of(soon[0])) + ')<br>' +
           '<span style="font-size:12px;opacity:.85">' + esc(names(soon, 5)) + '</span></div>';
       }
       box.innerHTML = h;
@@ -3383,7 +3405,7 @@ document.getElementById('__wpSave').onclick = function() {
       if (soonUn.length) {
         soonUn.sort(function(x, y) { return d1Of(x).localeCompare(d1Of(y)); });
         h += '<div style="margin:8px 0;padding:10px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;font-size:12.5px;color:#475569;line-height:1.7">' +
-          '<b>🗓 반영 희망일 예정 ' + soonUn.length + '건</b> — 미리 승인하면 <b>예약</b>으로 잡히고, 오피스 반영은 그날 합니다. 가장 이른 건 <b>' + esc(d1Of(soonUn[0])) + '</b> (D-' + dayGap(d1Of(soonUn[0])) + ')<br>' +
+          '<b>🗓 반영 희망일 예정 ' + soonUn.length + '건</b> — 미리 승인하면 <b>예약</b>으로 잡히고, 오피스 반영은 희망일 2영업일 전 10시에 자동으로 합니다. 가장 이른 건 <b>' + esc(d1Of(soonUn[0])) + '</b> (D-' + dayGap(d1Of(soonUn[0])) + ')<br>' +
           '<span style="font-size:12px;opacity:.85">' + esc(names(soonUn, 5)) + '</span></div>';
       }
       box.innerHTML = h;
@@ -3483,7 +3505,7 @@ document.getElementById('__wpSave').onclick = function() {
           '\n\n배송 계열은 위펀 오피스에 바로 반영되고, 건별로 슬랙 회신이 나갑니다.\n진행할까요?';
         if (!confirm(msg)) { return; }
         var _nb = sel.filter(function(it) { return canBook(it) && dayGap(bookApplyDate(d1Of(it))) > 0 && !bookedDate(it); }).length;
-        if (_nb && !confirm('반영 희망일이 아직 남은 배송주기변경 ' + _nb + '건은 지금 반영하지 않고 예약으로 둡니다.\n(그날 [지금 반영]으로 반영)\n\n계속할까요?')) { return; }
+        if (_nb && !confirm('반영 희망일이 아직 남은 배송주기변경 ' + _nb + '건은 지금 반영하지 않고 예약으로 둡니다.\n(희망일 2영업일 전 10시 자동 반영)\n\n계속할까요?')) { return; }
         bulkRun(sel, function(it) {
           if (canBook(it) && dayGap(bookApplyDate(d1Of(it))) > 0 && !bookedDate(it)) {
             it._bookedNow = true;
@@ -4314,15 +4336,11 @@ document.getElementById('__wpSave').onclick = function() {
         var noGen = (cyc === '계획일정없음' || cyc === '수기일정생성');
         /* 희망일이 미래면 새 주기는 희망일부터(배송시작일=희망일). 재생성이 지워버린 희망일 전 기존 배송은 다시 만들어 둔다 */
         var d1 = d1Of(it), tNow = todayStr(), begin = (d1 && d1 > tNow) ? d1 : '';
-        /* 희망일(없으면 오늘)이 발주 마감 안쪽이면 그 기간 일정은 건드리지 않고 마감 다음 날짜부터 새 주기 */
+        /* 반영예정일은 '배송일'이 아니라 '이 날부터 새 주기' 기준일이다. 묻지 않고 조용히 처리:
+           새 주기 시작 = max(반영예정일, 발주 마감 다음 날). 그 전에 잡혀 있던 기존 배송은 아래 keep 로직으로 그대로 둔다.
+           → 발주가 이미 나간(또는 마감된) 날짜는 어떤 경우에도 새 주기로 바뀌지 않는다. */
         var cmin = cutoffMinDate();
-        if (!begin || begin < cmin) {
-          if (!it._auto && !confirm('⚠ 발주 마감 — [배송주기변경] ' + (it.branchName || '') + '\n\n희망일 ' + (d1 || tNow) + '은 발주 마감(2영업일 전 15시)이 지났습니다.\n' +
-              cmin + '(' + dowOf(cmin) + ') 배송부터 새 주기로 적용하고, 그 전 일정은 기존대로 둡니다.\n\n이렇게 승인할까요?')) {
-            throw new Error('발주 마감으로 승인 취소 — 가장 빠른 적용일 ' + cmin);
-          }
-          begin = cmin; it._cutShift = cmin;
-        }
+        if (!begin || begin < cmin) { begin = cmin; it._cutShift = cmin; }
         var keep = [];
         return (noGen ? Promise.resolve(null) : schedWindowGuard(sid)).then(function() {
           return begin ? getScheduleEvents(sid).then(function(evs) { keep = (evs || []).filter(function(e) { return e.deliveryDate >= tNow && e.deliveryDate < begin; }).map(function(e) { return e.deliveryDate; }); }).catch(function() {}) : null;
@@ -4343,7 +4361,7 @@ document.getElementById('__wpSave').onclick = function() {
             var t = todayStr();
             var fut = (evs || []).filter(function(e) { return e.deliveryDate >= t; });
             if (!fut.length) { throw new Error('주기를 재생성했지만 일정이 0건입니다 — [영업 > 서비스 > 정보수정]의 배송일정 생성기간을 확인하세요.'); }
-            return cyc + (days.length ? '(' + days.join(',') + ')' : '') + ' 재생성 (' + fut.length + '건 확인)' + (begin ? ' · ' + begin + '부터' : '') + (it._cutShift ? '(발주마감으로 조정)' : '') + (it._keptBack ? ' · 희망일 전 기존배송 유지 ' + it._keptBack.join(',') : '');
+            return cyc + (days.length ? '(' + days.join(',') + ')' : '') + ' 재생성 (' + fut.length + '건 확인)' + (begin ? ' · ' + begin + '부터' : '') + (it._keptBack ? ' · 희망일 전 기존배송 유지 ' + it._keptBack.join(',') : '');
           });
         });
       });
