@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261019-0936';
+  var PANEL_BUILD = '20261020-1725';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -346,6 +346,22 @@
     return a;
   }
   var EQUIP = ['자체설비(매대)', '자체설비(냉장고)'].concat(eqRange('스탠드매대900', 5), eqRange('스탠드매대500', 5), eqRange('테이블매대(원목)', 10), eqRange('냉장고(대형)', 5), eqRange('냉장고(소형)', 5), eqRange('냉동고(스탠드)', 5), eqRange('냉동고(소형)', 5), eqRange('종이트레이(6구)', 16), ['스마트냉장고', '구형 키오스크', '신형 키오스크', '라면바 1구', '라면바 2구', '시리얼디스펜서', '전자레인지', '온장고', '없음']);
+  /* 배송취소 사유 기본값 — 실제 배송일정삭제 요청 사유(2026-07~10)를 묶어 만든 초안. 관리자가 [배송취소 통계 › 사유 관리]에서 바꾼다.
+     g = 귀책(고객사/위펀/기타). 사유명에 가운뎃점(·)은 쓰지 않는다(요청내용 구분자). */
+  var DC_REASONS0 = [
+    { g: '고객사', r: '고객사 휴무/연휴' },
+    { g: '고객사', r: '재고 과다/소진 부진' },
+    { g: '고객사', r: '행사/이전/공사' },
+    { g: '고객사', r: '수령 불가(출입/담당자 부재)' },
+    { g: '고객사', r: '해지/종료 예정' },
+    { g: '고객사', r: '고객사 요청(기타)' },
+    { g: '위펀', r: '결품/상품 준비 불가' },
+    { g: '위펀', r: '배송 캐파/차량 사정' },
+    { g: '위펀', r: '일정 등록 착오' },
+    { g: '기타', r: '공휴일 대체배송 조정' },
+    { g: '기타', r: '기상/재난' },
+    { g: '기타', r: '기타(직접 입력)' }
+  ];
   var ACTIONS = {
     '배송주기변경': {
       auto: 'cycle',
@@ -407,6 +423,26 @@
       }, {
         k: '사유',
         label: '사유',
+        type: 'text'
+      }]
+    },
+    '배송취소': {
+      dc: true,          /* 사유 통계용 — 승인 시 발주 전 날짜만 오피스 일정 삭제, 나머지는 기록 (dcApply) */
+      fields: [{
+        k: '취소배송일',
+        label: '취소할 배송일(여러 날짜 추가 가능)',
+        type: 'dates',
+        req: true
+      }, {
+        k: '취소사유',
+        label: '취소 사유',
+        type: 'select',
+        opts: DC_REASONS0.map(function(x) { return x.r; }),
+        req: true
+      }, {
+        k: '상세사유',
+        label: '상세 사유',
+        sub: '사유가 기타면 필수 · 고객사 표현 그대로 짧게',
         type: 'text'
       }]
     },
@@ -1187,6 +1223,7 @@
       ['stats', '배송통계'],
       ['kstats', '기사통계'],
       ['dash', '대시보드'],
+      ['dcstat', '배송취소'],
       ['dispatch', '배차'],
       ['temp', '온도관제'],
       ['ticket', '차량고지서'],
@@ -1225,6 +1262,7 @@
     else if (t === 'stats') viewStats();
     else if (t === 'kstats') viewKStats();
     else if (t === 'dash') viewDash();
+    else if (t === 'dcstat') viewDcStat();
     else if (t === 'dispatch') viewDispatch();
     else if (t === 'temp') viewTemp();
     else if (t === 'ticket') viewTicket();
@@ -1744,7 +1782,7 @@
       }
       var acts = actionKeys();
       var showActs = (MODE === 'requester');
-      var h = (showActs ? '<div id="__wpBulkBar" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#0B1220;color:#fff;border-radius:6px;flex-wrap:wrap"><b>선택 <span id="__wpBkN">0</span>건</b><span style="opacity:.45">|</span><select id="__wpBulkAct" class="wp-inp" style="height:32px;max-width:190px;color:#17222E"><option value="배송일정생성">배송일정생성</option><option value="배송일정변경">배송일정변경</option><option value="배송일정삭제">배송일정삭제</option><option value="배송주기변경">배송주기변경</option><option value="배송메모">배송메모</option></select><button id="__wpBulkGo" class="wp-btn" style="height:32px;background:#38BDF8;color:#04121F;border:none">선택 일괄요청</button></div>' : '') + '<table class="wp-tbl"><thead><tr>' + (showActs ? ['<input type="checkbox" id="__wpBkAll" style="cursor:pointer">'] : []).concat(['점포코드', '거래처명', '담당코스', '배송', '주소']).concat(showActs ? ['작업요청'] : []).map(function(x) {
+      var h = (showActs ? '<div id="__wpBulkBar" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#0B1220;color:#fff;border-radius:6px;flex-wrap:wrap"><b>선택 <span id="__wpBkN">0</span>건</b><span style="opacity:.45">|</span><select id="__wpBulkAct" class="wp-inp" style="height:32px;max-width:190px;color:#17222E"><option value="배송일정생성">배송일정생성</option><option value="배송일정변경">배송일정변경</option><option value="배송일정삭제">배송일정삭제</option><option value="배송취소">배송취소</option><option value="배송주기변경">배송주기변경</option><option value="배송메모">배송메모</option></select><button id="__wpBulkGo" class="wp-btn" style="height:32px;background:#38BDF8;color:#04121F;border:none">선택 일괄요청</button></div>' : '') + '<table class="wp-tbl"><thead><tr>' + (showActs ? ['<input type="checkbox" id="__wpBkAll" style="cursor:pointer">'] : []).concat(['점포코드', '거래처명', '담당코스', '배송', '주소']).concat(showActs ? ['작업요청'] : []).map(function(x) {
         return '<th>' + x + '</th>';
       }).join('') + '</tr></thead><tbody>';
       list.forEach(function(r) {
@@ -2121,16 +2159,20 @@
     function openBulkForm(action, brs) {
     var spec = ACTIONS[action];
     if (!spec) return;
+    if (action === '배송취소' && !dcReady()) { dcLoadReasons(false).then(function() { openBulkForm(action, brs); }); return; }
     var box = document.getElementById('__wpForm');
     var qr = document.getElementById('__wpQr');
     if (qr) qr.style.display = 'none';
     var meta = '<div class="wp-meta"><b>일괄 대상 ' + brs.length + '개 거래처</b><br><span style="color:#475569">' + brs.map(function(b){return esc(b.name);}).join(', ') + '</span><br><b>요청자</b> ' + esc(REQ.dept) + ' / ' + esc(REQ.name) + '</div>';
     var fh = (spec.fields || []).map(fieldHtml).join('');
+    if (spec.dc) fh = dcGuideHtml() + fh;
     box.innerHTML = '<div class="wp-form"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">일괄 요청 · ' + esc(action) + '</b><button id="__wpBBack" class="wp-btn gh" style="padding:6px 12px">← 목록</button></div>' + meta + fh + '<div style="margin-top:12px;display:flex;gap:10px;align-items:center"><button id="__wpBSave" class="wp-btn ok">' + brs.length + '개 거래처에 일괄 제출</button><span id="__wpBProg" style="font-size:12.5px;color:#64748b"></span></div><div style="font-size:11.5px;color:#94a3b8;margin-top:6px">* 선택한 거래처 각각에 동일 내용으로 요청이 생성됩니다. (물류팀 승인 후 반영)</div></div>';
     document.getElementById('__wpBBack').onclick = function() { box.innerHTML = ''; if (qr) qr.style.display = 'block'; };
     (spec.fields || []).forEach(function(f) { if (f.type === 'days') bindDays(f.k); if (f.type === 'multi') bindMulti(f.k); if (f.type === 'addr') bindAddr(f.k); if (f.type === 'dates') bindDates(f.k); });
+    if (spec.dc) dcDecorate('');
     document.getElementById('__wpBSave').onclick = function() {
       var self = this;
+      if (spec.dc) dcAutoAdd();
       var vals = {}, parts = [];
       (spec.fields || []).forEach(function(f) { var el = document.getElementById('__wpf_' + f.k); var v = el ? el.value.trim() : ''; vals[f.k] = v; if (v) parts.push(f.k + ': ' + v); });
       var cyc = vals['변경주기'] || '', day = vals['변경요일'] || '';
@@ -2143,6 +2185,7 @@
       if (action === '배송일정삭제' && !vals['삭제일']) { toast('삭제할 배송일을 1개 이상 추가하세요', '#c0392b'); return; }
       if (action === '배송일정변경' && (!DRX.test(vals['기존배송일']) || !DRX.test(vals['변경배송일']))) { toast('기존/변경 배송일을 선택하세요', '#c0392b'); return; }
       if (action === '배송메모' && !vals['메모내용']) { toast('메모 내용을 입력하세요', '#c0392b'); return; }
+      if (spec.dc) { var _dcE0 = dcCheck(vals); if (_dcE0) { alert(_dcE0); return; } }
       if (!confirm(brs.length + '개 거래처에 [' + action + '] 요청을 일괄 생성합니다. 진행할까요?')) return;
       if (!REQ.email) { alert('요청자 정보를 아직 못 불러왔어요. 잠시 후 다시 시도하세요.'); return; }
       self.disabled = true;
@@ -2177,6 +2220,7 @@
         if (action === '배송메모') {
           return getForm(br.id).then(function(f) { var cur = getVal(f, 'parkingMemo') || ''; return '기존메모: ' + (cur || '(없음)') + ' · 변경메모: ' + vals['메모내용']; }).catch(function() { return '변경메모: ' + vals['메모내용']; });
         }
+        if (spec.dc) return Promise.resolve(dcDetail(vals, br, ''));
         return Promise.resolve(parts.join(' · '));
       }
       function step() {
@@ -2197,6 +2241,8 @@
   }
   function openForm(action, br, edit) {
     if (!br) return;
+    /* 배송취소: 사유 목록(관리자 편집분)을 먼저 받아 드롭다운을 그린다 */
+    if (action === '배송취소' && !dcReady()) { dcLoadReasons(false).then(function() { openForm(action, br, edit); }); return; }
     if (MODE !== 'requester' && !(edit && (edit.adminEdit || edit.adminEditOnly))) {
       alert('요청 제출은 요청자용 모드에서 하세요.');
       return;
@@ -2216,6 +2262,7 @@
     }
     /* 관리자가 [반영요청]을 눌렀는가 — true면 바로 반영하지 않고 일반 요청처럼 큐에 올린다 */
     var ASK = false;
+    var DC_OK = false;   /* 배송취소: 날짜별 처리 확인창을 이미 띄웠으면 '바로 반영' 확인창은 건너뛴다 */
 
     function bind() {
       document.getElementById('__wpBack').onclick = function() {
@@ -2373,7 +2420,7 @@
             if (nc !== null && nc.trim()) o._newCourse = nc.trim();
           }
         }
-        if (!confirm('물류팀 계정이라 승인 없이 바로 반영합니다.\n[' + action + '] ' + br.name + '\n진행할까요?')) {
+        if (!DC_OK && !confirm('물류팀 계정이라 승인 없이 바로 반영합니다.\n[' + action + '] ' + br.name + '\n진행할까요?')) {
           unlockBtns(); return;
         }
         sb.disabled = true;
@@ -2435,13 +2482,14 @@
       return;
     }
     var fh = (spec.fields || []).map(fieldHtml).join('');
+    if (spec.dc) fh = dcGuideHtml() + fh;
     if (spec.d1) {
       fh = '<div id="__wpD1Note" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:9px 11px;font-size:12.5px;margin:2px 0 4px;line-height:1.6"></div>' + fh;
     }
     box.innerHTML = shell(fh, '요청 제출');
     bind();
     var _schedDates = [];
-    if (/^배송일정/.test(action)) {
+    if (/^배송일정/.test(action) || action === '배송취소') {
       var _sbx = document.createElement('div');
       _sbx.style.cssText = 'background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;font-size:12.5px;color:#475569;margin:2px 0 10px;box-shadow:0 1px 3px rgba(15,23,42,.06)';
       _sbx.textContent = '기존 배송일정 불러오는 중…';
@@ -2535,6 +2583,7 @@
       String(edit.prefill).split(' · ').forEach(function(pp) { pp = pp.trim(); var ix = pp.indexOf(':'); if (ix < 0) return; _pfm[pp.slice(0, ix).trim()] = pp.slice(ix + 1).trim(); });
       (spec.fields || []).forEach(function(f) { var el = document.getElementById('__wpf_' + f.k); if (el && _pfm[f.k] != null && _pfm[f.k] !== '') el.value = _pfm[f.k]; });
     }
+    if (spec.dc) { dcDecorate(edit && edit.prefill ? detailGet(edit.prefill, '취소사유') : ''); if (edit && edit.prefill) dcPrefillDates(edit.prefill); }
     if (action === '신규코드발급') {
       serviceInfo(br.id, br.name).then(function(si) {
         var be = document.getElementById('__wpf_월예산');
@@ -2544,6 +2593,7 @@
           (function() { var cs = document.getElementById('__wpf_변경주기') || document.getElementById('__wpf_요청주기'); var dk = document.getElementById('__wpf_변경요일') ? '변경요일' : (document.getElementById('__wpf_정기배송요일') ? '정기배송요일' : ''); if (!cs || !dk) return; var di = document.getElementById('__wpf_' + dk); var df = di ? di.closest('.wp-fld') : null; function sync() { var nd = /^(매일|수기일정생성|계획일정없음)$/.test(cs.value || ''); if (df) df.style.display = nd ? 'none' : ''; if (nd && di) di.value = ''; } cs.onchange = sync; sync(); })();
 document.getElementById('__wpSave').onclick = function() {
       var self = this;
+      if (spec.dc) dcAutoAdd();
       var vals = {},
         parts = [];
       (spec.fields || []).forEach(function(f) {
@@ -2584,6 +2634,7 @@ document.getElementById('__wpSave').onclick = function() {
           return;
         }
       }
+      if (spec.dc) { var _dcE = dcCheck(vals); if (_dcE) { alert(_dcE); return; } }
       self.disabled = true;
       var o0 = self.textContent;
       self.textContent = '확인 중…';
@@ -2593,6 +2644,14 @@ document.getElementById('__wpSave').onclick = function() {
           self.textContent = o0;
           if (res.alert) { alert(res.msg); } else { toast(res.msg, '#c0392b'); }
           return;
+        }
+        if (spec.dc) {
+          var _dcMode = (edit && (edit.adminEdit || edit.adminEditOnly)) ? 'quiet' : ((IS_ADMIN && !ASK) ? 'direct' : 'submit');
+          return dcPrepare(br, vals, _dcMode, edit && edit.prefill).then(function(dd) {
+            if (!dd) { self.disabled = false; self.textContent = o0; return; }
+            DC_OK = (_dcMode === 'direct');
+            doSubmit(dd);
+          });
         }
         if (action === '배송주기변경') {
           return getCurrentCycle(br.id).then(function(cur) {
@@ -3217,7 +3276,7 @@ document.getElementById('__wpSave').onclick = function() {
     };
   var REV_GROUP = 'deliv';
   var REV_GROUPS = {
-    deliv: ['배송주기변경', '배송일정생성', '배송일정변경', '배송일정삭제', '배송메모', '배송시간문의', '배송VOC', '재고조사변경'],
+    deliv: ['배송주기변경', '배송일정생성', '배송일정변경', '배송일정삭제', '배송취소', '배송메모', '배송시간문의', '배송VOC', '재고조사변경'],
     syn: ['신규코드발급', '주소변경', '거래처명변경', '담당자변경', '코스변경', '피킹방법변경'],
     pick: ['수기피킹']
   };
@@ -4022,7 +4081,7 @@ document.getElementById('__wpSave').onclick = function() {
         last = '<td style="white-space:normal">' + _lastInner + '</td>';
       }
       var bn = it.branchId ? ('<a href="/office/sales/branch/' + esc(it.branchId) + '" target="_blank" style="color:#1f4e78;text-decoration:none">' + esc(it.branchName) + '</a>') : esc(it.branchName);
-      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + ((codeGubun(it.action) || it.action === '배송주기변경') ? d1Badge(it) : '') + (bookedDate(it) ? ('<div style="margin-top:3px;display:inline-block;padding:1px 7px;border-radius:999px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:800">✓ 예약 · ' + esc(bookedDate(it).slice(5).replace('-', '/')) + ' 10시 자동반영</div>') : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill((it.status === '대기' && bookedDate(it)) ? '예약' : it.status) + '</td>' + last + '</tr>';
+      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제|취소)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + ((codeGubun(it.action) || it.action === '배송주기변경') ? d1Badge(it) : '') + (bookedDate(it) ? ('<div style="margin-top:3px;display:inline-block;padding:1px 7px;border-radius:999px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:800">✓ 예약 · ' + esc(bookedDate(it).slice(5).replace('-', '/')) + ' 10시 자동반영</div>') : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill((it.status === '대기' && bookedDate(it)) ? '예약' : it.status) + '</td>' + last + '</tr>';
     });
     h += '</tbody></table>';
     box.innerHTML = h;
@@ -4181,7 +4240,7 @@ document.getElementById('__wpSave').onclick = function() {
     }).catch(function() { return ''; });
   }
   function dvBadges(box, items) {
-    var q = items.filter(function(it) { return it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제)$/.test(it.action); });
+    var q = items.filter(function(it) { return it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제|취소)$/.test(it.action); });
     if (!q.length) return;
     var idx = 0;
     function paint(it, v) {
@@ -4254,6 +4313,7 @@ document.getElementById('__wpSave').onclick = function() {
   function runActionCore(it) {
     /* 배송VOC: 오피스에 반영할 게 없다 — 확인·조치 후 완료하면 요청자에게 슬랙 회신만 나간다 */
     if (it.action === '배송VOC') { return Promise.resolve('VOC 확인·조치 완료'); }
+    if (it.action === '배송취소') { return dcApply(it); }
     if (/조식/.test(String(it.branchName || '')) && (it.action === '배송주기변경' || it.action === '배송일정생성' || it.action === '배송일정변경' || it.action === '배송일정삭제')) {
       return Promise.resolve('조식 건 · 위펀오피스 미반영 → 조식팀 일정반영 요청');
     }
@@ -4576,7 +4636,7 @@ document.getElementById('__wpSave').onclick = function() {
           '요청자가 "지금부터 바꿔달라"고 한 게 확실할 때만 진행하세요.\n(날짜만 당기려면 [날짜·내용 수정]에서 희망일을 고치는 게 안전합니다)\n\n그래도 지금 반영할까요?')) { return; }
       it._runBooked = true;
     }
-    var cfmMsg = dtq ? ('[배송시간문의] 확인 회신\n' + (it.branchName || '') + '\n\n금일 배송 배정·완료시각·진열사진을 조회해 요청자에게 회신합니다.\n(오피스에 반영되는 것은 없습니다)\n\n진행할까요?') : pick ? ('[수기피킹] 완료 처리\n' + (it.branchName || '') + '\n\n피킹팀 처리 완료로 표시하고 요청자에게 알립니다.\n진행할까요?') : passthru ? ('[' + it.action + '] 검토 승인(접수)\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + (it._newCourse ? '\n코스변경 → ' + it._newCourse : '') + '\n\n승인하면 자회사 코드전달로 접수됩니다.\n반영예정일: ' + (d1Of(it) || workdayD1Str()) + (dayGap(d1Of(it)) > 0 ? ' (D-' + dayGap(d1Of(it)) + ' · 그날 전날까지 코드전달 엑셀에 안 담깁니다)' : '') + '\n진행할까요?') : ('[' + it.action + '] 승인 · 위펀 오피스에 반영\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + '\n\n진행할까요?');
+    var cfmMsg = (it.action === '배송취소') ? dcApproveMsg(it) : dtq ? ('[배송시간문의] 확인 회신\n' + (it.branchName || '') + '\n\n금일 배송 배정·완료시각·진열사진을 조회해 요청자에게 회신합니다.\n(오피스에 반영되는 것은 없습니다)\n\n진행할까요?') : pick ? ('[수기피킹] 완료 처리\n' + (it.branchName || '') + '\n\n피킹팀 처리 완료로 표시하고 요청자에게 알립니다.\n진행할까요?') : passthru ? ('[' + it.action + '] 검토 승인(접수)\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + (it._newCourse ? '\n코스변경 → ' + it._newCourse : '') + '\n\n승인하면 자회사 코드전달로 접수됩니다.\n반영예정일: ' + (d1Of(it) || workdayD1Str()) + (dayGap(d1Of(it)) > 0 ? ' (D-' + dayGap(d1Of(it)) + ' · 그날 전날까지 코드전달 엑셀에 안 담깁니다)' : '') + '\n진행할까요?') : ('[' + it.action + '] 승인 · 위펀 오피스에 반영\n' + (it.branchName || '') + '\n' + addDow(it.detail || '') + '\n\n진행할까요?');
     if (!confirm(cfmMsg)) return;
     btn.disabled = true;
     var orig = btn.textContent;
@@ -10354,6 +10414,430 @@ document.getElementById('__wpSave').onclick = function() {
       var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '재고조사_' + ym + '.xlsx'; document.body.appendChild(a); a.click();
       setTimeout(function() { a.remove(); URL.revokeObjectURL(a.href); }, 1200);
     });
+  }
+
+  /* ================= 배송취소 (요청자 작업요청 → 관리자 월별 사유 통계) =================
+     요청자: [거래처 조회 · 요청] → ＋ 작업 요청 → 배송취소 (취소 배송일 · 사유 · 상세)
+       - 사유마다 귀책(고객사/위펀/기타)을 같이 저장 → 월별 누적 통계 (생산성 보고용, 2026-10 이상진m 요청)
+       - 승인 시: 발주 전 날짜는 오피스 배송일정 삭제 / 발주 마감 지난 날짜는 일정 유지(출고 취소는 물류팀 직접) / 지난 날짜는 기록만
+     관리자: [배송취소 통계] — 취소 배송일 기준 월 집계(사유·귀책·시점), 최근 6개월 추이, 엑셀
+     사유 목록: 게시판 type=dcx 'reasons' (관리자 [사유 관리]에서 수정) · 없으면 DC_REASONS0 */
+  var DC = { reasons: null, at: 0, ym: '', data: null, win: null, dataAt: 0, busy: false, err: '', seq: 0 };
+  var DC_GROUPS = ['고객사', '위펀', '기타'];
+  var DC_GCOL = { '고객사': '#0369A1', '위펀': '#B45309', '기타': '#64748B' };
+  var DC_PH = [['발주전', '발주 전'], ['발주후', '발주 후'], ['당일', '당일'], ['사후', '사후 등록']];
+
+  function dcClean(s) { return String(s == null ? '' : s).replace(/[·•]/g, ',').replace(/\s+/g, ' ').trim().slice(0, 200); }
+  function dcDates(s) {
+    var seen = {}, out = [];
+    String(s || '').split(',').forEach(function(x) { x = x.trim(); if (/^\d{4}-\d{2}-\d{2}$/.test(x) && !seen[x]) { seen[x] = 1; out.push(x); } });
+    return out.sort();
+  }
+  function dcMdw(d) { return (+d.slice(5, 7)) + '/' + (+d.slice(8, 10)) + '(' + dowOf(d) + ')'; }
+  function dcMd(arr) { return arr.map(function(d) { return (+d.slice(5, 7)) + '/' + (+d.slice(8, 10)); }).join(','); }
+  function dcPhLabel(p) { for (var i = 0; i < DC_PH.length; i++) { if (DC_PH[i][0] === p) return DC_PH[i][1]; } return p || ''; }
+  function dcNormReasons(list) {
+    var seen = {}, out = [];
+    (list || []).forEach(function(x) {
+      if (!x) return;
+      var r = dcClean(x.r).slice(0, 40), g = DC_GROUPS.indexOf(x.g) > -1 ? x.g : '기타';
+      if (!r || seen[r]) return;
+      seen[r] = 1; out.push({ g: g, r: r });
+    });
+    if (out.length && !out.some(function(x) { return /^기타/.test(x.r); })) out.push({ g: '기타', r: '기타(직접 입력)' });
+    return out;
+  }
+  function dcReasonOf(r) { var l = DC.reasons || DC_REASONS0; for (var i = 0; i < l.length; i++) { if (l[i].r === r) return l[i]; } return null; }
+  function dcSetOpts(list) { var sp = ACTIONS['배송취소']; if (sp && sp.fields && sp.fields[1]) sp.fields[1].opts = list.map(function(x) { return x.r; }); }
+  function dcReady() { return !!DC.reasons && Date.now() - DC.at < 600000; }
+  function dcReasonPost(ps) {
+    var c = (ps || []).filter(function(x) { return x && x.title === 'reasons'; });
+    c.sort(function(a, b) { return (+b.id || 0) - (+a.id || 0); });
+    return c[0] || null;
+  }
+  /* 사유 목록 — 실패해도 기본값으로 연다 (요청 접수가 사유 목록 때문에 막히면 안 된다) */
+  function dcLoadReasons(force) {
+    if (!force && dcReady()) return Promise.resolve(DC.reasons);
+    return boardList('dcx').then(function(ps) {
+      var p = dcReasonPost(ps), list = null;
+      if (p) { try { list = dcNormReasons(JSON.parse(p.body || '[]')); } catch (e) { list = null; } }
+      return (list && list.length) ? list : DC_REASONS0.slice();
+    }).catch(function() { return DC.reasons || DC_REASONS0.slice(); }).then(function(list) {
+      DC.reasons = list; DC.at = Date.now(); dcSetOpts(list);
+      return list;
+    });
+  }
+  function dcSaveReasons(list) {
+    var body = JSON.stringify(list);
+    return boardList('dcx').then(function(ps) {
+      var p = dcReasonPost(ps);
+      var extra = (ps || []).filter(function(x) { return x && x.title === 'reasons' && (!p || String(x.id) !== String(p.id)); });
+      return (p ? boardEdit(p.id, 'reasons', body) : boardAdd('dcx', 'reasons', body)).then(function() {
+        var ch = Promise.resolve();
+        extra.forEach(function(x) { ch = ch.then(function() { return boardDelete(x.id).catch(function() {}); }); });
+        return ch;
+      });
+    }).then(function() { DC.reasons = list; DC.at = Date.now(); dcSetOpts(list); });
+  }
+
+  /* ---- 요청 폼 ---- */
+  function dcGuideHtml() {
+    return '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:9px 12px;font-size:12.5px;color:#475569;line-height:1.7;margin:2px 0 6px">' +
+      '잡혀 있던 배송을 고객사·물류 사정으로 <b>안 하게 된 건</b>을 사유와 함께 남깁니다 (월별 사유 통계).<br>' +
+      '발주 전 날짜는 승인되면 오피스 배송일정이 삭제되고, 발주 마감(배송일 2영업일 전 15시)이 지난 날짜도 접수됩니다 — 출고 취소는 물류팀이 처리합니다.<br>' +
+      '<span style="color:#94A3B8">주기 변경·해지·잘못 만든 일정 정리는 [배송일정삭제]로 요청하세요.</span></div>';
+  }
+  /* 사유 드롭다운을 귀책별 묶음(optgroup)으로 다시 그린다. 목록에 없는 기존 값(이름이 바뀐 사유)은 그대로 살린다 */
+  function dcDecorate(keep) {
+    var sel = document.getElementById('__wpf_취소사유'); if (!sel) return;
+    var list = DC.reasons || DC_REASONS0, cur = sel.value || keep || '';
+    var h = '<option value="">사유 선택</option>';
+    DC_GROUPS.forEach(function(g) {
+      var xs = list.filter(function(x) { return x.g === g; });
+      if (!xs.length) return;
+      h += '<optgroup label="' + esc(g === '기타' ? '기타' : g + ' 사유') + '">' + xs.map(function(x) { return '<option value="' + esc(x.r) + '">' + esc(x.r) + '</option>'; }).join('') + '</optgroup>';
+    });
+    if (cur && !list.some(function(x) { return x.r === cur; })) h += '<option value="' + esc(cur) + '">' + esc(cur) + '</option>';
+    sel.innerHTML = h; sel.value = cur;
+    var dt = document.getElementById('__wpf_상세사유'); if (dt) dt.placeholder = '예: 창립기념일 전사 휴무 / 재고 3박스 남음 (기타면 필수)';
+  }
+  /* 날짜만 고르고 [+ 추가]를 안 누른 채 제출해도 그 날짜를 넣는다 */
+  function dcAutoAdd() {
+    var pk = document.getElementById('__wpf_취소배송일_pick'), ab = document.getElementById('__wpf_취소배송일_add');
+    if (pk && pk.value && ab) ab.click();
+  }
+  /* 수정(수정승인·다시요청)으로 열 때 날짜 칩을 되살린다 — 숨김칸 값만 넣으면 칩 목록과 어긋난다 */
+  function dcPrefillDates(prefill) {
+    var pk = document.getElementById('__wpf_취소배송일_pick'), ab = document.getElementById('__wpf_취소배송일_add');
+    if (!pk || !ab) return;
+    dcDates(detailGet(prefill, '취소배송일')).forEach(function(d) { pk.value = d; ab.click(); });
+  }
+  function dcCheck(vals) {
+    var raw = String(vals['취소배송일'] || ''), ds = dcDates(raw);
+    if (!ds.length) return '취소할 배송일을 1개 이상 넣어주세요. (날짜를 고르고 [+ 추가])';
+    var bad = raw.split(',').map(function(x) { return x.trim(); }).filter(function(x) { return x && !/^\d{4}-\d{2}-\d{2}$/.test(x); });
+    if (bad.length) return '날짜 형식을 확인하세요: ' + bad.join(', ');
+    var far = ds.filter(function(d) { var g = dayGap(d); return g < -62 || g > 120; });
+    if (far.length) return '날짜를 확인하세요: ' + far.join(', ') + '\n(지난 2개월 ~ 앞으로 4개월 안의 배송만 접수합니다)';
+    if (!vals['취소사유']) return '취소 사유를 고르세요.';
+    if (/^기타/.test(vals['취소사유']) && !dcClean(vals['상세사유'])) return '사유가 기타면 상세 사유를 적어주세요.';
+    return '';
+  }
+  /* 요청내용(detail) — '키: 값 · 키: 값' 포맷. 값 안의 가운뎃점은 쉼표로 바꾼다 (detailGet 구분자) */
+  function dcDetail(vals, br, prefill) {
+    var rs = dcClean(vals['취소사유']), ro = dcReasonOf(rs);
+    var g = ro ? ro.g : (detailGet(prefill || '', '귀책') || '기타');
+    var parts = ['취소배송일: ' + dcDates(vals['취소배송일']).join(','), '취소사유: ' + rs, '귀책: ' + g];
+    var dt = dcClean(vals['상세사유']); if (dt) parts.push('상세사유: ' + dt);
+    var co = dcClean((br && br.course) || detailGet(prefill || '', '코스')); if (co && co !== '-') parts.push('코스: ' + co);
+    return parts.join(' · ');
+  }
+  /* 거래처의 날짜별 배송일정 상태 { 'YYYY-MM-DD': { ord: 발주생성 여부 } } — 못 읽으면 null */
+  function dcDateStates(br) {
+    if (!br || !br.id) return Promise.resolve(null);
+    return resolveSid(br.id, br.name).then(function(ids) {
+      if (!ids.length) return {};
+      return getScheduleEvents(ids[0]).then(function(evs) {
+        var m = {};
+        (evs || []).forEach(function(e) { var x = m[e.deliveryDate] || (m[e.deliveryDate] = { ord: 0 }); if (e.orderId) x.ord = 1; });
+        return m;
+      });
+    }).catch(function() { return null; });
+  }
+  /* 제출 직전 확인 — 날짜마다 승인되면 어떻게 처리되는지 보여준다. mode: quiet(관리자 수정) / direct(관리자 바로 반영) / submit */
+  function dcPrepare(br, vals, mode, prefill) {
+    var detail = dcDetail(vals, br, prefill);
+    if (mode === 'quiet') return Promise.resolve(detail);
+    var ds = dcDates(vals['취소배송일']), js = /조식/.test(String(br.name || ''));
+    return (js ? Promise.resolve(null) : dcDateStates(br)).then(function(m) {
+      var t = todayStr();
+      var lines = ds.map(function(d) {
+        var s;
+        if (js) s = '조식 건 · 기록만 (일정은 조식팀)';
+        else if (d < t) s = '지난 날짜 · 기록만';
+        else if (m && !m[d]) s = '배송일정 없음 · 기록만';
+        else if ((m && m[d] && m[d].ord) || isOrderLocked(d)) s = '발주 마감 지남 · 일정 유지, 출고 취소는 물류팀';
+        else s = '발주 전 · ' + (mode === 'direct' ? '오피스 배송일정 바로 삭제' : '승인되면 오피스 배송일정 삭제');
+        return '· ' + dcMdw(d) + ' — ' + s;
+      });
+      var ro = dcReasonOf(vals['취소사유']);
+      var msg = '[배송취소] ' + (br.name || '') + '\n사유: ' + vals['취소사유'] + (ro ? ' (' + ro.g + ')' : '') + (dcClean(vals['상세사유']) ? '\n상세: ' + dcClean(vals['상세사유']) : '') + '\n\n' + lines.join('\n') + '\n\n' +
+        (mode === 'direct' ? '물류팀 계정이라 승인 없이 바로 반영합니다. 진행할까요?' : '제출할까요?');
+      return confirm(msg) ? detail : null;
+    });
+  }
+  /* 승인 확인창 문구 (동기) */
+  function dcApproveMsg(it) {
+    var ds = dcDates(detailGet(it.detail, '취소배송일')), t = todayStr(), js = /조식/.test(String(it.branchName || ''));
+    var lines = ds.map(function(d) {
+      var s = js ? '조식 건 → 기록만' : (d < t ? '지난 날짜 → 기록만' : (isOrderLocked(d) ? '발주 마감 지남 → 일정 유지 (출고 취소는 직접)' : '발주 전 → 오피스 배송일정 삭제'));
+      return '· ' + dcMdw(d) + ' — ' + s;
+    });
+    var dt = detailGet(it.detail, '상세사유');
+    return '[배송취소] 확인 처리\n' + (it.branchName || '') + '\n사유: ' + (detailGet(it.detail, '취소사유') || '-') + (dt ? ' (' + dt + ')' : '') + '\n\n' + lines.join('\n') +
+      '\n\n배송일정이 없는 날짜는 기록만 남습니다.\n진행할까요?';
+  }
+  /* 승인 = 실제 처리 (runActionCore). 발주 전 날짜만 오피스 일정을 지우고 나머지는 기록만 — 승인 자체는 막지 않는다 */
+  function dcApply(it) {
+    var ds = dcDates(detailGet(it.detail, '취소배송일'));
+    if (!ds.length) return Promise.reject(new Error('취소배송일 없음'));
+    if (/조식/.test(String(it.branchName || ''))) return Promise.resolve('조식 건 · 오피스 미반영(조식팀 처리) · 취소 기록');
+    if (!it.branchId) return Promise.resolve('거래처ID 없음 · 취소 기록만');
+    return resolveSid(it.branchId, it.branchName).then(function(ids) {
+      if (!ids.length) return '스낵24 서비스 없음 · 취소 기록만';
+      var sid = ids[0];
+      return getScheduleEvents(sid).then(function(evs) {
+        var t = todayStr(), del = [], keep = [], none = [], past = [], ch = Promise.resolve();
+        ds.forEach(function(d) {
+          var ev = (evs || []).filter(function(e) { return e.deliveryDate === d; });
+          if (d < t) { past.push(d); return; }
+          if (!ev.length) { none.push(d); return; }
+          if (ev.some(function(e) { return !!e.orderId; }) || isOrderLocked(d)) { keep.push(d); return; }
+          ev.forEach(function(e) { ch = ch.then(function() { return deleteDelivery(sid, e.orderScheduleId, d); }); });
+          del.push(d);
+        });
+        return ch.then(function() {
+          var n = [];
+          if (del.length) n.push(dcMd(del) + ' 일정삭제');
+          if (keep.length) n.push(dcMd(keep) + ' 발주 후 · 일정 유지(출고 취소 직접)');
+          if (none.length) n.push(dcMd(none) + ' 일정 없음');
+          if (past.length) n.push(dcMd(past) + ' 지난 날짜 기록');
+          return n.join(' · ') || '취소 기록';
+        });
+      });
+    });
+  }
+
+  /* ---------- 배송취소 통계 (관리자) ---------- */
+  function dcYmAdd(ym, n) { var p = ym.split('-'); var d = new Date(+p[0], +p[1] - 1 + n, 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
+  function dcLastDay(ym) { var p = ym.split('-'); return ('0' + new Date(+p[0], +p[1], 0).getDate()).slice(-2); }
+  /* 취소 시점 — 요청 시각 기준. 발주 마감 = 배송일 2영업일 전 15시 (cutoffMinDate 와 같은 규칙) */
+  function dcPhase(d, ts) {
+    var t = String(ts || '').replace('T', ' ').slice(0, 16), td = t.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(td) || td > d) return '사후';
+    if (td === d) return '당일';
+    return t < subWorkdays(d, 2) + ' 15:00' ? '발주전' : '발주후';
+  }
+  /* 요청 → 날짜별 기록. 반려·요청취소 제외, 같은 거래처·같은 날 중복은 하나(완료 우선 → 나중 요청) */
+  function dcRecords(items) {
+    var best = {};
+    (items || []).forEach(function(it) {
+      if (!it || it.action !== '배송취소' || it.status === '반려' || it.status === '취소') return;
+      var dt = it.detail || '', rs = detailGet(dt, '취소사유') || '(미기재)';
+      var g = detailGet(dt, '귀책') || ((dcReasonOf(rs) || {}).g) || '기타';
+      if (DC_GROUPS.indexOf(g) < 0) g = '기타';
+      dcDates(detailGet(dt, '취소배송일')).forEach(function(d) {
+        var k = (it.branchId || it.branchName || '') + '|' + d;
+        var rec = { d: d, ym: d.slice(0, 7), it: it, r: rs, g: g, ph: dcPhase(d, it.ts), memo: detailGet(dt, '상세사유'), co: detailGet(dt, '코스'), done: it.status === '완료' };
+        var o = best[k];
+        if (!o || (rec.done && !o.done) || (rec.done === o.done && String(it.ts || '') > String(o.it.ts || ''))) best[k] = rec;
+      });
+    });
+    var out = Object.keys(best).map(function(k) { return best[k]; });
+    out.sort(function(a, b) { return a.d < b.d ? -1 : (a.d > b.d ? 1 : String(a.it.branchName || '').localeCompare(String(b.it.branchName || ''), 'ko')); });
+    return out;
+  }
+  function dcSum(recs) {
+    var s = { n: recs.length, br: 0, g: {}, ph: {}, rs: {}, late: 0, wait: 0 }, bm = {};
+    DC_GROUPS.forEach(function(g) { s.g[g] = 0; });
+    recs.forEach(function(x) {
+      bm[x.it.branchId || x.it.branchName || ''] = 1;
+      s.g[x.g] = (s.g[x.g] || 0) + 1;
+      s.ph[x.ph] = (s.ph[x.ph] || 0) + 1;
+      var k = x.g + '|' + x.r, o = s.rs[k] || (s.rs[k] = { g: x.g, r: x.r, n: 0, ph: {} });
+      o.n++; o.ph[x.ph] = (o.ph[x.ph] || 0) + 1;
+      if (x.ph === '발주후' || x.ph === '당일') s.late++;
+      if (!x.done) s.wait++;
+    });
+    s.br = Object.keys(bm).length;
+    return s;
+  }
+  function dcPct(a, b) { return b ? Math.round(a / b * 100) + '%' : '-'; }
+  function dcRsRows(s) {
+    var rows = Object.keys(s.rs).map(function(k) { return s.rs[k]; });
+    rows.sort(function(a, b) { var ga = DC_GROUPS.indexOf(a.g), gb = DC_GROUPS.indexOf(b.g); return ga !== gb ? ga - gb : (b.n - a.n || String(a.r).localeCompare(String(b.r), 'ko')); });
+    return rows;
+  }
+  function dcMonths(ym) { var a = []; for (var i = 5; i >= 0; i--) a.push(dcYmAdd(ym, -i)); return a; }
+  /* 요청 목록은 요청일 기준으로만 걸러진다(서버) → 6개월 추이 + 늦게 남긴 사후 등록까지 덮도록 앞뒤로 넉넉히 */
+  function dcWindow(ym) {
+    var e = dcYmAdd(ym, 2), to = e + '-' + dcLastDay(e), t = todayStr();
+    return { from: dcYmAdd(ym, -6) + '-01', to: to > t ? t : to };
+  }
+
+  function viewDcStat() {
+    if (!DC.ym) DC.ym = todayStr().slice(0, 7);
+    VIEW.innerHTML = '<div id="__wpDcHead"></div><div id="__wpDcBody"></div>';
+    dcStatLoad(false);
+  }
+  function dcStatLoad(force) {
+    var w = dcWindow(DC.ym);
+    if (!force && DC.data && DC.win && DC.win.from <= w.from && DC.win.to >= w.to && Date.now() - DC.dataAt < 300000) { dcStatRender(); return; }
+    var seq = ++DC.seq; DC.busy = true; DC.err = ''; dcStatRender();
+    Promise.all([listReq({ from: w.from, to: w.to }), dcLoadReasons(false)]).then(function(r) {
+      if (seq !== DC.seq) return;
+      DC.data = (r[0] || []).filter(function(it) { return it && it.action === '배송취소'; });
+      DC.win = w; DC.dataAt = Date.now(); DC.busy = false; dcStatRender();
+    }).catch(function(e) {
+      if (seq !== DC.seq) return;
+      DC.busy = false; DC.err = (e && e.message) || String(e); dcStatRender();
+    });
+  }
+  function dcStatRender() {
+    var h = document.getElementById('__wpDcHead'), b = document.getElementById('__wpDcBody');
+    if (!h || !b) return;
+    var ym = DC.ym, maxYm = dcYmAdd(todayStr().slice(0, 7), 2);
+    h.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
+      '<button id="__wpDcPrev" class="wp-btn gh" style="padding:0 11px">◀</button><b style="font-size:17px;min-width:92px;text-align:center">' + esc(ym) + '</b><button id="__wpDcNext" class="wp-btn gh" style="padding:0 11px"' + (ym >= maxYm ? ' disabled' : '') + '>▶</button>' +
+      '<button id="__wpDcRe" class="wp-btn gh"' + (DC.busy ? ' disabled' : '') + '>' + (DC.busy ? '불러오는 중…' : '↻ 다시 조회') + '</button>' +
+      '<span style="flex:1"></span>' +
+      (IS_ADMIN ? '<button id="__wpDcRs" class="wp-btn gh">사유 관리</button>' : '') +
+      '<button id="__wpDcXls" class="wp-btn gh"' + (DC.data && !DC.busy ? '' : ' disabled') + '>⬇ 엑셀</button></div>' +
+      '<div class="wp-meta" style="margin:0 0 8px;padding:8px 12px;font-size:12.5px">취소 <b>배송일</b> 기준 월 집계 · 대기·완료 건 (반려·요청취소 제외, 같은 거래처·같은 날 중복은 1건) · 시점 = 요청 시각 기준: 발주 마감(배송일 2영업일 전 15시) 전이면 <b>발주 전</b>, 지나서면 <b>발주 후</b>, 배송 당일이면 <b>당일</b>, 배송일 뒤에 남기면 <b>사후 등록</b></div>';
+    document.getElementById('__wpDcPrev').onclick = function() { DC.ym = dcYmAdd(DC.ym, -1); dcStatLoad(false); };
+    document.getElementById('__wpDcNext').onclick = function() { if (DC.ym >= maxYm) return; DC.ym = dcYmAdd(DC.ym, 1); dcStatLoad(false); };
+    document.getElementById('__wpDcRe').onclick = function() { dcStatLoad(true); };
+    document.getElementById('__wpDcXls').onclick = dcExcel;
+    var rsb = document.getElementById('__wpDcRs'); if (rsb) rsb.onclick = dcReasonEditor;
+    if (DC.busy) { b.innerHTML = '<div style="padding:14px;color:#94a3b8">불러오는 중… (최근 몇 달 요청을 한 번에 읽어 몇 초 걸립니다)</div>'; return; }
+    if (DC.err) { b.innerHTML = '<div style="padding:14px;color:#b00">불러오기 실패: ' + esc(DC.err) + ' — [↻ 다시 조회]를 눌러주세요.</div>'; return; }
+    if (!DC.data) { b.innerHTML = ''; return; }
+    var all = dcRecords(DC.data), recs = all.filter(function(x) { return x.ym === ym; }), s = dcSum(recs);
+    function tile(label, val, sub, col) {
+      return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px">' +
+        '<div style="font-size:12px;color:#64748B;font-weight:600">' + label + '</div>' +
+        '<div style="margin-top:4px;font-size:21px;font-weight:800;color:' + (col || '#0F172A') + ';font-variant-numeric:tabular-nums">' + val + '</div>' +
+        '<div style="font-size:11.5px;color:#94A3B8;margin-top:2px">' + sub + '</div></div>';
+    }
+    var html = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">' +
+      tile('취소 배송', s.n + '건', '거래처 ' + s.br + '곳' + (s.wait ? ' · 처리 대기 ' + s.wait + '건' : '')) +
+      tile('고객사 사유', s.g['고객사'] + '건', dcPct(s.g['고객사'], s.n), DC_GCOL['고객사']) +
+      tile('위펀 사유', s.g['위펀'] + '건', dcPct(s.g['위펀'], s.n), DC_GCOL['위펀']) +
+      tile('발주 후 취소', s.late + '건', dcPct(s.late, s.n) + ' · 당일 ' + (s.ph['당일'] || 0) + '건 포함') + '</div>';
+    var TD = 'text-align:right;font-variant-numeric:tabular-nums';
+    var rr = dcRsRows(s);
+    var t1 = '<div style="font-size:13px;font-weight:700;color:#334155;margin:0 0 6px">사유별</div><table class="wp-tbl"><thead><tr><th style="width:64px">귀책</th><th>사유</th><th style="' + TD + ';width:56px">건수</th><th style="' + TD + ';width:56px">비율</th>' +
+      DC_PH.map(function(p) { return '<th style="' + TD + ';width:74px;white-space:nowrap">' + p[1] + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      (rr.length ? rr.map(function(o) {
+        return '<tr><td><b style="color:' + (DC_GCOL[o.g] || '#64748B') + ';font-size:12.5px">' + esc(o.g) + '</b></td><td>' + esc(o.r) + '</td><td style="' + TD + ';font-weight:700">' + o.n + '</td><td style="' + TD + ';color:#64748B">' + dcPct(o.n, s.n) + '</td>' +
+          DC_PH.map(function(p) { var v = o.ph[p[0]] || 0; return '<td style="' + TD + ';color:' + (v ? '#334155' : '#CBD5E1') + '">' + v + '</td>'; }).join('') + '</tr>';
+      }).join('') + '<tr><td colspan="2" style="background:#F8FAFC"><b>합계</b></td><td style="' + TD + ';background:#F8FAFC"><b>' + s.n + '</b></td><td style="background:#F8FAFC"></td>' +
+        DC_PH.map(function(p) { return '<td style="' + TD + ';background:#F8FAFC"><b>' + (s.ph[p[0]] || 0) + '</b></td>'; }).join('') + '</tr>'
+        : '<tr><td colspan="' + (4 + DC_PH.length) + '" style="color:#94a3b8">이 달 배송취소 기록이 없습니다.</td></tr>') + '</tbody></table>';
+    var months = dcMonths(ym);
+    var t2 = '<div style="font-size:13px;font-weight:700;color:#334155;margin:0 0 6px">최근 6개월</div><table class="wp-tbl"><thead><tr><th>월</th><th style="' + TD + '">취소</th><th style="' + TD + '">거래처</th>' +
+      DC_GROUPS.map(function(g) { return '<th style="' + TD + '">' + g + '</th>'; }).join('') + '<th style="' + TD + '">발주 후</th></tr></thead><tbody>' +
+      months.map(function(m) {
+        var sm = dcSum(all.filter(function(x) { return x.ym === m; })), on = (m === ym), bg = on ? ';background:#EEF2FF;font-weight:700' : '';
+        var c = function(v) { return '<td style="' + TD + bg + (v ? '' : ';color:#CBD5E1') + '">' + v + '</td>'; };
+        return '<tr><td style="white-space:nowrap' + bg + '">' + m + '</td>' + c(sm.n) + c(sm.br) + DC_GROUPS.map(function(g) { return c(sm.g[g] || 0); }).join('') + c(sm.late) + '</tr>';
+      }).join('') + '</tbody></table>';
+    html += '<div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;align-items:start">' + '<div>' + t1 + '</div><div>' + t2 + '</div></div>';
+    html += '<div style="font-size:13px;font-weight:700;color:#334155;margin:16px 0 6px">상세 목록 · ' + recs.length + '건</div>' +
+      '<div class="wp-scroll"><table class="wp-tbl"><thead><tr><th style="width:84px">배송일</th><th>거래처</th><th style="width:84px">코스</th><th style="width:210px">사유</th><th style="width:72px">시점</th><th>상세</th><th style="width:104px">요청자</th><th style="width:170px">처리</th></tr></thead><tbody>' +
+      (recs.length ? recs.map(function(x) {
+        var it = x.it;
+        var bn = it.branchId ? '<a href="/office/sales/branch/' + esc(it.branchId) + '" target="_blank" style="color:#1f4e78;text-decoration:none">' + esc(it.branchName || '') + '</a>' : esc(it.branchName || '');
+        return '<tr><td style="white-space:nowrap">' + esc(dcMdw(x.d)) + '</td><td>' + bn + '</td><td style="white-space:nowrap;color:#64748B">' + esc(x.co || '-') + '</td>' +
+          '<td>' + esc(x.r) + ' <span style="font-size:11px;font-weight:700;color:' + (DC_GCOL[x.g] || '#64748B') + '">' + esc(x.g) + '</span></td>' +
+          '<td style="white-space:nowrap">' + esc(dcPhLabel(x.ph)) + '</td><td style="color:#475569">' + esc(x.memo || '') + '</td>' +
+          '<td style="white-space:nowrap;font-size:12.5px">' + esc(it.name || '') + '<div style="color:#94A3B8;font-size:11px">' + esc(fmtTs(it.ts)) + '</div></td>' +
+          '<td style="font-size:12px">' + pill(x.done ? '완료' : '대기') + (it.adminNote ? '<div style="color:#64748B;margin-top:3px;line-height:1.4">' + esc(it.adminNote) + '</div>' : '') + '</td></tr>';
+      }).join('') : '<tr><td colspan="8" style="color:#94a3b8">없음</td></tr>') + '</tbody></table></div>';
+    b.innerHTML = html;
+  }
+  /* 엑셀: 사유별(선택 월) · 월별 추이(사유 × 6개월) · 목록(6개월) */
+  function dcExcel() {
+    if (!DC.data) { toast('먼저 조회하세요', '#c0392b'); return; }
+    var ym = DC.ym, all = dcRecords(DC.data), months = dcMonths(ym);
+    var s = dcSum(all.filter(function(x) { return x.ym === ym; }));
+    var r1 = [['귀책', '사유', '건수', '비율(%)'].concat(DC_PH.map(function(p) { return p[1]; }))];
+    dcRsRows(s).forEach(function(o) { r1.push([o.g, o.r, o.n, s.n ? Math.round(o.n / s.n * 100) : 0].concat(DC_PH.map(function(p) { return o.ph[p[0]] || 0; }))); });
+    r1.push(['합계', '', s.n, s.n ? 100 : 0].concat(DC_PH.map(function(p) { return s.ph[p[0]] || 0; })));
+    var sums = months.map(function(m) { return dcSum(all.filter(function(x) { return x.ym === m; })); });
+    var seen = {}, order = [];
+    sums.forEach(function(sm) { dcRsRows(sm).forEach(function(o) { var k = o.g + '|' + o.r; if (!seen[k]) { seen[k] = 1; order.push(o); } }); });
+    order.sort(function(a, b) { var ga = DC_GROUPS.indexOf(a.g), gb = DC_GROUPS.indexOf(b.g); return ga !== gb ? ga - gb : String(a.r).localeCompare(String(b.r), 'ko'); });
+    var r2 = [['귀책', '사유'].concat(months).concat(['합계'])];
+    function line(a, b2, f) { var tot = 0; var v = sums.map(function(sm) { var x = f(sm); tot += x; return x; }); r2.push([a, b2].concat(v).concat([tot])); }
+    order.forEach(function(o) { var k = o.g + '|' + o.r; line(o.g, o.r, function(sm) { return sm.rs[k] ? sm.rs[k].n : 0; }); });
+    DC_GROUPS.forEach(function(g) { line(g + ' 계', '', function(sm) { return sm.g[g] || 0; }); });
+    line('합계', '', function(sm) { return sm.n; });
+    line('발주 후 취소', '당일 포함', function(sm) { return sm.late; });
+    var r3 = [['월', '배송일', '요일', '거래처', '점포코드', '코스', '귀책', '사유', '상세사유', '시점', '요청자', '부서', '요청일시', '상태', '처리자', '처리메모']];
+    all.filter(function(x) { return months.indexOf(x.ym) > -1; }).forEach(function(x) {
+      var it = x.it;
+      r3.push([x.ym, x.d, dowOf(x.d), it.branchName || '', it.hot || '', x.co || '', x.g, x.r, x.memo || '', dcPhLabel(x.ph), it.name || '', it.dept || '', it.ts || '', x.done ? '완료' : '대기', it.admin || '', it.adminNote || '']);
+    });
+    dcXlsx([{ name: '사유별 ' + ym, rows: r1 }, { name: '월별 추이', rows: r2 }, { name: '목록', rows: r3 }], '배송취소_' + ym + '.xlsx').then(function() {
+      toast('✓ 엑셀 · ' + ym + ' 사유별 + 6개월 추이', '#0a7d47');
+    }).catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); });
+  }
+  function dcXlsx(sheets, filename) {
+    return ensureExcel().then(function() {
+      var wb = new ExcelJS.Workbook();
+      sheets.forEach(function(sh) {
+        var ws = wb.addWorksheet(sh.name);
+        sh.rows.forEach(function(r, ri) {
+          var row = ws.addRow(r);
+          if (ri === 0) {
+            row.eachCell({ includeEmpty: true }, function(cell) {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } };
+              cell.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+              cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            });
+          } else if (/계$|^합계$|^발주 후 취소$/.test(String(r[0] || ''))) {
+            row.font = { bold: true };
+          }
+        });
+        var ncol = 0;
+        sh.rows.forEach(function(r) { if (r && r.length > ncol) ncol = r.length; });
+        for (var c = 0; c < ncol; c++) {
+          var w = 6;
+          sh.rows.forEach(function(r) { var v = String(r && r[c] != null ? r[c] : ''); var len = 0; for (var x = 0; x < v.length; x++) { len += v.charCodeAt(x) > 127 ? 2 : 1; } if (len > w) w = len; });
+          ws.getColumn(c + 1).width = Math.min(50, w + 2);
+        }
+        ws.views = [{ state: 'frozen', ySplit: 1 }];
+      });
+      return wb.xlsx.writeBuffer();
+    }).then(function(buf) {
+      var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() { if (a.parentNode) a.remove(); URL.revokeObjectURL(a.href); }, 1200);
+    });
+  }
+  /* 사유 관리 (물류 관리자) — 한 줄에 '귀책 | 사유' */
+  function dcReasonEditor() {
+    if (!IS_ADMIN) return;
+    var old = document.getElementById('__wpDcEd'); if (old) old.remove();
+    var list = DC.reasons || DC_REASONS0;
+    var box = document.createElement('div'); box.id = '__wpDcEd';
+    box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,94vw);background:#fff;border:1px solid #CBD5E1;border-radius:10px;box-shadow:0 24px 60px rgba(2,8,20,.35);padding:16px 18px;z-index:2147483647;font-size:13.5px';
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">배송취소 사유 관리</b><button id="__wpDcEdX" class="wp-act">✕</button></div>' +
+      '<div style="font-size:12.5px;color:#64748B;line-height:1.6;margin:6px 0 8px">한 줄에 하나 · <b>귀책 | 사유</b> (귀책: 고객사 / 위펀 / 기타). 요청 화면 드롭다운이 이 순서로 나옵니다.<br>이름을 바꿔도 이미 접수된 건은 접수 때 사유 그대로 집계됩니다.</div>' +
+      '<textarea id="__wpDcEdT" class="wp-inp" style="width:100%;height:280px;font-size:13px;line-height:1.6">' + esc(list.map(function(x) { return x.g + ' | ' + x.r; }).join('\n')) + '</textarea>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:10px"><button id="__wpDcEdDef" class="wp-btn gh">기본값 불러오기</button><button id="__wpDcEdOk" class="wp-btn pri">저장</button></div>';
+    (document.getElementById('__wp') || document.body).appendChild(box);
+    document.getElementById('__wpDcEdX').onclick = function() { box.remove(); };
+    document.getElementById('__wpDcEdDef').onclick = function() { document.getElementById('__wpDcEdT').value = DC_REASONS0.map(function(x) { return x.g + ' | ' + x.r; }).join('\n'); };
+    document.getElementById('__wpDcEdOk').onclick = function() {
+      var okb = this, bad = [], out = [];
+      document.getElementById('__wpDcEdT').value.split('\n').forEach(function(ln, i) {
+        ln = ln.trim(); if (!ln) return;
+        var p = ln.split('|'), g = (p[0] || '').trim(), r = p.slice(1).join('|').trim();
+        if (p.length < 2 || DC_GROUPS.indexOf(g) < 0 || !r) { bad.push(i + 1); return; }
+        out.push({ g: g, r: r });
+      });
+      if (bad.length) { alert('형식을 확인하세요: ' + bad.join(', ') + '번째 줄\n「고객사 | 사유」처럼 귀책(고객사/위펀/기타)과 사유를 | 로 나눠 주세요.'); return; }
+      out = dcNormReasons(out);
+      if (!out.length) { alert('사유가 비어 있습니다.'); return; }
+      okb.disabled = true; okb.textContent = '저장 중…';
+      dcSaveReasons(out).then(function() { toast('✓ 사유 ' + out.length + '개 저장', '#0a7d47'); box.remove(); dcStatRender(); }).catch(function(e) { okb.disabled = false; okb.textContent = '저장'; alert('저장 실패: ' + ((e && e.message) || e)); });
+    };
   }
 
   /* ================= 저온 발주 (직배송_저온 납품처별 발주자료 자동 생성) =================
