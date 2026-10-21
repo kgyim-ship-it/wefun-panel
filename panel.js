@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261020-1725';
+  var PANEL_BUILD = '20261021-1733';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -10059,6 +10059,7 @@ document.getElementById('__wpSave').onclick = function() {
       '<button class="wp-btn gh __wpInvSub" data-s="list"' + (INV.sub === 'list' ? ' style="background:#0B1220;color:#fff"' : '') + '>목록</button>' +
       '<button class="wp-btn gh __wpInvSub" data-s="master"' + (INV.sub === 'master' ? ' style="background:#0B1220;color:#fff"' : '') + '>마스터</button>' +
       '<button class="wp-btn gh __wpInvSub" data-s="new"' + (INV.sub === 'new' ? ' style="background:#0B1220;color:#fff"' : '') + '>신규·검토' + (s && (s.nw + s.flag) ? ' <span style="background:#EF4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:4px">' + (s.nw + s.flag) + '</span>' : '') + '</button>' +
+      '<button class="wp-btn gh __wpInvSub" data-s="stmt"' + (INV.sub === 'stmt' ? ' style="background:#0B1220;color:#fff"' : '') + ' title="재고조사 날짜에 거래명세서가 있는지 점검">명세서</button>' +
       '<span style="margin-left:10px;font-size:12.5px;color:#475569;background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:5px 10px">관리자 <b style="color:#0F172A">' + esc(INV_MGRS.join(', ')) + '</b>' + (INV.canEdit ? '' : ' · <span style="color:#94a3b8">보기 전용</span>') + '</span>' +
       '<span style="flex:1"></span>' +
       (INV.reqN ? '<button id="__wpInvReqs" class="wp-btn gh" style="border-color:#F59E0B;color:#B45309" title="확정 후 들어온 월력표 변경 요청 (물류 승인 대기)">변경요청 대기 <b>' + INV.reqN + '</b></button>' : '') +
@@ -10090,7 +10091,7 @@ document.getElementById('__wpSave').onclick = function() {
   function invRender() {
     invRenderHead();
     var b = document.getElementById('__wpInvBody'); if (!b) return;
-    if (INV.sub === 'cal') invRenderCal(b); else if (INV.sub === 'list') invRenderList(b); else if (INV.sub === 'master') invRenderMaster(b); else invRenderNew(b);
+    if (INV.sub === 'cal') invRenderCal(b); else if (INV.sub === 'list') invRenderList(b); else if (INV.sub === 'master') invRenderMaster(b); else if (INV.sub === 'stmt') invRenderStmt(b); else invRenderNew(b);
   }
   function invTargetMap() { var m = {}; (INV.targets || []).forEach(function(t) { m[t.bid] = t; }); return m; }
   /* 이름 앞 유형 표시((벤딩)·[샵인샵]·(아이스크림)…)는 작은 태그로 빼고, 끝의 _스타트/_밸런스는 지운다 — 이름이 바로 읽히게 */
@@ -10250,6 +10251,111 @@ document.getElementById('__wpSave').onclick = function() {
     var fi = document.getElementById('__wpInvF'); fi.oninput = function() { INV.filter = fi.value; clearTimeout(fi._t); fi._t = setTimeout(function() { invRenderList(b); var f2 = document.getElementById('__wpInvF'); if (f2) { f2.focus(); f2.setSelectionRange(f2.value.length, f2.value.length); } }, 250); };
     document.getElementById('__wpInvFs').onchange = function() { INV.fsel = this.value; invRenderList(b); };
     invBindRows(b);
+  }
+
+  /* ===== 명세서 점검 — 재고조사 날짜에 거래명세서가 있는지 =====
+     심윤보m 루틴(2026-10): 재고조사 일정에 명세서가 없으면 ₩0 가짜 명세서를 만들어 둔다(보통 15시 발주 확정 뒤).
+       실제 가짜 명세서 = 상품 1개 '비용청구·기타 W4ZVUAXM(123)' ₩0, 생성 직후 승인대기 → 출고대기 → 출고완료 (오피스 변경이력으로 확인)
+       10월 가짜 명세서 20건은 전부 그날 배송일정이 있던 거래처 — 일정은 있는데 자동발주 명세가 안 생긴 날 방문을 잡으려는 용도.
+     여기서는 '찾기'까지: 그날 조사 대상 × 거래명세(스타트·밸런스, 주문취소 제외) × 배송일정 × 같은 기업 명세를 한 표로. */
+  var INV_ST = { d: '', seq: 0, data: null, err: '', busy: false };
+  /* 기본 점검일 — 15시 발주 확정 뒤면 +2영업일(오늘 확정된 날), 전이면 +1영업일 */
+  function invStDefault() { var k = kstDate(); return ymdOf(addWorkdays(k, (k.getHours() * 60 + k.getMinutes() >= ORDER_CUTOFF_MIN) ? 2 : 1)); }
+  function invStShift(d, n) { var p = d.split('-'), r = new Date(+p[0], +p[1] - 1, +p[2]), a = 0, st = n > 0 ? 1 : -1; while (a < Math.abs(n)) { r.setDate(r.getDate() + st); if (!isOffDay(r)) a++; } return ymdOf(r); }
+  function invNn(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
+  /* 그날 스타트·밸런스 거래명세 (주문취소 제외) → { 거래처ID: [명세…] } */
+  function invStOrders(d) {
+    var out = {}, base = '/office/order/order?searchYN=Y&deliveryDateBegin=' + d + '&deliveryDateEnd=' + d + '&serviceManagements=' + invEnc('스타트') + '&serviceManagements=' + invEnc('밸런스') + '&size=1000&page=';
+    function page(n) {
+      return fetch(base + n).then(function(r) { return r.text(); }).then(function(h) {
+        var doc = new DOMParser().parseFromString(h, 'text/html');
+        var rows = [].slice.call(doc.querySelectorAll('table.orderSearchTable tbody tr')).filter(function(tr) { return tr.querySelectorAll('td').length > 20; });
+        rows.forEach(function(tr) {
+          var td = tr.querySelectorAll('td'), g = function(i) { return td[i] ? td[i].textContent.replace(/\s+/g, ' ').trim() : ''; };
+          var bid = (td[3].innerHTML.match(/\/sales\/branch\/(\d+)/) || [])[1] || '', st = g(14);
+          if (!bid || /주문취소/.test(st)) return;
+          var amt = (g(4).match(/-?₩\s*-?[\d,]+/) || [''])[0].replace(/\s+/g, '');
+          var nm = (td[3].querySelector('span') || td[3]).textContent.replace(/\s+/g, ' ').trim();
+          (out[bid] = out[bid] || []).push({ id: (td[1].innerHTML.match(/\/order\/order\/(\d+)/) || [])[1] || '', name: nm, comp: cellLines(td[2])[0] || '', amt: amt, zero: /^₩0$/.test(amt), st: st, who: g(24).split(' ')[0] || '', cr: g(13).slice(0, 10) });
+        });
+        return (rows.length >= 1000 && n < 5) ? page(n + 1) : out;
+      });
+    }
+    return page(1);
+  }
+  function invStRun() {
+    var d = INV_ST.d, ym = d.slice(0, 7), seq = ++INV_ST.seq;
+    INV_ST.data = null; INV_ST.err = ''; INV_ST.busy = true; invStBody();
+    var planP = (ym === INV.ym && INV.plan) ? Promise.resolve(INV.plan) : invKvLoad(true).then(function() { return invKvGet('plan:' + ym); });
+    planP.then(function(plan) {
+      if (seq !== INV_ST.seq) return;
+      if (!plan) { INV_ST.busy = false; INV_ST.err = ym + ' 재고조사 계획이 아직 저장되지 않았습니다. 그 달로 가서 [저장]한 뒤 점검하세요.'; invStBody(); return; }
+      var list = Object.keys(plan).filter(function(b) { var it = plan[b]; return b !== '_meta' && it && it.d === d && it.s !== 'skip'; });
+      return invStOrders(d).then(function(ords) {
+        return mapLimit(list, 6, function(b) { return INV.dates[ym + ':' + b] ? null : invFetchDates(b, ym).catch(function() { return []; }); }).then(function() {
+          if (seq !== INV_ST.seq) return;
+          var tm = invTargetMap(), byComp = {};
+          Object.keys(ords).forEach(function(b) { ords[b].forEach(function(o) { var k = invNn(o.comp); if (k) (byComp[k] = byComp[k] || []).push(o); }); });
+          var rows = list.map(function(b) {
+            var t = tm[b] || { bid: b, name: ((INV.cfg || {})[b] || {}).n || b, comp: '', mgmt: '' }, it = plan[b] || {};
+            var own = ords[b] || [];
+            var sch = (INV.dates[ym + ':' + b] || []).indexOf(d) > -1 || invDs(b, ym).indexOf(d) > -1;
+            var sib = own.length ? [] : (byComp[invNn(t.comp)] || []).filter(function(o) { return invNn(o.name) !== invNn(t.name); });
+            return { t: t, it: it, own: own, sib: sib, sch: sch, ok: own.length > 0 };
+          });
+          rows.sort(function(a, b) { return (a.ok - b.ok) || ((a.sib.length ? 1 : 0) - (b.sib.length ? 1 : 0)) || String(a.t.name).localeCompare(String(b.t.name), 'ko'); });
+          INV_ST.data = { d: d, rows: rows, locked: isOrderLocked(d), at: now() }; INV_ST.busy = false;
+          invStBody();
+        });
+      });
+    }).catch(function(e) { if (seq !== INV_ST.seq) return; INV_ST.busy = false; INV_ST.err = '점검 실패: ' + ((e && e.message) || e); invStBody(); });
+  }
+  function invRenderStmt(b) {
+    if (!INV_ST.d) INV_ST.d = invStDefault();
+    b.innerHTML = '<div style="padding:10px 12px;border-bottom:1px solid #E2E8F0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#F8FAFC">' +
+      '<button id="__wpStP" class="wp-btn gh" style="padding:0 11px" title="이전 영업일">◀</button><input id="__wpStD" type="date" class="wp-inp" value="' + esc(INV_ST.d) + '"><button id="__wpStN" class="wp-btn gh" style="padding:0 11px" title="다음 영업일">▶</button>' +
+      '<button id="__wpStGo" class="wp-btn pri">점검</button><button id="__wpStX" class="wp-btn gh">⬇ 엑셀</button>' +
+      '<span style="font-size:12px;color:#64748B">재고조사 날짜에 거래명세서가 있는지 봅니다 · 15시 발주 확정 뒤엔 +2영업일이 기본</span></div><div id="__wpStBody"></div>';
+    function go(v) { INV_ST.d = v; document.getElementById('__wpStD').value = v; invStRun(); }
+    document.getElementById('__wpStP').onclick = function() { go(invStShift(INV_ST.d, -1)); };
+    document.getElementById('__wpStN').onclick = function() { go(invStShift(INV_ST.d, 1)); };
+    document.getElementById('__wpStGo').onclick = function() { var v = document.getElementById('__wpStD').value; if (/^\d{4}-\d{2}-\d{2}$/.test(v)) go(v); };
+    document.getElementById('__wpStD').onchange = function() { var v = this.value; if (/^\d{4}-\d{2}-\d{2}$/.test(v)) go(v); };
+    document.getElementById('__wpStX').onclick = invStExcel;
+    if (!INV_ST.busy && (!INV_ST.data || INV_ST.data.d !== INV_ST.d)) invStRun(); else invStBody();
+  }
+  function invStBody() {
+    var b = document.getElementById('__wpStBody'); if (!b) return;
+    if (INV_ST.busy) { b.innerHTML = '<div style="padding:14px;color:#94a3b8">점검 중… (그날 거래명세·배송일정 확인)</div>'; return; }
+    if (INV_ST.err) { b.innerHTML = '<div style="padding:14px;color:#b45309">' + esc(INV_ST.err) + '</div>'; return; }
+    var D = INV_ST.data; if (!D) { b.innerHTML = ''; return; }
+    var rs = D.rows, miss = rs.filter(function(r) { return !r.ok; }), msib = miss.filter(function(r) { return r.sib.length; }), zero = rs.filter(function(r) { return r.own.some(function(o) { return o.zero; }); });
+    var cut = subWorkdays(D.d, 2);
+    var h = '<div class="wp-meta" style="margin:0;border-radius:0;border-width:0 0 1px;padding:9px 12px;font-size:12.5px">' +
+      '<b>' + esc(invShort(D.d)) + '</b> 재고조사 <b>' + rs.length + '</b>곳 · 명세 있음 <b style="color:#16A34A">' + (rs.length - miss.length) + '</b>' + (zero.length ? ' (₩0 가짜 ' + zero.length + ')' : '') +
+      ' · <b style="color:#B45309">명세 없음 ' + miss.length + '</b>' + (msib.length ? ' (그중 같은 기업 다른 거래처 명세 ' + msib.length + ')' : '') +
+      ' · 발주 ' + (D.locked ? '<b>확정됨</b> (' + esc(invShort(cut)) + ' 15시)' : '<b style="color:#0369A1">확정 전</b> — ' + esc(invShort(cut)) + ' 15시에 확정되니 그 뒤 다시 점검') + '</div>';
+    if (!rs.length) { b.innerHTML = h + '<div style="padding:14px;color:#94a3b8">이날 잡힌 재고조사가 없습니다.</div>'; return; }
+    h += '<table class="wp-tbl"><thead><tr><th style="width:108px">판정</th><th>거래처</th><th style="width:72px">관리</th><th>거래명세서</th><th style="width:78px">배송일정</th><th style="width:220px">메모</th></tr></thead><tbody>';
+    rs.forEach(function(r) {
+      var t = r.t;
+      var bn = '<a href="/office/sales/branch/' + esc(t.bid) + '" target="_blank" style="color:#0F172A;text-decoration:none;font-weight:600">' + esc(t.name) + '</a>' + (t.comp ? '<div style="font-size:11px;color:#94a3b8">' + esc(t.comp) + '</div>' : '');
+      var st = r.ok ? r.own.map(function(o) { return '<a href="/office/order/order/' + esc(o.id) + '" target="_blank" style="color:#1f4e78">#' + esc(o.id) + '</a> ' + esc(o.amt) + (o.zero ? ' <span style="font-size:10.5px;font-weight:700;color:#64748B;background:#F1F5F9;border-radius:3px;padding:0 4px">가짜(₩0)</span>' : '') + ' <span style="color:#94a3b8;font-size:12px">' + esc(o.st) + ' · ' + esc(o.who) + '</span>'; }).join('<br>') :
+        (r.sib.length ? '<span style="color:#64748B;font-size:12.5px">같은 기업: ' + r.sib.slice(0, 2).map(function(o) { return '<a href="/office/order/order/' + esc(o.id) + '" target="_blank" style="color:#64748B">' + esc(o.name) + '</a>'; }).join(', ') + (r.sib.length > 2 ? ' 외 ' + (r.sib.length - 2) : '') + '</span>' : '<span style="color:#CBD5E1">-</span>');
+      var memo = r.it.m || ((INV.cfg || {})[t.bid] || {}).m || '';
+      h += '<tr><td style="white-space:nowrap">' + (r.ok ? '<span style="color:#16A34A;font-weight:700">명세 있음</span>' : '<span style="color:#B45309;font-weight:800">명세 없음</span>') + '</td><td>' + bn + '</td><td style="white-space:nowrap">' + invMgmtTag(t.mgmt) + '</td><td style="line-height:1.6">' + st + '</td><td style="white-space:nowrap">' + (r.sch ? '있음' : '<span style="color:#94a3b8">없음</span>') + '</td><td style="font-size:12.5px;color:#475569">' + esc(memo) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    b.innerHTML = h;
+  }
+  function invStExcel() {
+    var D = INV_ST.data; if (!D || !D.rows.length) { toast('먼저 점검하세요', '#c0392b'); return; }
+    var rows = [['조사일', '판정', '거래처ID', '거래처', '기업', '관리', '명세서번호', '금액', '주문상태', '작업자', '가짜(₩0)', '같은 기업 명세', '배송일정', '메모']];
+    D.rows.forEach(function(r) {
+      var o = r.own[0] || {}, t = r.t;
+      rows.push([D.d, r.ok ? '명세 있음' : '명세 없음', t.bid, t.name, t.comp || '', t.mgmt || '', r.own.map(function(x) { return x.id; }).join(','), o.amt || '', o.st || '', o.who || '', r.own.some(function(x) { return x.zero; }) ? 'Y' : '', r.sib.map(function(x) { return x.name; }).join(', '), r.sch ? '있음' : '없음', r.it.m || ((INV.cfg || {})[t.bid] || {}).m || '']);
+    });
+    xlsxDownload(rows, null, '명세서 점검', '재고조사_명세서점검_' + D.d + '.xlsx').then(function() { toast('✓ 엑셀 ' + D.rows.length + '곳', '#0a7d47'); }).catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); });
   }
 
   /* ---------- 마스터 DB 화면 ---------- */
