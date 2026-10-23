@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261023-1218';
+  var PANEL_BUILD = '20261023-1339';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -3618,13 +3618,17 @@ document.getElementById('__wpSave').onclick = function() {
         var sel = all.filter(function(it) { return it.action !== '신규코드발급'; });
         var skip = all.length - sel.length;
         if (!sel.length) { toast(skip ? '신규코드발급은 일괄승인 불가 — 건별로 승인하세요' : '체크된 건이 없습니다', '#c0392b'); return; }
-        /* 배송VOC — 기사 소속(기사마스터)으로 협력사를 정해, 승인 뒤 협력사 채널에도 확인 요청 */
+        /* 배송VOC — 방문 기록·기사 소속(기사마스터)으로 협력사를 정해, 승인 뒤 협력사 채널에도 확인 요청 */
         var vocs = sel.filter(function(it) { return it.action === '배송VOC'; });
-        (vocs.length ? vocMasterLoad() : Promise.resolve({})).then(function(vm) {
-          var vr = {}, vc = {};
+        var o0b = self.textContent, vx = {};
+        self.disabled = true;
+        (vocs.length ? mapLimit(vocs, 2, function(it) {
+          return vocPrep(it).then(function(X) { vx[it.id] = X; }, function() {});
+        }, function(dn, tot) { self.textContent = 'VOC 방문기록 ' + dn + '/' + tot; }) : Promise.resolve()).then(function() {
+          self.disabled = false; self.textContent = o0b;
+          var vc = {};
           vocs.forEach(function(it) {
-            var r = vocRoute(it, vm);
-            vr[it.id] = r;
+            var r = (vx[it.id] || {}).R || { k: '' };
             var key = vocPartner(r.k) ? r.k : (r.k === '-' ? '안 보냄(협력사 아닌 소속)' : '안 보냄(기사 미확인)');
             vc[key] = (vc[key] || 0) + 1;
           });
@@ -3644,13 +3648,14 @@ document.getElementById('__wpSave').onclick = function() {
               it._bookedNow = true;
               return editDetail(it.id, withBooking(it.detail, bookApplyDate(d1Of(it)), REQ.name), REQ.name || '');
             }
-            var VP = it.action === '배송VOC' ? vocPartner((vr[it.id] || {}).k) : null;
+            var VX = it.action === '배송VOC' ? vx[it.id] : null;
+            var VP = VX ? vocPartner(VX.R.k) : null;
             return runActionCore(it).then(function(note) {
               return decideReq(it.id, '완료', (note || '') + (VP ? ' · 협력사 확인요청: ' + VP.k : ''), it.slackTs);
             }).then(function(r) {
               autoSentIfNotTarget(it);
               if (!VP) { return r; }
-              var tx = vocPartnerText(it);
+              var tx = VX.text(VP);
               return vocSend(VP, it, tx).then(function() { return r; }, function() {
                 (vFail[VP.k] = vFail[VP.k] || []).push(tx);   /* 승인은 끝났다 — 협력사 전송만 실패 → 끝나고 복사창 */
                 return r;
@@ -11066,32 +11071,98 @@ document.getElementById('__wpSave').onclick = function() {
     var n = String(String(detailGet(it && it.detail || '', '배송담당') || '').split('/')[1] || '').trim();
     return /미매핑|미확인/.test(n) ? '' : n;
   }
-  /* 협력사 판정 — k: '대산'·'창호' = 그 채널로 / '-' = 협력사 채널 없는 소속 / '' = 모름(직접 선택) */
-  function vocRoute(it, m) {
-    m = m || {};
-    var drv = vocDriver(it);
-    if (!drv) return { drv: '', belong: '', k: '', why: '배송기사 정보가 없는 VOC — 협력사를 직접 골라 주세요' };
-    var b = m[drv] || m[drv.replace(/^(야간|본사)/, '')] || '';   /* 기사통계 kBelong 과 같은 규칙 (+본사 접두) */
-    if (b === '위펀') b = '핫픽스';
-    if (!b) return { drv: drv, belong: '', k: '', why: '기사마스터에 없는 기사(' + drv + ') — 직접 골라 주세요 · 기사통계 > 기사마스터에 등록하면 다음부터 자동' };
-    var P = VOC_PARTNERS.filter(function(p) { return b.indexOf(p.k) > -1; })[0];
-    if (P) return { drv: drv, belong: b, k: P.k, why: '배송기사 ' + drv + ' · ' + b + ' → ' + P.k + ' 채널 (@' + P.who + ')' };
-    return { drv: drv, belong: b, k: '-', why: '배송기사 ' + drv + ' · ' + b + ' — 협력사 채널이 없는 소속이라 보내지 않음' };
+  function vocBelong(m, n) {
+    var b = (m || {})[n] || (m || {})[String(n || '').replace(/^(야간|본사)/, '')] || '';   /* 기사통계 kBelong 과 같은 규칙 (+본사 접두) */
+    return b === '위펀' ? '핫픽스' : b;
   }
-  /* 협력사 채널에 올릴 문구 — 맨 앞 담당자 태그는 워커가 붙인다 */
-  function vocPartnerText(it) {
+  /* VOC 거래처의 실제 방문 기록 — 배송일정 화면을 기간으로 검색해 배송일·코스·실제 기사·작업상태를 받고,
+     기사업무 상세에서 그날 완료시각을 붙인다(배송시간 조회와 같은 경로).
+     VOC 배송담당 칸은 코스의 등록 기사라 실제로 다녀간 기사와 다를 수 있다 → 협력사가 '언제 누가 갔냐'부터 묻게 된다(2026-10). */
+  function vocVisits(it) {
+    var d = it.detail || '';
+    var day = String(detailGet(d, '배송일') || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) day = '';
+    var upto = day || String(it.ts || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(upto)) upto = todayStr();
+    var from = ymdOf(new Date(+upto.slice(0, 4), +upto.slice(5, 7) - 1, +upto.slice(8, 10) - 28));
+    var name = String(it.branchName || '');
+    if (!name) return Promise.resolve([]);
+    var u = '/office/delivery-manager/v2/schedules?searchYN=Y&size=100&page=1&startDate=' + from + '&endDate=' + upto + '&searchKeyword=' + encodeURIComponent(name);
+    return fetch(u).then(function(r) { return r.text(); }).then(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var seen = {}, out = [];
+      [].slice.call(doc.querySelectorAll('table tbody tr')).forEach(function(tr) {
+        var td = [].slice.call(tr.querySelectorAll('td'));
+        if (td.length < 14) return;   /* 검색폼 안의 표를 걸러낸다 */
+        function t(i) { return (td[i] ? (td[i].innerText || td[i].textContent || '') : '').replace(/\s+/g, ' ').trim(); }
+        var v = { d: t(1).slice(0, 10), course: t(2), driver: t(3), branch: t(5), status: t(12), slot: t(13), done: '', tgt: false };
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v.d) || nn(v.branch).indexOf(nn(name)) < 0) return;
+        if (seen[v.d + '|' + v.driver]) return;
+        seen[v.d + '|' + v.driver] = 1;
+        out.push(v);
+      });
+      out.sort(function(x, y) { return x.d < y.d ? 1 : (x.d > y.d ? -1 : 0); });
+      out = out.slice(0, 3);
+      out.forEach(function(v) { v.tgt = !!day && v.d === day; });
+      return mapLimit(out, 3, function(v) {
+        if (v.status !== '완료' || !v.driver) return v;
+        return dtManagerId(v.driver, v.d).then(function(mi) {
+          if (!mi || !mi.mid) return v;
+          return dtStop(mi.mid, v.d, name).then(function(st) { v.done = (st && st.done) || ''; return v; });
+        }).catch(function() { return v; });
+      });
+    }).catch(function() { return []; });
+  }
+  /* 협력사 판정 기준 기사 — VOC 대상 배송일의 방문 기사 > 가장 최근 방문 기사 > VOC 배송담당(코스 등록 기사)
+     k: '대산'·'창호' = 그 채널로 / '-' = 협력사 채널 없는 소속 / '' = 모름(직접 선택) */
+  function vocRoute(it, m, vs) {
+    vs = vs || [];
+    var T = vs.filter(function(v) { return v.tgt; })[0] || vs[0] || null;
+    var drv = T ? T.driver : vocDriver(it);
+    var src = T ? (T.tgt ? dcMdw(T.d) + ' 방문 기사 ' : '최근 방문(' + dcMdw(T.d) + ') 기사 ') : '배송담당 기사 ';
+    if (!drv) return { drv: '', belong: '', k: '', why: '방문 기록·배송기사 정보가 없는 VOC — 협력사를 직접 골라 주세요' };
+    var b = vocBelong(m, drv);
+    if (!b) return { drv: drv, belong: '', k: '', why: src + drv + ' — 기사마스터에 없음 · 직접 골라 주세요 (기사통계 > 기사마스터에 등록하면 다음부터 자동)' };
+    var P = VOC_PARTNERS.filter(function(p) { return b.indexOf(p.k) > -1; })[0];
+    if (P) return { drv: drv, belong: b, k: P.k, why: src + drv + ' · ' + b + ' → ' + P.k + ' 채널 (@' + P.who + ')' };
+    return { drv: drv, belong: b, k: '-', why: src + drv + ' · ' + b + ' — 협력사 채널이 없는 소속이라 보내지 않음' };
+  }
+  /* 협력사 채널에 올릴 문구 — 맨 앞 담당자 태그는 워커가 붙인다. 방문 기록(날짜·시간대·코스·기사·완료시각)을 같이 싣는다 */
+  function vocPartnerText(it, vs, m, P) {
     var d = it.detail || '', g = function(x) { return String(detailGet(d, x) || '').trim(); };
+    vs = vs || [];
     var L = ['[배송 VOC 확인 요청] ' + (g('VOC유형') || 'VOC') + ' · ' + (it.branchName || '') + (it.hot ? ' (' + it.hot + ')' : '')];
-    if (g('배송일') || g('주문번호')) L.push('배송일 ' + (g('배송일') ? addDow(g('배송일')) : '-') + (g('주문번호') ? ' · 주문번호 ' + g('주문번호') : ''));
-    if (g('배송담당')) L.push('배송담당 ' + g('배송담당'));
+    var ts = String(it.ts || ''), hd = [];
+    if (/^\d{4}-\d{2}-\d{2}/.test(ts)) hd.push('VOC 접수 ' + dcMdw(ts.slice(0, 10)) + (ts.length >= 16 ? ' ' + ts.slice(11, 16) : ''));
+    if (g('배송일')) hd.push('대상 배송일 ' + (/^\d{4}-\d{2}-\d{2}/.test(g('배송일')) ? dcMdw(g('배송일').slice(0, 10)) : g('배송일')));
+    if (g('주문번호')) hd.push('주문번호 ' + g('주문번호'));
+    if (hd.length) L.push(hd.join(' · '));
+    if (vs.length) {
+      L.push(vs.some(function(v) { return v.tgt; }) ? '방문 기록' : '최근 방문 (VOC 접수 전)');
+      vs.forEach(function(v) {
+        var b = vocBelong(m, v.driver);
+        var other = b && P && b.indexOf(P.k) < 0;   /* 이 협력사 소속이 아닌 기사가 간 날은 소속을 밝혀 둔다 */
+        L.push(' · ' + dcMdw(v.d) + (v.slot && v.slot !== '없음' ? ' ' + v.slot : '') + ' · ' + (v.course ? v.course + ' ' : '') + (v.driver || '-') + (other ? '(' + b + ')' : '') +
+          ' · ' + (v.done ? v.done.slice(0, 5) + ' 완료' : (v.status || '-')) + (v.tgt ? ' ◀ VOC 건' : ''));
+      });
+    } else if (g('배송담당')) {
+      L.push('배송담당 ' + g('배송담당'));
+    }
     if (g('품목')) L.push('품목 ' + g('품목'));
     if (g('내용')) L.push('내용 ' + g('내용'));
     if (g('요청')) L.push('요청 ' + g('요청'));
     L.push('확인 후 이 메시지에 답글 부탁드립니다. — 위펀 물류 ' + (REQ.name || ''));
     return L.join('\n');
   }
+  /* 승인 준비 — 기사마스터 + 방문 기록을 같이 받아 협력사 판정과 문구를 만든다 */
+  function vocPrep(it) {
+    return Promise.all([vocMasterLoad(), vocVisits(it)]).then(function(r) {
+      var m = r[0] || {}, vs = r[1] || [];
+      return { m: m, vs: vs, R: vocRoute(it, m, vs), text: function(P) { return vocPartnerText(it, vs, m, P); } };
+    });
+  }
   function vocSend(P, it, text) {
-    return api({ e: 'partner_post', partner: P.k, text: text || vocPartnerText(it), id: it.id, by: REQ.name || '' });
+    return api({ e: 'partner_post', partner: P.k, text: text, id: it.id, by: REQ.name || '' });
   }
   function vocModalBox(id, html) {
     var old = document.getElementById(id);
@@ -11106,9 +11177,11 @@ document.getElementById('__wpSave').onclick = function() {
   /* 배송VOC 승인 (건별) — 기사 소속으로 협력사 자동 선택 → 승인(슬랙 회신) → 협력사 채널 확인 요청 */
   function vocApprove(it, btn) {
     btn.disabled = true;
-    vocMasterLoad().then(function(m) {
-      btn.disabled = false;
-      var R = vocRoute(it, m), pick = R.k, text = vocPartnerText(it);
+    var ob = btn.textContent;
+    btn.textContent = '방문기록 조회…';
+    vocPrep(it).then(function(X) {
+      btn.disabled = false; btn.textContent = ob;
+      var R = X.R, pick = R.k, text = X.text(vocPartner(pick));
       var d = it.detail || '';
       var box = vocModalBox('__wpVocAp',
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><b style="font-size:15px">배송 VOC 승인</b><div style="color:#64748B;font-size:12.5px;margin-top:2px">' + esc(it.branchName || '') + ' · ' + esc(detailGet(d, 'VOC유형') || '') + (detailGet(d, '배송일') ? ' · ' + esc(addDow(detailGet(d, '배송일'))) : '') + (R.drv ? ' · 기사 ' + esc(R.drv) : '') + '</div></div><button id="__wpVocX" class="wp-act">✕</button></div>' +
@@ -11130,6 +11203,8 @@ document.getElementById('__wpSave').onclick = function() {
           [].forEach.call(box.querySelectorAll('.__wpVocP'), function(x) { x.className = 'wp-day __wpVocP' + (x === b ? ' on' : ''); });
           okb.disabled = false;
           okb.textContent = label();
+          text = X.text(vocPartner(pick));
+          box.querySelector('#__wpVocTx').textContent = text;
         };
       });
       if (pick) okb.textContent = label();
@@ -11165,7 +11240,7 @@ document.getElementById('__wpSave').onclick = function() {
         });
       };
     }).catch(function(e) {
-      btn.disabled = false;
+      btn.disabled = false; btn.textContent = ob;
       alert('VOC 승인 창을 열지 못했습니다: ' + ((e && e.message) || e));
     });
   }
