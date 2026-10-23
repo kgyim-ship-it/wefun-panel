@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261023-1108';
+  var PANEL_BUILD = '20261023-1218';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -916,6 +916,7 @@
   var badgePoll = null;
 
   function reopen() {
+    if (wpUpdApply(false)) { return; }   /* 기다리던 새 버전이 있으면 새 버전으로 연다 */
     stopPoll();
     ov.style.display = '';
     ov.classList.add('wp-max');
@@ -924,7 +925,67 @@
     document.body.style.overflow = 'hidden';
     resetPos();
     if (launcher) launcher.style.display = 'none';
+    if (window.__wpPendingCode) { wpUpdMark(); }
   }
+
+  /* ── 열린 탭 자동 최신화 (2026-10) ──
+     최신본 확인을 페이지 열 때 한 번만 해서, 아침부터 띄워 둔 탭은 배포 뒤에도 하루 종일 옛 버전으로 돌았다
+     (배송VOC 협력사 요청이 안 나간 원인). → 10분마다 최신 빌드를 확인해 두었다가(저장만)
+     ① 최소화한 패널을 런처로 다시 열 때 새 버전으로 바꿔 열고 ② 패널이 열려 있으면 헤더에 [새 버전 받기]를 띄운다. */
+  window.__wpRunBuild = PANEL_BUILD;
+  function wpUpdApply(force) {
+    var t = window.__wpPendingCode;
+    var m = t && /PANEL_BUILD\s*=\s*'([0-9]{8}-[0-9]{4})'/.exec(t);
+    if (!m || m[1] <= PANEL_BUILD) { return false; }
+    var fm = document.getElementById('__wpForm');
+    if (fm && fm.innerHTML && !force) { return false; }   /* 작성 중이면 건드리지 않는다 */
+    window.__wpPendingCode = null;
+    try { close(); } catch (_c) {}
+    (0, eval)(t);
+    return true;
+  }
+  function wpUpdMark() {
+    if (document.getElementById('__wpUpdBtn')) { return; }
+    var cfg = document.getElementById('__wpCfg');
+    if (!cfg || !cfg.parentNode) { return; }
+    var b = document.createElement('button');
+    b.id = '__wpUpdBtn';
+    b.className = 'wp-hbtn';
+    b.textContent = '🔄 새 버전 받기';
+    b.title = '패널 새 버전이 나왔어요 — 누르면 바로 바뀝니다';
+    b.style.cssText = 'background:#38BDF8;color:#04121F;font-weight:800;border-color:#38BDF8';
+    b.onclick = function() {
+      var fm = document.getElementById('__wpForm');
+      if (fm && fm.innerHTML && !confirm('작성 중인 내용이 있어요. 새 버전으로 바꾸면 사라집니다.\n바꿀까요?')) { return; }
+      wpUpdApply(true);
+    };
+    cfg.parentNode.insertBefore(b, cfg);
+  }
+  function wpUpdTick() {
+    if (window.__wpRunBuild !== PANEL_BUILD) { return; }
+    var SRC = ['https://wefun-boot.kg-yim.workers.dev/panel.js?v=', 'https://raw.githubusercontent.com/kgyim-ship-it/wefun-panel/main/panel.js?v='];
+    var i = 0;
+    (function next() {
+      if (i >= SRC.length) { return; }
+      fetch(SRC[i++] + Date.now(), { cache: 'no-store' }).then(function(r) {
+        if (!r.ok) { throw 0; }
+        return r.text();
+      }).then(function(t) {
+        if (!t || t.charAt(0) === '<' || t.indexOf('wefunPanel') < 0) { throw 0; }
+        var m = /PANEL_BUILD\s*=\s*'([0-9]{8}-[0-9]{4})'/.exec(t);
+        if (!m || m[1] <= PANEL_BUILD) { return; }
+        try { new Function(t); } catch (_s) { return; }   /* 문법 깨진 코드는 버린다 */
+        try { localStorage.setItem('__wpPanelV2', t); } catch (_l) {}
+        var first = !window.__wpPendingCode;
+        window.__wpPendingCode = t;
+        if (ov.style.display === 'none' || !ov.parentNode) { return; }   /* 최소화 상태 — 런처로 다시 열 때 바꾼다 */
+        wpUpdMark();
+        if (first) { toast('패널 새 버전이 나왔어요 — 위쪽 [🔄 새 버전 받기]를 눌러 주세요', '#0369A1'); }
+      }).catch(next);
+    })();
+  }
+  if (window.__wpUpdTimer) { clearInterval(window.__wpUpdTimer); }
+  window.__wpUpdTimer = setInterval(wpUpdTick, 10 * 60000);
 
   /* 미전달(승인됐는데 코드전달 안 된 건) 개수 — 배지용. 서버 부담 줄이려 5분 캐시 */
   var _pendCache = { n: 0, t: 0 };
@@ -3551,31 +3612,55 @@ document.getElementById('__wpSave').onclick = function() {
     var _bAp = document.getElementById('__wpBulkAp');
     if (_bAp) {
       _bAp.onclick = function() {
+        var self = this;
         var ids = bulkSelIds();
         var all = cache.filter(function(it) { return ids[it.id] && it.status === '대기'; });
-        var sel = all.filter(function(it) { return it.action !== '신규코드발급' && it.action !== '배송VOC'; });
+        var sel = all.filter(function(it) { return it.action !== '신규코드발급'; });
         var skip = all.length - sel.length;
-        var skipNc = all.filter(function(it) { return it.action === '신규코드발급'; }).length, skipVoc = skip - skipNc;
-        if (!sel.length) { toast(skip ? '신규코드발급·배송VOC는 일괄승인 불가 — 건별로 승인하세요' : '체크된 건이 없습니다', '#c0392b'); return; }
-        var byAct = {};
-        sel.forEach(function(it) { byAct[it.action] = (byAct[it.action] || 0) + 1; });
-        var msg = '[일괄승인] ' + sel.length + '건\n' +
-          Object.keys(byAct).map(function(k) { return ' · ' + k + ' ' + byAct[k] + '건'; }).join('\n') +
-          (skip ? '\n' : '') + (skipNc ? '\n※ 신규코드발급 ' + skipNc + '건 제외 (우린담당 입력이 필요해 건별 승인)' : '') +
-          (skipVoc ? '\n※ 배송VOC ' + skipVoc + '건 제외 (협력사 확인 요청을 골라야 해 건별 승인)' : '') +
-          '\n\n배송 계열은 위펀 오피스에 바로 반영되고, 건별로 슬랙 회신이 나갑니다.\n진행할까요?';
-        if (!confirm(msg)) { return; }
-        var _nb = sel.filter(function(it) { return canBook(it) && dayGap(bookApplyDate(d1Of(it))) > 0 && !bookedDate(it); }).length;
-        if (_nb && !confirm('반영 희망일이 아직 남은 배송주기변경 ' + _nb + '건은 지금 반영하지 않고 예약으로 둡니다.\n(희망일 2영업일 전 10시 자동 반영)\n\n계속할까요?')) { return; }
-        bulkRun(sel, function(it) {
-          if (canBook(it) && dayGap(bookApplyDate(d1Of(it))) > 0 && !bookedDate(it)) {
-            it._bookedNow = true;
-            return editDetail(it.id, withBooking(it.detail, bookApplyDate(d1Of(it)), REQ.name), REQ.name || '');
-          }
-          return runActionCore(it).then(function(note) {
-            return decideReq(it.id, '완료', note || '', it.slackTs);
-          }).then(function(r) { autoSentIfNotTarget(it); return r; });
-        }, '일괄승인', this, function() { if (_nb) { load(); } });
+        if (!sel.length) { toast(skip ? '신규코드발급은 일괄승인 불가 — 건별로 승인하세요' : '체크된 건이 없습니다', '#c0392b'); return; }
+        /* 배송VOC — 기사 소속(기사마스터)으로 협력사를 정해, 승인 뒤 협력사 채널에도 확인 요청 */
+        var vocs = sel.filter(function(it) { return it.action === '배송VOC'; });
+        (vocs.length ? vocMasterLoad() : Promise.resolve({})).then(function(vm) {
+          var vr = {}, vc = {};
+          vocs.forEach(function(it) {
+            var r = vocRoute(it, vm);
+            vr[it.id] = r;
+            var key = vocPartner(r.k) ? r.k : (r.k === '-' ? '안 보냄(협력사 아닌 소속)' : '안 보냄(기사 미확인)');
+            vc[key] = (vc[key] || 0) + 1;
+          });
+          var byAct = {};
+          sel.forEach(function(it) { byAct[it.action] = (byAct[it.action] || 0) + 1; });
+          var msg = '[일괄승인] ' + sel.length + '건\n' +
+            Object.keys(byAct).map(function(k) { return ' · ' + k + ' ' + byAct[k] + '건'; }).join('\n') +
+            (vocs.length ? '\n\n배송VOC 협력사 확인 요청: ' + Object.keys(vc).map(function(k) { return k + ' ' + vc[k] + '건'; }).join(' · ') : '') +
+            (skip ? '\n\n※ 신규코드발급 ' + skip + '건 제외 (우린담당 입력이 필요해 건별 승인)' : '') +
+            '\n\n배송 계열은 위펀 오피스에 바로 반영되고, 건별로 슬랙 회신이 나갑니다.\n진행할까요?';
+          if (!confirm(msg)) { return; }
+          var _nb = sel.filter(function(it) { return canBook(it) && dayGap(bookApplyDate(d1Of(it))) > 0 && !bookedDate(it); }).length;
+          if (_nb && !confirm('반영 희망일이 아직 남은 배송주기변경 ' + _nb + '건은 지금 반영하지 않고 예약으로 둡니다.\n(희망일 2영업일 전 10시 자동 반영)\n\n계속할까요?')) { return; }
+          var vFail = {};
+          bulkRun(sel, function(it) {
+            if (canBook(it) && dayGap(bookApplyDate(d1Of(it))) > 0 && !bookedDate(it)) {
+              it._bookedNow = true;
+              return editDetail(it.id, withBooking(it.detail, bookApplyDate(d1Of(it)), REQ.name), REQ.name || '');
+            }
+            var VP = it.action === '배송VOC' ? vocPartner((vr[it.id] || {}).k) : null;
+            return runActionCore(it).then(function(note) {
+              return decideReq(it.id, '완료', (note || '') + (VP ? ' · 협력사 확인요청: ' + VP.k : ''), it.slackTs);
+            }).then(function(r) {
+              autoSentIfNotTarget(it);
+              if (!VP) { return r; }
+              var tx = vocPartnerText(it);
+              return vocSend(VP, it, tx).then(function() { return r; }, function() {
+                (vFail[VP.k] = vFail[VP.k] || []).push(tx);   /* 승인은 끝났다 — 협력사 전송만 실패 → 끝나고 복사창 */
+                return r;
+              });
+            });
+          }, '일괄승인', self, function() {
+            if (_nb) { load(); }
+            Object.keys(vFail).forEach(function(k) { vocPartnerFallback(vocPartner(k), vFail[k].join('\n\n──────────\n\n'), '일괄승인 중 ' + vFail[k].length + '건 자동 전송 실패'); });
+          });
+        });
       };
     }
     var _bRj = document.getElementById('__wpBulkRj');
@@ -4059,8 +4144,8 @@ document.getElementById('__wpSave').onclick = function() {
               '<button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:#0a7d47;color:#0a7d47">회신승인</button>' +
               '<button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button></td>';
           } else if (it.action === '배송VOC') {
-            /* 배송VOC — 승인 시 협력사(대산·창호) 채널에 담당자 태그로 확인 요청. 요청 폼이 따로 없어 수정승인은 두지 않는다 */
-            last = '<td style="white-space:normal;line-height:2.1"><button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:#0a7d47;color:#0a7d47">승인</button><button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button><div style="font-size:11px;color:#64748b;line-height:1.4;margin-top:2px">승인 → 협력사 채널 확인 요청</div></td>';
+            /* 배송VOC — 승인 시 기사 소속(대산물류·창호통운) 협력사 채널에 담당자 태그로 확인 요청. 요청 폼이 따로 없어 수정승인은 두지 않는다 */
+            last = '<td style="white-space:normal;line-height:2.1"><button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:#0a7d47;color:#0a7d47">승인</button><button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button><div style="font-size:11px;color:#64748b;line-height:1.4;margin-top:2px">승인 → 기사 소속 협력사 채널에 확인 요청</div></td>';
           } else if (it.action === '재고조사변경') {
             /* 재고조사 월력표 변경 요청 — 승인하면 재고조사 계획(KV)에 바로 반영, 오피스는 건드리지 않는다 */
             last = '<td style="white-space:normal;line-height:2.1"><button class="wp-act __wpAp" data-id="' + esc(it.id) + '" style="border-color:#0a7d47;color:#0a7d47">승인</button><button class="wp-act __wpRj" data-id="' + esc(it.id) + '" style="border-color:#c0392b;color:#c0392b">반려</button><div style="font-size:11px;color:#64748b;line-height:1.4;margin-top:2px">승인 → 재고조사 탭 월력표에 반영</div></td>';
@@ -10953,37 +11038,45 @@ document.getElementById('__wpSave').onclick = function() {
   }
 
   /* ===== VOC 승인 → 협력사 확인 요청 (2026-10) =====
-     배송VOC를 승인할 때 협력사(대산·창호)를 고르면, 그 협력사 슬랙 채널에 담당자를 태그해 VOC 내용을 올린다.
+     배송VOC를 승인하면 그 VOC 배송기사의 소속(기사통계 > 기사마스터 = cfg driver_master)으로 협력사를 정해
+     협력사 슬랙 채널에 담당자를 태그해 VOC 내용을 올린다 — 대산물류 → 대산(@최선혁) · 창호통운 → 창호(@이호석).
+     핫픽스·위풀·개별지입 등 협력사 채널이 없는 소속은 보내지 않는다. 기사마스터에 없는 기사는 승인창에서 직접 고른다.
      채널·담당자(이메일→멘션) 연결은 워커(e=partner_post)가 갖는다 — 공개 저장소인 패널에는 이메일을 두지 않는다.
-     코스별로 마지막에 고른 협력사를 게시판 type=vocp 'map'에 기억해 다음 승인 때 미리 골라 둔다(처음엔 직접 선택).
-     워커에 partner_post 가 없거나 전송이 실패하면 보낼 문구를 띄워 복사해 붙이게 한다. */
+     자동 전송이 실패하면 보낼 문구를 띄워 복사해 붙이게 한다. */
   var VOC_PARTNERS = [
     { k: '대산', who: '최선혁', url: 'https://w1646639121-tz7213384.slack.com/archives/C0CACDRASCR' },
     { k: '창호', who: '이호석', url: 'https://w1646639121-tz7213384.slack.com/archives/C0CA58796BF' }
   ];
-  var VOCP = { map: null, post: null, at: 0 };
+  var VOCM = { m: null, at: 0 };
   function vocPartner(k) { return VOC_PARTNERS.filter(function(p) { return p.k === k; })[0] || null; }
-  function vocpLoad() {
-    if (VOCP.map && Date.now() - VOCP.at < 600000) return Promise.resolve(VOCP.map);
-    return boardList('vocp').then(function(ps) {
-      var c = (ps || []).filter(function(x) { return x && x.title === 'map'; }).sort(function(a, b) { return (+b.id || 0) - (+a.id || 0); });
-      VOCP.post = c[0] || null;
-      var m = {};
-      if (VOCP.post) { try { m = JSON.parse(VOCP.post.body || '{}') || {}; } catch (e) { m = {}; } }
-      VOCP.map = m; VOCP.at = Date.now();
-      return m;
-    }).catch(function() { VOCP.map = VOCP.map || {}; return VOCP.map; });
+  /* 기사마스터 — 기사통계와 같은 저장분(cfg driver_master)·같은 로컬 캐시를 쓴다 */
+  function vocMasterLoad() {
+    if (VOCM.m && Date.now() - VOCM.at < 600000) return Promise.resolve(VOCM.m);
+    var loc = null;
+    try { loc = JSON.parse(localStorage.getItem('__wpDrvMaster')); } catch (e) {}
+    return fetch(apiUrl() + '?e=cfg_get&k=driver_master').then(function(r) { return r.json(); }).then(function(j) {
+      var sv = (j && j.ok && j.v) ? JSON.parse(j.v) : null;
+      if (sv) { try { localStorage.setItem('__wpDrvMaster', JSON.stringify(sv)); } catch (e) {} }
+      VOCM.m = sv || loc || {}; VOCM.at = Date.now();
+      return VOCM.m;
+    }).catch(function() { VOCM.m = VOCM.m || loc || {}; return VOCM.m; });
   }
-  function vocpSave(course, k) {
-    if (!course || !vocPartner(k) || (VOCP.map && VOCP.map[course] === k)) return Promise.resolve();
-    var m = VOCP.map || {};
-    m[course] = k; VOCP.map = m;
-    var body = JSON.stringify(m);
-    return (VOCP.post ? boardEdit(VOCP.post.id, 'map', body) : boardAdd('vocp', 'map', body).then(function(j) { VOCP.at = 0; return j; })).catch(function() {});
+  /* 배송담당 '주간23 / 장승환 / 010-…' → 장승환 */
+  function vocDriver(it) {
+    var n = String(String(detailGet(it && it.detail || '', '배송담당') || '').split('/')[1] || '').trim();
+    return /미매핑|미확인/.test(n) ? '' : n;
   }
-  function vocCourse(it) {
-    var d = it && it.detail || '';
-    return String(detailGet(d, '담당코스') || (String(detailGet(d, '배송담당') || '').split('/')[0] || '')).replace(/\s+/g, '').replace(/^-$/, '').trim();
+  /* 협력사 판정 — k: '대산'·'창호' = 그 채널로 / '-' = 협력사 채널 없는 소속 / '' = 모름(직접 선택) */
+  function vocRoute(it, m) {
+    m = m || {};
+    var drv = vocDriver(it);
+    if (!drv) return { drv: '', belong: '', k: '', why: '배송기사 정보가 없는 VOC — 협력사를 직접 골라 주세요' };
+    var b = m[drv] || m[drv.replace(/^(야간|본사)/, '')] || '';   /* 기사통계 kBelong 과 같은 규칙 (+본사 접두) */
+    if (b === '위펀') b = '핫픽스';
+    if (!b) return { drv: drv, belong: '', k: '', why: '기사마스터에 없는 기사(' + drv + ') — 직접 골라 주세요 · 기사통계 > 기사마스터에 등록하면 다음부터 자동' };
+    var P = VOC_PARTNERS.filter(function(p) { return b.indexOf(p.k) > -1; })[0];
+    if (P) return { drv: drv, belong: b, k: P.k, why: '배송기사 ' + drv + ' · ' + b + ' → ' + P.k + ' 채널 (@' + P.who + ')' };
+    return { drv: drv, belong: b, k: '-', why: '배송기사 ' + drv + ' · ' + b + ' — 협력사 채널이 없는 소속이라 보내지 않음' };
   }
   /* 협력사 채널에 올릴 문구 — 맨 앞 담당자 태그는 워커가 붙인다 */
   function vocPartnerText(it) {
@@ -10997,6 +11090,9 @@ document.getElementById('__wpSave').onclick = function() {
     L.push('확인 후 이 메시지에 답글 부탁드립니다. — 위펀 물류 ' + (REQ.name || ''));
     return L.join('\n');
   }
+  function vocSend(P, it, text) {
+    return api({ e: 'partner_post', partner: P.k, text: text || vocPartnerText(it), id: it.id, by: REQ.name || '' });
+  }
   function vocModalBox(id, html) {
     var old = document.getElementById(id);
     if (old) old.remove();
@@ -11007,20 +11103,19 @@ document.getElementById('__wpSave').onclick = function() {
     (document.getElementById('__wp') || document.body).appendChild(box);
     return box;
   }
-  /* 배송VOC 승인 (건별) — 협력사 선택 → 승인(슬랙 회신) → 협력사 채널 확인 요청 */
+  /* 배송VOC 승인 (건별) — 기사 소속으로 협력사 자동 선택 → 승인(슬랙 회신) → 협력사 채널 확인 요청 */
   function vocApprove(it, btn) {
-    var course = vocCourse(it);
     btn.disabled = true;
-    vocpLoad().then(function(map) {
+    vocMasterLoad().then(function(m) {
       btn.disabled = false;
-      var pick = vocPartner(map[course]) ? map[course] : '', text = vocPartnerText(it);
+      var R = vocRoute(it, m), pick = R.k, text = vocPartnerText(it);
       var d = it.detail || '';
       var box = vocModalBox('__wpVocAp',
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><b style="font-size:15px">배송 VOC 승인</b><div style="color:#64748B;font-size:12.5px;margin-top:2px">' + esc(it.branchName || '') + ' · ' + esc(detailGet(d, 'VOC유형') || '') + (detailGet(d, '배송일') ? ' · ' + esc(addDow(detailGet(d, '배송일'))) : '') + (course ? ' · 코스 ' + esc(course) : '') + '</div></div><button id="__wpVocX" class="wp-act">✕</button></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><b style="font-size:15px">배송 VOC 승인</b><div style="color:#64748B;font-size:12.5px;margin-top:2px">' + esc(it.branchName || '') + ' · ' + esc(detailGet(d, 'VOC유형') || '') + (detailGet(d, '배송일') ? ' · ' + esc(addDow(detailGet(d, '배송일'))) : '') + (R.drv ? ' · 기사 ' + esc(R.drv) : '') + '</div></div><button id="__wpVocX" class="wp-act">✕</button></div>' +
         '<div style="margin-top:12px;font-weight:700;font-size:13px;color:#334155">협력사 확인 요청</div>' +
         '<div style="margin-top:6px">' + VOC_PARTNERS.map(function(p) { return '<button class="wp-day __wpVocP' + (pick === p.k ? ' on' : '') + '" data-k="' + esc(p.k) + '">' + esc(p.k) + ' <span style="font-size:11.5px;opacity:.75">@' + esc(p.who) + '</span></button>'; }).join('') +
-        '<button class="wp-day __wpVocP" data-k="-">보내지 않음</button></div>' +
-        '<div style="font-size:12px;color:#94A3B8;margin-top:4px">' + (pick ? '코스 ' + esc(course) + ' — 지난번 선택을 미리 골라 뒀어요' : course ? '처음 보는 코스 — 협력사를 골라 주세요 (다음부터 기억)' : '코스 정보가 없는 VOC — 협력사를 골라 주세요') + '</div>' +
+        '<button class="wp-day __wpVocP' + (pick === '-' ? ' on' : '') + '" data-k="-">보내지 않음</button></div>' +
+        '<div style="font-size:12px;color:' + (pick ? '#64748B' : '#B45309') + ';margin-top:4px">' + esc(R.why) + '</div>' +
         '<div style="margin-top:12px;font-weight:700;font-size:13px;color:#334155">보낼 문구 <span style="font-weight:400;color:#94A3B8;font-size:12px">맨 앞에 담당자 태그가 붙습니다</span></div>' +
         '<pre id="__wpVocTx" style="margin:6px 0 0;white-space:pre-wrap;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.6;font-family:inherit;max-height:220px;overflow:auto">' + esc(text) + '</pre>' +
         '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button id="__wpVocNo" class="wp-btn gh">취소</button><button id="__wpVocOk" class="wp-btn ok"' + (pick ? '' : ' disabled') + '>승인</button></div>');
@@ -11050,10 +11145,9 @@ document.getElementById('__wpSave').onclick = function() {
         }).then(function() {
           close();
           autoSentIfNotTarget(it);
-          if (P) vocpSave(course, P.k);
           afterDecide(it.id);
           if (!P) { toast('✓ 배송VOC 승인 (협력사 요청 없음)', '#0a7d47'); return; }
-          return api({ e: 'partner_post', partner: P.k, text: text, id: it.id, by: REQ.name || '' }).then(function(j) {
+          return vocSend(P, it, text).then(function(j) {
             toast('✓ 승인 · ' + P.k + ' 채널에 확인 요청' + (j && j.mention && String(j.mention).indexOf('<@') < 0 ? ' (태그 대신 이름으로 올림)' : ''), '#0a7d47');
           }).catch(function(e) {
             vocPartnerFallback(P, text, (e && e.badResponse) ? '응답을 받지 못했습니다 — 채널에 이미 올라갔는지 먼저 확인하세요' : ((e && e.message) || String(e)));
@@ -11075,17 +11169,18 @@ document.getElementById('__wpSave').onclick = function() {
       alert('VOC 승인 창을 열지 못했습니다: ' + ((e && e.message) || e));
     });
   }
-  /* 자동 전송이 안 될 때 — 문구를 복사해 채널에 붙이게 */
+  /* 자동 전송이 안 될 때 — 문구를 복사해 채널에 붙이게 (협력사별 창) */
   function vocPartnerFallback(P, text, why) {
+    var id = '__wpVocFb' + VOC_PARTNERS.indexOf(P);
     var unknown = /unknown e=partner_post/.test(String(why || ''));
-    var box = vocModalBox('__wpVocFb',
-      '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">' + esc(P.k) + ' 채널 확인 요청 — 직접 붙여넣기</b><button id="__wpVocFbX" class="wp-act">✕</button></div>' +
+    var box = vocModalBox(id,
+      '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">' + esc(P.k) + ' 채널 확인 요청 — 직접 붙여넣기</b><button class="wp-act __wpVocFbX">✕</button></div>' +
       '<div style="font-size:12.5px;color:#B45309;margin-top:6px;line-height:1.6">' + (unknown ? 'VOC 승인은 끝났어요. 협력사 채널 자동 전송은 아직 연결 전입니다(워커 업데이트 필요).' : 'VOC 승인은 끝났어요. 협력사 채널 자동 전송이 안 됐습니다: ' + esc(why)) + '<br>[채널 열기] → 메시지 칸에 <b>@' + esc(P.who) + '</b> 을 입력해 태그를 고른 뒤, 아래 문구를 [복사]해서 이어 붙여 주세요.</div>' +
-      '<textarea id="__wpVocFbT" class="wp-inp" style="width:100%;height:200px;margin-top:8px;font-size:12.5px;line-height:1.6">' + esc(text) + '</textarea>' +
-      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><a class="wp-btn gh" href="' + esc(P.url) + '" target="_blank" rel="noopener" style="text-decoration:none">채널 열기</a><button id="__wpVocFbC" class="wp-btn pri">복사</button></div>');
-    document.getElementById('__wpVocFbX').onclick = function() { box.remove(); };
-    document.getElementById('__wpVocFbC').onclick = function() {
-      var ta = document.getElementById('__wpVocFbT');
+      '<textarea class="wp-inp __wpVocFbT" style="width:100%;height:200px;margin-top:8px;font-size:12.5px;line-height:1.6">' + esc(text) + '</textarea>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><a class="wp-btn gh" href="' + esc(P.url) + '" target="_blank" rel="noopener" style="text-decoration:none">채널 열기</a><button class="wp-btn pri __wpVocFbC">복사</button></div>');
+    box.querySelector('.__wpVocFbX').onclick = function() { box.remove(); };
+    box.querySelector('.__wpVocFbC').onclick = function() {
+      var ta = box.querySelector('.__wpVocFbT');
       (navigator.clipboard ? navigator.clipboard.writeText(ta.value) : Promise.reject()).then(function() { toast('✓ 복사됨', '#0a7d47'); }).catch(function() { ta.select(); try { document.execCommand('copy'); toast('✓ 복사됨', '#0a7d47'); } catch (e2) {} });
     };
   }
