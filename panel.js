@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261023-1339';
+  var PANEL_BUILD = '20261026-0929';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -9873,16 +9873,30 @@ document.getElementById('__wpSave').onclick = function() {
     if (!r.before && !r.after && !r.from && (m = /(\d{1,2})\s*일\s*(재고조사\s*)?고정/.exec(t))) r.on = +m[1];
     /* "21일 근처" "21일쯤" — 그 날짜에 가장 가까운 배송일(배송일이 없으면 그 날짜 자체) */
     if (!r.on && !r.before && !r.after && !r.from && (m = /(\d{1,2})\s*일\s*(근처|근방|쯤|전후|가까운)/.exec(t))) r.near = +m[1];
+    /* "마지막 영업일 D-3" "말일 기준 3번째 영업일" "끝에서 3번째 영업일" — 말일부터 거꾸로 센 영업일(마지막 영업일 = 1번째).
+       날짜 고정(배송일이 아니어도 그날). 윤보 요청 2026-10: 와이지플러스_밸런스 = D-3 → 10/28·11/26·12/29 */
+    if ((m = /영업일\s*D\s*-\s*(\d)/i.exec(t)) || (m = /(?:말일|끝)\s*(?:기준|에서|부터)?\s*(\d)\s*번째\s*영업일/.exec(t))) { r.bizEnd = +m[1]; delete r.pos; delete r.week; }
     if ((m = /묶음\s*[:：]\s*([^\s,·]+)/.exec(t))) r.grp = m[1];
     if (/영남\s*예외/.test(t)) r.noYn = true;
     return r;
   }
-  function invHasRule(r) { return !!(r.week || r.wmin || r.pos || r.before || r.after || r.from || r.on || r.near || r.dow != null); }
+  function invHasRule(r) { return !!(r.week || r.wmin || r.pos || r.before || r.after || r.from || r.on || r.near || r.bizEnd || r.dow != null); }
+  /* 그달 말일부터 거꾸로 n번째 영업일 (주말·공휴일 건너뜀) */
+  function invBizEnd(ym, n) {
+    var p = ym.split('-'), d = new Date(+p[0], +p[1], 0), c = 0, g = 0;
+    while (g++ < 40) { if (!isOffDay(d)) { c++; if (c >= n) break; } d.setDate(d.getDate() - 1); }
+    return ymdOf(d);
+  }
   /* 조사일 고르기: ds = 이달 배송일(정렬), rule = 규칙, ref = 전월 조사일 */
   function invPick(ds, rule, ref, ctx) {
     ctx = ctx || {};
     var r = rule || {}, c, all = ds;
     function dom(x) { return +x.slice(8); }
+    /* 말일 기준 n번째 영업일 — 날짜 고정(배송일이 아니어도 그날) */
+    if (r.bizEnd) {
+      var bd = invBizEnd((ds[0] || '').slice(0, 7) || INV.ym, r.bizEnd);
+      return { d: bd, info: '말일부터 ' + r.bizEnd + '번째 영업일 고정' + (ds.indexOf(bd) < 0 ? ' · 배송일 아님' : '') };
+    }
     /* 날짜 고정 규칙은 배송일이 없어도(수기일정 거래처) 그 날짜로 잡는다 */
     if (r.on || (r.near && !ds.length)) {
       var onN = r.on || r.near, ymOn = (ds[0] || '').slice(0, 7) || INV.ym, od = ymOn + '-' + ('0' + onN).slice(-2), od2 = pushOffDay(od);
@@ -9938,7 +9952,7 @@ document.getElementById('__wpSave').onclick = function() {
     wk: [['', '자동'], ['1', '1주차'], ['2', '2주차'], ['3', '3주차'], ['4', '4주차'], ['last', '마지막주'], ['35', '3~5주차']],
     dow: [['', '자동'], ['1', '월'], ['2', '화'], ['3', '수'], ['4', '목'], ['5', '금']],
     pos: [['', '자동'], ['first', '첫 배송'], ['last', '마지막 배송'], ['last2', '마지막 전 배송']],
-    dc: [['', '없음'], ['before', '일 전'], ['until', '일까지'], ['after', '일 이후'], ['on', '일 고정'], ['near', '일 근처(가까운 배송일)']]
+    dc: [['', '없음'], ['before', '일 전'], ['until', '일까지'], ['after', '일 이후'], ['on', '일 고정'], ['near', '일 근처(가까운 배송일)'], ['bizEnd', '번째 영업일(말일부터 · 고정)']]
   };
   function invKOf(bid) {
     var cf = (INV.cfg && INV.cfg[bid]) || {};
@@ -9948,7 +9962,7 @@ document.getElementById('__wpSave').onclick = function() {
     if (r.week === 'last') k.wk = 'last'; else if (r.week) k.wk = String(r.week);
     if (r.dow != null) k.dow = String(r.dow);
     if (r.pos) k.pos = r.pos;
-    if (r.on) { k.dc = 'on'; k.dn = r.on; } else if (r.near) { k.dc = 'near'; k.dn = r.near; } else if (r.before) { k.dc = r.incl ? 'until' : 'before'; k.dn = r.before; } else if (r.after) { k.dc = 'after'; k.dn = r.after; }
+    if (r.bizEnd) { k.dc = 'bizEnd'; k.dn = r.bizEnd; } else if (r.on) { k.dc = 'on'; k.dn = r.on; } else if (r.near) { k.dc = 'near'; k.dn = r.near; } else if (r.before) { k.dc = r.incl ? 'until' : 'before'; k.dn = r.before; } else if (r.after) { k.dc = 'after'; k.dn = r.after; }
     if (r.grp) k.grp = r.grp;
     if (r.noYn) k.rg = '영남x';
     if (cf.yr) k.fq = 'yr'; else if (cf.ex === 1) k.fq = 'ex';
@@ -9962,7 +9976,7 @@ document.getElementById('__wpSave').onclick = function() {
     if (k.wk) a.push(k.wk === 'last' ? '마지막주' : k.wk === '35' ? '3~5주차' : k.wk + '주차');
     if (k.dow) a.push('월화수목금'.charAt(+k.dow - 1) + '요일');
     if (k.pos) a.push({ first: '첫 배송', last: '마지막 배송', last2: '마지막 전 배송' }[k.pos]);
-    if (k.dc && k.dn) a.push(k.dn + { before: '일 전', until: '일까지', after: '일 이후', on: '일 고정', near: '일 근처' }[k.dc]);
+    if (k.dc && k.dn) a.push(k.dc === 'bizEnd' ? '말일부터 ' + k.dn + '번째 영업일' : k.dn + { before: '일 전', until: '일까지', after: '일 이후', on: '일 고정', near: '일 근처' }[k.dc]);
     if (k.rg) a.push(k.rg === '영남x' ? '영남(주차예외)' : k.rg);
     if (k.grp) a.push('묶음:' + k.grp);
     return a.join(' · ');
@@ -9976,7 +9990,7 @@ document.getElementById('__wpSave').onclick = function() {
     if (k.dow) r.dow = +k.dow;
     if (k.pos) r.pos = k.pos;
     var n = +k.dn || 0;
-    if (n && k.dc === 'on') r.on = n; else if (n && k.dc === 'near') r.near = n; else if (n && k.dc === 'before') r.before = n; else if (n && k.dc === 'until') { r.before = n; r.incl = true; } else if (n && k.dc === 'after') r.after = n;
+    if (n && k.dc === 'bizEnd') r.bizEnd = n; else if (n && k.dc === 'on') r.on = n; else if (n && k.dc === 'near') r.near = n; else if (n && k.dc === 'before') r.before = n; else if (n && k.dc === 'until') { r.before = n; r.incl = true; } else if (n && k.dc === 'after') r.after = n;
     if (k.grp) r.grp = k.grp;
     if (k.rg) r.rg = k.rg;
     return r;
