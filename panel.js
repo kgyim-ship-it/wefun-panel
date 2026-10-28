@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261026-0929';
+  var PANEL_BUILD = '20261028-1927';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -2065,7 +2065,7 @@
       /* 날짜 고르면 옆에 요일이 바로 뜬다 — 잘못된 요일 선택을 입력 시점에 잡기 위함.
          반영 희망일·첫배송일은 주말·공휴일을 눌러도 안 되는 자체 달력을 쓴다. */
       if (f.dmin || f.min3) {
-        return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="text" readonly data-wdcal="1" placeholder="날짜 선택" style="flex:1;cursor:pointer;background:#fff">' + (f.dmin ? '' : '<span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span>') + '</div></div>';
+        return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="text" readonly data-wdcal="1" placeholder="' + (f.min3 ? '비워두면 물류팀이 배정' : '날짜 선택') + '" style="flex:1;cursor:pointer;background:#fff">' + (f.dmin ? '' : '<span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span>') + (f.min3 ? '<button type="button" class="wp-act" id="' + id + '_clr" title="날짜를 지우면 물류팀이 배정합니다" style="flex:none">비우기</button>' : '') + '</div></div>';
       }
       return '<div class="wp-fld"><span>' + flab(f) + '</span><div style="flex:1;display:flex;align-items:center;gap:9px"><input id="' + id + '" class="wp-inp" type="date" style="flex:1"><span id="' + id + '_dow" style="min-width:34px;font-size:13.5px;font-weight:700;color:#1f4e78"></span></div></div>';
     }
@@ -2593,7 +2593,10 @@
             /* 첫배송일: 요청자는 D+3 영업일부터. 관리자 수정승인은 현장 사정을 아는 사람이 고치는 거라 D+1부터 연다 */
             var _m3 = (edit && (edit.adminEdit || edit.adminEditOnly)) ? workdayD1Str() : firstDeliveryStr();
             el.min = _m3; el.setAttribute('data-min', _m3);
-            if (!el.value) { el.value = _m3; }
+            /* 기본값을 넣지 않는다 — '비우면 물류팀이 배정'인데 날짜가 미리 채워져 비울 방법이 없었다(영업 지적 2026-10).
+               고른 날짜를 지우려면 [비우기]. */
+            var _clr = document.getElementById('__wpf_' + f.k + '_clr');
+            if (_clr) { _clr.onclick = (function(inp) { return function() { inp.value = ''; inp.dispatchEvent(new Event('change')); }; })(el); }
           }
           if (f.dmin) {
             var _mn = f.d0 ? cutoffMinDate() : workdayD1Str();
