@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261028-1927';
+  var PANEL_BUILD = '20261102-1459';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -1561,9 +1561,33 @@
     });
   }
 
+  /* 조식24 서비스는 오피스 서비스 목록이 따로다(/sales/service/josik). 스낵 목록 이름검색엔 안 나오고,
+     '계획일정없음'이면 배송일정에서도 serviceId가 안 잡힌다 → 신규코드 월예산이 비어 반려되던 원인(포컴퍼니 2026-11).
+     거래처ID 링크로 먼저 맞추고, 없으면 거래처명 앞부분 일치. 활동 서비스를 우선한다. */
+  function resolveJosikIds(branchId, branchName) {
+    var kw = String(branchName || '').replace(/^\(조식\)\s*/, '');
+    if (!kw) return Promise.resolve([]);
+    return fetch('/office/sales/service/josik?searchYN=Y&size=50&page=1&searchKeyword=' + encodeURIComponent(kw)).then(function(r) { return r.text(); }).then(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var want = nn(branchName), hit = [];
+      [].slice.call(doc.querySelectorAll('tbody tr')).forEach(function(tr) {
+        var m = tr.innerHTML.match(/service\/josik\/update\/(\d+)/);
+        if (!m) return;
+        var byId = branchId && tr.innerHTML.indexOf('/sales/branch/' + branchId + '"') > -1;
+        var tds = tr.querySelectorAll('td');
+        var bn = nn(tds[2] && tds[2].innerText || '');
+        if (!byId && !(want && bn.indexOf(want) === 0)) return;
+        hit.push({ id: m[1], live: /활동/.test(tds[3] && tds[3].innerText || ''), byId: byId });
+      });
+      hit.sort(function(a, b) { return (b.byId - a.byId) || (b.live - a.live); });
+      return hit.map(function(h) { return h.id; });
+    }).catch(function() { return []; });
+  }
   function serviceInfo(branchId, branchName) {
     return resolveServiceIds(branchId).then(function(ids) {
       return ids.length ? ids : (branchName ? resolveServicesByName(branchName) : []);
+    }).then(function(ids) {
+      return ids.length ? ids : resolveJosikIds(branchId, branchName);
     }).then(function(ids) {
       if (!ids.length) return null;
       var sid = ids[0];
