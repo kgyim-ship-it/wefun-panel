@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261102-1459';
+  var PANEL_BUILD = '20261104-1351';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -833,7 +833,7 @@
   } /* ---------- 스타일 ---------- */
   var st = document.createElement('style');
   st.id = '__wpStyle';
-  st.textContent = '#__wp *{box-sizing:border-box;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif}#__wp{position:fixed;inset:0;background:rgba(4,12,20,.62);z-index:2147483647;overflow:auto;padding:24px 16px}.wp-card{width:min(1480px,98vw);margin:0 auto;background:#F8FAFC;border-radius:10px;box-shadow:0 24px 70px rgba(2,8,20,.45);overflow:hidden;border:1px solid #0B1220}.wp-head{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#0B1220;color:#F1F5F9;border-bottom:2px solid #38BDF8}.wp-head h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px}.wp-logo{display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1px solid #E2E8F0;border-radius:7px;padding:5px 9px}.wp-who{font-size:12.5px;color:#94A3B8;margin-top:3px}.wp-hbtn{height:34px;display:inline-flex;align-items:center;background:#1E293B;color:#CBD5E1;border:1px solid #334155;border-radius:5px;padding:0 12px;cursor:pointer;font-size:13.5px;margin-left:6px}.wp-hbtn:hover{background:#334155;color:#fff}.wp-hbtn.on{background:#38BDF8;color:#04121F;font-weight:800;border-color:#38BDF8}.wp-ico{width:34px;padding:0;justify-content:center;font-weight:700}#__wp.wp-max{padding:0;overflow:hidden}#__wp.wp-max .wp-card{width:100vw;max-width:100vw;height:100vh;border-radius:0;margin:0;box-shadow:none;border:none;overflow:hidden;display:flex;flex-direction:column}#__wp.wp-max .wp-head{flex:none}#__wp.wp-max .wp-body{padding:14px 30px;flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}#__wp.wp-max #__wpTabs{flex:none}#__wp.wp-max #__wpView{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column}#__wp.wp-max #__wpView .wp-scroll{flex:1;min-height:0;max-height:none;border:1px solid #E2E8F0}.wp-launch{position:fixed;right:22px;bottom:22px;width:56px;height:56px;border-radius:14px;background:#0B1220;color:#38BDF8;font-size:24px;border:1px solid #334155;cursor:grab;box-shadow:0 10px 26px rgba(2,8,20,.5);z-index:2147483647;display:flex;align-items:center;justify-content:center;user-select:none}.wp-launch:active{cursor:grabbing}.wp-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;background:#EF4444;color:#fff;font-size:12px;font-weight:700;line-height:20px;text-align:center;border-radius:10px;border:2px solid #0B1220}.wp-launch:hover{transform:scale(1.06)}.wp-body{padding:16px 20px}.wp-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}.wp-tab{height:38px;display:inline-flex;align-items:center;padding:0 15px;cursor:pointer;border:1px solid #E2E8F0;border-radius:5px;background:#fff;color:#475569;font-weight:700;font-size:14.5px}.wp-tab:hover{background:#F1F5F9}.wp-tab.on{background:#0B1220;color:#fff;border-color:#0B1220}.wp-inp{height:37px;padding:0 11px;border:1px solid #CBD5E1;border-radius:6px;font-size:14.5px;outline:none;background:#fff;color:#17222E}.wp-inp:focus{border-color:#38BDF8;box-shadow:0 0 0 3px rgba(56,189,248,.25)}select.wp-inp{height:37px;cursor:pointer;padding-right:28px}textarea.wp-inp{height:auto;min-height:96px;padding:8px 10px;line-height:1.5}input.wp-inp[type=date]{cursor:pointer;min-width:160px;height:37px;font-size:14.5px;font-weight:500;padding:0 10px;color:#0F172A}input.wp-inp[type=date]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.6;width:17px;height:17px}.wp-btn{height:37px;display:inline-flex;align-items:center;cursor:pointer;border-radius:6px;font-weight:700;font-size:14px;padding:0 15px;border:1px solid transparent}.wp-btn.pri{background:#0B1220;color:#fff}.wp-btn.pri:hover{background:#1E293B}.wp-btn.ok{background:#16A34A;color:#fff}.wp-btn.ok:hover{background:#15803D}.wp-btn.dg{background:#EF4444;color:#fff}.wp-btn.dg:hover{background:#DC2626}.wp-btn.gh{background:#fff;color:#334155;border-color:#CBD5E1}.wp-btn.gh:hover{background:#F1F5F9}.wp-tbl{border-collapse:collapse;width:100%;font-size:14px}.wp-tbl th{position:sticky;top:0;background:#0F172A;color:#CBD5E1;text-align:left;padding:9px 10px;border-bottom:1px solid #0B1220;font-weight:700;font-size:12.5px}.wp-tbl td{padding:9px 10px;border-bottom:1px solid #E2E8F0;color:#1E293B;vertical-align:top;background:#fff}.wp-tbl tbody tr:hover td{background:#F1F5F9}.wp-act{height:29px;display:inline-flex;align-items:center;cursor:pointer;border:1px solid #0B1220;color:#0B1220;background:#fff;border-radius:6px;font-size:12.5px;padding:0 10px;margin:2px;font-weight:600}.wp-act:hover{background:#0B1220;color:#fff}.wp-dd{position:relative;display:inline-block}.wp-ddbtn{height:37px;display:inline-flex;align-items:center;cursor:pointer;border:1px solid #0B1220;color:#0B1220;background:#fff;border-radius:6px;font-size:13.5px;padding:0 12px;font-weight:700}.wp-ddbtn:hover{background:#0B1220;color:#fff}.wp-ddmenu{display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #E2E8F0;border-radius:8px;box-shadow:0 14px 34px rgba(2,8,20,.18);z-index:20;min-width:160px;overflow:hidden}.wp-dd.on .wp-ddmenu{display:block}.wp-ddi{display:block;width:100%;text-align:left;cursor:pointer;border:none;background:none;padding:10px 15px;font-size:14px;color:#1E293B}.wp-ddi:hover{background:#F1F5F9;color:#0B1220;font-weight:600}.wp-scroll{max-height:64vh;overflow:auto;border:1px solid #E2E8F0;border-radius:8px}.wp-form{border:1px solid #E2E8F0;border-radius:8px;padding:18px;margin-top:12px;background:#fff}.wp-meta{background:#F1F5F9;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;margin:10px 0;font-size:13px;line-height:1.8;color:#334155}.wp-fld{display:flex;align-items:center;gap:10px;margin:11px 0}.wp-fld>span{width:200px;color:#475569;font-size:14px;flex:none;font-weight:600}.wp-fld .wp-inp,.wp-fld select{flex:1;min-width:0;height:41px}.wp-pill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:5px;font-size:12px;font-weight:800;font-family:ui-monospace,Menlo,monospace}.wp-day{height:36px;cursor:pointer;border:1px solid #CBD5E1;background:#fff;border-radius:6px;padding:0 12px;margin:2px;font-size:13.5px}.wp-day.on{background:#0B1220;color:#fff;border-color:#0B1220}.wp-log{font-size:12.5px;max-height:52vh;overflow:auto;border:1px solid #E2E8F0;border-radius:8px;padding:6px 12px;margin-top:8px}.wp-log>div{padding:4px 0;border-bottom:1px solid #F1F5F9}';
+  st.textContent = '#__wp *{box-sizing:border-box;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif}#__wp{position:fixed;inset:0;background:rgba(4,12,20,.62);z-index:2147483647;overflow:auto;padding:24px 16px}.wp-card{width:min(1480px,98vw);margin:0 auto;background:#F8FAFC;border-radius:10px;box-shadow:0 24px 70px rgba(2,8,20,.45);overflow:hidden;border:1px solid #0B1220}.wp-head{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#0B1220;color:#F1F5F9;border-bottom:2px solid #38BDF8}.wp-head h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px}.wp-logo{display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1px solid #E2E8F0;border-radius:7px;padding:5px 9px}.wp-who{font-size:12.5px;color:#94A3B8;margin-top:3px}.wp-hbtn{height:34px;display:inline-flex;align-items:center;background:#1E293B;color:#CBD5E1;border:1px solid #334155;border-radius:5px;padding:0 12px;cursor:pointer;font-size:13.5px;margin-left:6px}.wp-hbtn:hover{background:#334155;color:#fff}.wp-hbtn.on{background:#38BDF8;color:#04121F;font-weight:800;border-color:#38BDF8}.wp-ico{width:34px;padding:0;justify-content:center;font-weight:700}#__wp.wp-max{padding:0;overflow:hidden}#__wp.wp-max .wp-card{width:100vw;max-width:100vw;height:100vh;border-radius:0;margin:0;box-shadow:none;border:none;overflow:hidden;display:flex;flex-direction:column}#__wp.wp-max .wp-head{flex:none}#__wp.wp-max .wp-body{padding:14px 30px;flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}#__wp.wp-max #__wpTabs{flex:none}#__wp.wp-max #__wpView{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column}#__wp.wp-max #__wpView .wp-scroll{flex:1;min-height:0;max-height:none;border:1px solid #E2E8F0}.wp-launch{position:fixed;right:22px;bottom:22px;width:56px;height:56px;border-radius:14px;background:#0B1220;color:#38BDF8;font-size:24px;border:1px solid #334155;cursor:grab;box-shadow:0 10px 26px rgba(2,8,20,.5);z-index:2147483647;display:flex;align-items:center;justify-content:center;user-select:none}.wp-launch:active{cursor:grabbing}.wp-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;background:#EF4444;color:#fff;font-size:12px;font-weight:700;line-height:20px;text-align:center;border-radius:10px;border:2px solid #0B1220}.wp-launch:hover{transform:scale(1.06)}.wp-body{padding:16px 20px}.wp-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}.wp-tab{height:38px;display:inline-flex;align-items:center;padding:0 12px;cursor:pointer;border:1px solid #E2E8F0;border-radius:5px;background:#fff;color:#475569;font-weight:700;font-size:14.5px}.wp-tab:hover{background:#F1F5F9}.wp-tab.on{background:#0B1220;color:#fff;border-color:#0B1220}.wp-inp{height:37px;padding:0 11px;border:1px solid #CBD5E1;border-radius:6px;font-size:14.5px;outline:none;background:#fff;color:#17222E}.wp-inp:focus{border-color:#38BDF8;box-shadow:0 0 0 3px rgba(56,189,248,.25)}select.wp-inp{height:37px;cursor:pointer;padding-right:28px}textarea.wp-inp{height:auto;min-height:96px;padding:8px 10px;line-height:1.5}input.wp-inp[type=date]{cursor:pointer;min-width:160px;height:37px;font-size:14.5px;font-weight:500;padding:0 10px;color:#0F172A}input.wp-inp[type=date]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.6;width:17px;height:17px}.wp-btn{height:37px;display:inline-flex;align-items:center;cursor:pointer;border-radius:6px;font-weight:700;font-size:14px;padding:0 15px;border:1px solid transparent}.wp-btn.pri{background:#0B1220;color:#fff}.wp-btn.pri:hover{background:#1E293B}.wp-btn.ok{background:#16A34A;color:#fff}.wp-btn.ok:hover{background:#15803D}.wp-btn.dg{background:#EF4444;color:#fff}.wp-btn.dg:hover{background:#DC2626}.wp-btn.gh{background:#fff;color:#334155;border-color:#CBD5E1}.wp-btn.gh:hover{background:#F1F5F9}.wp-tbl{border-collapse:collapse;width:100%;font-size:14px}.wp-tbl th{position:sticky;top:0;background:#0F172A;color:#CBD5E1;text-align:left;padding:9px 10px;border-bottom:1px solid #0B1220;font-weight:700;font-size:12.5px}.wp-tbl td{padding:9px 10px;border-bottom:1px solid #E2E8F0;color:#1E293B;vertical-align:top;background:#fff}.wp-tbl tbody tr:hover td{background:#F1F5F9}.wp-act{height:29px;display:inline-flex;align-items:center;cursor:pointer;border:1px solid #0B1220;color:#0B1220;background:#fff;border-radius:6px;font-size:12.5px;padding:0 10px;margin:2px;font-weight:600}.wp-act:hover{background:#0B1220;color:#fff}.wp-dd{position:relative;display:inline-block}.wp-ddbtn{height:37px;display:inline-flex;align-items:center;cursor:pointer;border:1px solid #0B1220;color:#0B1220;background:#fff;border-radius:6px;font-size:13.5px;padding:0 12px;font-weight:700}.wp-ddbtn:hover{background:#0B1220;color:#fff}.wp-ddmenu{display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #E2E8F0;border-radius:8px;box-shadow:0 14px 34px rgba(2,8,20,.18);z-index:20;min-width:160px;overflow:hidden}.wp-dd.on .wp-ddmenu{display:block}.wp-ddi{display:block;width:100%;text-align:left;cursor:pointer;border:none;background:none;padding:10px 15px;font-size:14px;color:#1E293B}.wp-ddi:hover{background:#F1F5F9;color:#0B1220;font-weight:600}.wp-scroll{max-height:64vh;overflow:auto;border:1px solid #E2E8F0;border-radius:8px}.wp-form{border:1px solid #E2E8F0;border-radius:8px;padding:18px;margin-top:12px;background:#fff}.wp-meta{background:#F1F5F9;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;margin:10px 0;font-size:13px;line-height:1.8;color:#334155}.wp-fld{display:flex;align-items:center;gap:10px;margin:11px 0}.wp-fld>span{width:200px;color:#475569;font-size:14px;flex:none;font-weight:600}.wp-fld .wp-inp,.wp-fld select{flex:1;min-width:0;height:41px}.wp-pill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:5px;font-size:12px;font-weight:800;font-family:ui-monospace,Menlo,monospace}.wp-day{height:36px;cursor:pointer;border:1px solid #CBD5E1;background:#fff;border-radius:6px;padding:0 12px;margin:2px;font-size:13.5px}.wp-day.on{background:#0B1220;color:#fff;border-color:#0B1220}.wp-log{font-size:12.5px;max-height:52vh;overflow:auto;border:1px solid #E2E8F0;border-radius:8px;padding:6px 12px;margin-top:8px}.wp-log>div{padding:4px 0;border-bottom:1px solid #F1F5F9}';
   (document.head || document.documentElement).appendChild(st);
 
   /* 화면·확인창 표시용으로만 날짜 뒤에 요일을 붙인다.
@@ -1300,6 +1300,7 @@
       var b = document.createElement('button');
       b.className = 'wp-tab' + (i === 0 ? ' on' : '');
       b.textContent = t[1];
+      b.setAttribute('data-t', t[0]);
       b.onclick = function() {
         [].forEach.call(tb.children, function(x) {
           x.className = 'wp-tab';
@@ -1310,7 +1311,37 @@
       tb.appendChild(b);
     });
     showTab(list[0][0]);
+    revBadges();
   }
+  /* 검토 탭 미처리(대기) 건수 — 탭 이름 옆 빨간 숫자. 수시로 목록을 열어보지 않아도 쌓인 걸 보게 (이상진 요청 2026-11).
+     예약 승인된 주기변경(반영일 대기)은 이미 처리한 건이라 뺀다. 2분마다 + 승인·반려 직후 갱신 */
+  var REVB = { t: null, busy: false };
+  function revBadges(soon) {
+    if (MODE !== 'admin' || !IS_ADMIN) return;
+    if (soon) { clearTimeout(REVB.t); REVB.t = setTimeout(function() { revBadges(); }, 1500); return; }
+    if (REVB.busy || !document.getElementById('__wpTabs')) return;
+    REVB.busy = true;
+    listReq({ status: '대기' }).then(function(items) {
+      var n = { review_deliv: 0, review_syn: 0, review_pick: 0 };
+      (items || []).forEach(function(it) {
+        if (!it || it.status !== '대기') return;
+        try { if (bookedDate(it)) return; } catch (_b) {}
+        if (REV_GROUPS.deliv.indexOf(it.action) > -1) n.review_deliv++;
+        else if (REV_GROUPS.syn.indexOf(it.action) > -1) n.review_syn++;
+        else if (REV_GROUPS.pick.indexOf(it.action) > -1) n.review_pick++;
+      });
+      Object.keys(n).forEach(function(k) {
+        var b = document.querySelector('#__wpTabs .wp-tab[data-t="' + k + '"]');
+        if (!b) return;
+        var bd = b.querySelector('.wp-tbadge');
+        if (!n[k]) { if (bd) bd.remove(); return; }
+        if (!bd) { bd = document.createElement('span'); bd.className = 'wp-tbadge'; bd.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 5px;margin-left:6px;border-radius:10px;background:#EF4444;color:#fff;font-size:11.5px;font-weight:800;line-height:1'; b.appendChild(bd); }
+        bd.textContent = n[k] > 99 ? '99+' : String(n[k]);
+      });
+    }).catch(function() {}).then(function() { REVB.busy = false; });
+  }
+  if (window.__wpRevBTimer) { clearInterval(window.__wpRevBTimer); }
+  window.__wpRevBTimer = setInterval(function() { if (ov.parentNode && ov.style.display !== 'none') revBadges(); }, 120000);
 
   function showTab(t) {
     if (t === 'find') viewFind();
@@ -2543,18 +2574,30 @@
       document.getElementById('__wpSave').disabled = true;
       getForm(br.id).then(function(form) {
         var cur = (form.querySelector('[name="parkingMemo"]') || {}).value || '';
-        var inner = '<div style="margin:6px 0"><div style="color:#475569;font-size:13px;margin-bottom:4px">기존 메모 (참고)</div><div style="background:#fff;border:1px dashed #cbd5e1;border-radius:8px;padding:8px;font-size:12.5px;white-space:pre-wrap;color:#64748b;max-height:120px;overflow:auto">' + (esc(cur) || '<span style=\"color:#cbd5e1\">(비어 있음)</span>') + '</div></div><div style="margin:10px 0"><div style="color:#475569;font-size:13px;margin-bottom:4px">배송메모 (수정 후 제출 → 승인 시 반영)</div><textarea id="__wpf_메모내용" class="wp-inp" style="width:100%;height:130px;font-family:inherit"></textarea></div>';
+        var inner = '<div style="margin:6px 0"><div style="color:#475569;font-size:13px;margin-bottom:4px">기존 메모 (참고)</div><div style="background:#fff;border:1px dashed #cbd5e1;border-radius:8px;padding:8px;font-size:12.5px;white-space:pre-wrap;color:#64748b;max-height:120px;overflow:auto">' + (esc(cur) || '<span style=\"color:#cbd5e1\">(비어 있음)</span>') + '</div></div><div style="margin:10px 0"><div style="color:#475569;font-size:13px;margin-bottom:4px">배송메모 (수정 후 제출 → 승인 시 반영)</div><textarea id="__wpf_메모내용" class="wp-inp" style="width:100%;height:130px;font-family:inherit"></textarea></div>' +
+          /* 1회성 요청은 영구 배송메모에 섞지 않고 따로 받는다 → 접수 슬랙에 배차담당 태그 (정소민 요청 2026-11) */
+          '<div style="margin:12px 0 4px;padding:10px 12px;border:1px solid #FDE68A;background:#FFFBEB;border-radius:8px"><div style="color:#92400E;font-size:13px;font-weight:700;margin-bottom:6px">1회성 요청사항 <span style="font-weight:400;color:#B45309;font-size:12px">이번 배송에만 해당 · 배송메모에 저장되지 않고 배차담당에게 전달</span></div>' +
+          '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><span style="font-size:12.5px;color:#475569;width:64px;flex:none">대상 배송일</span><input id="__wpf_1회성배송일" class="wp-inp" type="date" style="width:180px"><span id="__wpf_1회성배송일_dow" style="font-size:13px;font-weight:700;color:#1f4e78"></span></div>' +
+          '<textarea id="__wpf_1회성요청" class="wp-inp" placeholder="예) 11/4 배송건 중 엑스봉지(중)는 냉장고 말고 실온에 진열" style="width:100%;height:70px;font-family:inherit;min-height:70px"></textarea></div>';
         box.innerHTML = shell(inner, '요청 제출');
         bind();
         var _cur = cur, _prevNew = '';
+        var _1d = document.getElementById('__wpf_1회성배송일'), _1t = document.getElementById('__wpf_1회성요청'), _1w = document.getElementById('__wpf_1회성배송일_dow');
+        _1d.min = todayStr();
+        var _1dw = function() { _1w.textContent = _1d.value ? '(' + DOWK[new Date(+_1d.value.slice(0, 4), +_1d.value.slice(5, 7) - 1, +_1d.value.slice(8, 10)).getDay()] + ')' : ''; };
+        _1d.addEventListener('change', _1dw);
         if (edit && edit.prefill != null) {
           var _pf = String(edit.prefill);
-          if (_pf.indexOf('변경메모: ') > -1) { _prevNew = _pf.split('변경메모: ').pop(); var _gm = _pf.split(' · 변경메모: ')[0]; if (_gm.indexOf('기존메모: ') === 0) _cur = _gm.slice(6); } else { _prevNew = _pf; }
+          if (_pf.indexOf('변경메모: ') > -1) { _prevNew = _pf.split('변경메모: ').pop(); var _gm = _pf.split(' · 변경메모: ')[0].split(' · 1회성배송일: ')[0].split(' · 1회성요청: ')[0]; if (_gm.indexOf('기존메모: ') === 0) _cur = _gm.slice(6); } else { _prevNew = _pf; }
+          _1d.value = memoOnce(_pf).d; _1t.value = memoOnce(_pf).t; _1dw();
         }
         document.getElementById('__wpf_메모내용').value = (edit ? _prevNew : _cur);
         document.getElementById('__wpSave').onclick = function() {
           var _nv = document.getElementById('__wpf_메모내용').value;
-          doSubmit('기존메모: ' + (_cur || '(없음)') + ' · 변경메모: ' + _nv);
+          var _ot = String(_1t.value || '').replace(/·/g, ',').trim(), _od = _1d.value || '';
+          if (_od && !_ot) { alert('1회성 요청 내용을 적어주세요. (대상 배송일만 고르고 내용이 비어 있어요)'); return; }
+          if (!_ot && _nv.trim() === String(_cur || '').trim()) { alert('바뀐 내용이 없어요. 배송메모를 고치거나 1회성 요청사항을 적어주세요.'); return; }
+          doSubmit('기존메모: ' + (_cur || '(없음)') + (_ot ? (_od ? ' · 1회성배송일: ' + _od : '') + ' · 1회성요청: ' + _ot : '') + ' · 변경메모: ' + _nv);
         };
       }).catch(function(e) {
         box.innerHTML = shell('<div style="color:#b00;padding:8px">메모 불러오기 실패: ' + esc(e.message) + '</div>', '요청 제출');
@@ -4123,6 +4166,7 @@ document.getElementById('__wpSave').onclick = function() {
   }
   /* 행 제거로 끝났으면 재조회를 건너뛴다 */
   function afterDecide(id) {
+    revBadges(true);
     if (dropReqRow(id)) { return; }
     try { viewReview(); } catch (_ad) {}
   }
@@ -4432,6 +4476,13 @@ document.getElementById('__wpSave').onclick = function() {
     });
   }
 
+  /* 배송메모 요청의 1회성 요청사항 { d: 대상 배송일, t: 내용 } */
+  function memoOnce(detail) {
+    var s0 = String(detail || '').split(' · 변경메모: ')[0];
+    var t = (s0.split(' · 1회성요청: ')[1] || '').trim();
+    var d = ((s0.split(' · 1회성배송일: ')[1] || '').split(' · ')[0] || '').trim();
+    return { d: /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '', t: t };
+  }
   function runActionCore(it) {
     /* 배송VOC: 오피스에 반영할 게 없다 — 확인·조치 후 완료하면 요청자에게 슬랙 회신만 나간다 */
     if (it.action === '배송VOC') { return Promise.resolve('VOC 확인·조치 완료'); }
@@ -4451,11 +4502,17 @@ document.getElementById('__wpSave').onclick = function() {
     if (_lk.length) return Promise.reject(new Error(lockMsg(_lk)));
     if (it.action === '배송메모') {
       if (!it.branchId) return Promise.reject(new Error('거래처ID 없음'));
+      var _mo = memoOnce(it.detail);
+      var _nm = it.detail.indexOf('변경메모: ') > -1 ? it.detail.split('변경메모: ').pop() : it.detail;
+      var _om = it.detail.indexOf('기존메모: ') === 0 ? it.detail.split(' · 변경메모: ')[0].split(' · 1회성배송일: ')[0].split(' · 1회성요청: ')[0].slice(6) : null;
+      var _onceN = _mo.t ? ' · 1회성 요청 전달' + (_mo.d ? '(' + _mo.d.slice(5).replace('-', '/') + ')' : '') : '';
+      /* 메모는 그대로고 1회성 요청만 있는 건 — 오피스는 건드리지 않는다 */
+      if (_mo.t && _om != null && (_om === '(없음)' ? '' : _om).trim() === String(_nm).trim()) return Promise.resolve('메모 변경 없음' + _onceN);
       return getForm(it.branchId).then(function(f) {
-        setVal(f, 'parkingMemo', it.detail.indexOf('변경메모: ') > -1 ? it.detail.split('변경메모: ').pop() : it.detail);
+        setVal(f, 'parkingMemo', _nm);
         return postForm(f);
       }).then(function() {
-        return '메모 반영';
+        return '메모 반영' + _onceN;
       });
     }
     if (it.action === '배송일정생성' || it.action === '배송일정변경' || it.action === '배송일정삭제') {
@@ -9357,7 +9414,7 @@ document.getElementById('__wpSave').onclick = function() {
     VIEW.innerHTML = '' +
       '<div class="wp-meta" style="margin-bottom:8px">누락·파손·유통기한·배송시간 VOC를 접수합니다. <b>거래처를 먼저 선택</b>하면 최근 거래명세가 일자별로 나옵니다. 명세를 고르면 품목을 자동으로 불러와요.</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">' +
-      '<label style="font-size:11.5px;color:#475569">VOC 유형<br><select id="__wpVcT" class="wp-inp" style="min-height:38px;padding:7px 9px"><option>누락</option><option>파손</option><option>유통기한</option><option>배송시간</option><option>기타</option></select></label>' +
+      '<label style="font-size:11.5px;color:#475569">VOC 유형<br><select id="__wpVcT" class="wp-inp" style="min-height:38px;padding:7px 9px"><option>누락</option><option>파손</option><option>유통기한</option><option>배송시간</option><option>상품진열</option><option>배송매니저</option><option>오배송</option><option>기타</option></select></label>' +
       '<label style="font-size:11.5px;color:#475569">거래처 검색<br><input id="__wpVcKw" class="wp-inp" placeholder="거래처명 일부 (예: 엔픽셀)" style="width:230px"></label>' +
       '<button id="__wpVcFind" class="wp-btn pri" style="padding:9px 14px">거래처 찾기</button>' +
       '<span style="color:#cbd5e1">|</span>' +
