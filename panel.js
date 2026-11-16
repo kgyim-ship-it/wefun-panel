@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261109-1638';
+  var PANEL_BUILD = '20261116-1638';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -4242,7 +4242,7 @@ document.getElementById('__wpSave').onclick = function() {
         last = '<td style="white-space:normal">' + _lastInner + '</td>';
       }
       var bn = it.branchId ? ('<a href="/office/sales/branch/' + esc(it.branchId) + '" target="_blank" style="color:#1f4e78;text-decoration:none">' + esc(it.branchName) + '</a>') : esc(it.branchName);
-      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제|취소)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + ((codeGubun(it.action) || it.action === '배송주기변경') ? d1Badge(it) : '') + (bookedDate(it) ? ('<div style="margin-top:3px;display:inline-block;padding:1px 7px;border-radius:999px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:800">✓ 예약 · ' + esc(bookedDate(it).slice(5).replace('-', '/')) + ' 10시 자동반영</div>') : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>') + '</td>' + '<td style="white-space:nowrap">' + pill((it.status === '대기' && bookedDate(it)) ? '예약' : it.status) + '</td>' + last + '</tr>';
+      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제|취소)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + ((codeGubun(it.action) || it.action === '배송주기변경') ? d1Badge(it) : '') + ((it.action === '배송메모' && memoOnce(it.detail).t) ? '<div style="margin-top:4px;display:inline-block;padding:2px 8px;border-radius:999px;background:#F59E0B;color:#fff;font-size:11px;font-weight:800;white-space:nowrap">📌 1회성</div>' : '') + (bookedDate(it) ? ('<div style="margin-top:3px;display:inline-block;padding:1px 7px;border-radius:999px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:800">✓ 예약 · ' + esc(bookedDate(it).slice(5).replace('-', '/')) + ' 10시 자동반영</div>') : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + (memoOnceHtml(it) || addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>')) + '</td>' + '<td style="white-space:nowrap">' + pill((it.status === '대기' && bookedDate(it)) ? '예약' : it.status) + '</td>' + last + '</tr>';
     });
     h += '</tbody></table>';
     box.innerHTML = h;
@@ -4471,6 +4471,24 @@ document.getElementById('__wpSave').onclick = function() {
     });
   }
 
+  /* 검토 목록 — 1회성 요청이 붙은 배송메모는 1회성 내용을 맨 위에 노란 상자로, 영구 메모는 바뀌었는지만 분명히 (2026-11 검토 혼선) */
+  function memoOnceHtml(it) {
+    if (!it || it.action !== '배송메모') return '';
+    var o = memoOnce(it.detail);
+    if (!o.t) return '';
+    var d = String(it.detail || '');
+    var nm = d.indexOf('변경메모: ') > -1 ? d.split('변경메모: ').pop() : '';
+    var om = d.indexOf('기존메모: ') === 0 ? d.split(' · 변경메모: ')[0].split(' · 1회성배송일: ')[0].split(' · 1회성요청: ')[0].slice(6) : '';
+    if (om === '(없음)') om = '';
+    var same = om.trim() === nm.trim();
+    function br(x) { return esc(x).replace(/\n/g, '<br>'); }
+    return '<div style="border:2px solid #F59E0B;background:#FFFBEB;border-radius:8px;padding:8px 10px;margin-bottom:6px">' +
+      '<div style="font-weight:800;color:#B45309;font-size:13px">📌 1회성 요청 · ' + (o.d ? esc(addDow(o.d)).slice(5).replace('-', '/') + ' 배송분만' : '이번 배송만') + '</div>' +
+      '<div style="color:#0F172A;font-weight:600;margin-top:3px">' + br(o.t) + '</div>' +
+      '<div style="color:#92400E;font-size:11.5px;margin-top:3px">배송메모(오피스)엔 저장되지 않음 · 배차담당 전달용</div></div>' +
+      (same ? '<div style="color:#64748B;font-size:12.5px">배송메모 변경 없음' + (om.trim() ? ' <span style="color:#94A3B8">(기존: ' + br(om.trim()).replace(/<br>/g, ' / ') + ')</span>' : '') + '</div>'
+        : '<div style="font-size:12.5px"><b style="color:#1F4E78">배송메모도 변경</b><br><span style="color:#64748B">기존: ' + (br(om.trim()) || '(없음)') + '</span><br>변경: ' + br(nm.trim()) + '</div>');
+  }
   /* 배송메모 요청의 1회성 요청사항 { d: 대상 배송일, t: 내용 } */
   function memoOnce(detail) {
     var s0 = String(detail || '').split(' · 변경메모: ')[0];
@@ -4972,7 +4990,7 @@ document.getElementById('__wpSave').onclick = function() {
   }
 
   function ensurePostcode() {
-    return (window.daum && window.daum.Postcode) ? Promise.resolve() : loadScript('https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js');
+    return (window.daum && window.daum.Postcode) ? Promise.resolve() : loadScript('https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js')   /* t1.daumcdn.net 2026-11-30 종료 → kakaocdn (카카오 안내) */;
   }
 
   function getForm(id, _retry) {
