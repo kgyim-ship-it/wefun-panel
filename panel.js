@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261116-1638';
+  var PANEL_BUILD = '20261118-1659';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -3895,6 +3895,8 @@ document.getElementById('__wpSave').onclick = function() {
       return Promise.resolve([it.branchName || '', addr, course, gubun, phone, it.hot || '', it.cold || '']);
     }
     if (it.action === '신규코드발급') {
+      /* 5열: 배송형태가 보냉가방 적재면 피킹방법 '보냉백' — 자회사가 보냉백 피킹으로 잡아야 한다 (택배건은 위의 수령인 연락처) (이상진 지적 2026-11) */
+      if (!phone && /보냉/.test(detailGet(it.detail, '배송형태') || '')) phone = '보냉백';
       var dm = /우린담당=([^·]+)/.exec(it.adminNote || '');
       var drvCourse = dm ? dm[1].trim() : '';
       if (drvCourse === '-') drvCourse = '';
