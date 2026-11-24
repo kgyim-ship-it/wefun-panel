@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1813';
+  var PANEL_BUILD = '20261124-1818';
   /* 이 페이지에서 더 새 빌드를 이미 받아둔 적이 있으면, 낡은 캐시본이 다시 떠도 바로 그걸로 넘긴다 */
   try {
     if (window.__wpNewB && window.__wpNewT && window.__wpNewB > PANEL_BUILD) { (0, eval)(window.__wpNewT); return; }
@@ -9953,8 +9953,8 @@ document.getElementById('__wpSave').onclick = function() {
   var DD_REASONS = ['미출/누락', 'voc차감', '파손', '반품', '유통기한 경과', '품질이슈', '기타'];
   var DD_KINDS = { item: '품목미출', amount: '금액차감', zero: '0원처리' };
   /* 시너지 반품구분 — 요청자가 접수할 때 고른다(26.11.24). 품목 미출만 시너지 반품 전표로 가고, 고른 코드가 그대로 전표의 반품구분이 된다.
-     사유를 바꾸면 기본값이 따라 바뀐다(파손→파손, 미출/누락→미배송, 그 밖→기타). 직접 고친 뒤에는 안 바꾼다. */
-  var DD_SYNCODES = [['1', '파손'], ['2', '오배송'], ['3', '미배송'], ['5', '기타']];   /* 이름은 시너지 화면 반품사유 칸에 보이는 그대로(2 오배송 · 3 미배송 — 26.11.24 화면 확인) */
+     사유를 바꾸면 기본값이 따라 바뀐다(파손→파손반품, 미출/누락→미배송, 그 밖→사유없음). 직접 고친 뒤에는 안 바꾼다. */
+  var DD_SYNCODES = [['1', '파손반품'], ['2', '오배송'], ['3', '미배송'], ['5', '사유없음']];   /* 이름은 시너지 상품판매등록 화면의 반품구분 그대로(26.11.24 광규가 화면에서 확인: 1 파손반품 · 2 오배송 · 3 미배송 · 4 폐기반품 · 5 사유없음). 4 폐기반품은 ScanGate API 가 받게 된 뒤에 추가한다 */
   function ddSynDefault(reason) { return reason === '파손' ? '1' : (reason === '미출/누락' ? '3' : '5'); }
   function ddSynLabel(code) { var r = ''; DD_SYNCODES.forEach(function(c) { if (c[0] === String(code)) { r = c[1]; } }); return r; }
   var DD = { kw: '', from: '', to: '', orders: [], ord: null, kind: 'item', rev: '대기', rfrom: '', rto: '' };
@@ -10352,7 +10352,7 @@ document.getElementById('__wpSave').onclick = function() {
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid #E2E8F0">' +
       '<span style="font-weight:700;font-size:13.5px">사유</span><select id="__wpDxRs" class="wp-inp" style="width:150px">' +
       DD_REASONS.map(function(r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select>' +
-      (DD.kind === 'item' ? '<span style="font-weight:700;font-size:13.5px" title="풀필(시너지) 반품 전표에 들어가는 구분입니다">반품구분</span><select id="__wpDxSc" class="wp-inp" style="width:104px" title="풀필(시너지) 반품 전표에 들어가는 구분입니다">' +
+      (DD.kind === 'item' ? '<span style="font-weight:700;font-size:13.5px" title="풀필(시너지) 반품 전표에 들어가는 구분입니다">반품구분</span><select id="__wpDxSc" class="wp-inp" style="width:118px" title="풀필(시너지) 반품 전표에 들어가는 구분입니다">' +
         DD_SYNCODES.map(function(c) { return '<option value="' + c[0] + '">' + esc(c[1]) + '</option>'; }).join('') + '</select>' : '') +
       '<input id="__wpDxMemo" class="wp-inp" style="flex:1;min-width:260px" placeholder="비고 (예: 11/12 배송 누락으로 재배송 건)">' +
       '<span style="font-size:13.5px;white-space:nowrap">차감액 <b id="__wpDxSum" style="font-size:16px;color:#B91C1C">₩0</b> <span id="__wpDxAfter" style="font-size:12px;color:#64748B"></span></span>' +
@@ -10679,7 +10679,7 @@ document.getElementById('__wpSave').onclick = function() {
   /* ---- 시너지(풀필) 차감 연결 (26.11.24) ----
      승인하면 워커가 ScanGate 를 거쳐 시너지에 반품 전표를 넣는다 (상온 품목 → 상온 시너지, 저온 품목 → 저온 시너지).
      패널은 '어느 상품을 주문 몇 개 중 몇 개 뺐는지'만 넘긴다 — 판매처·일자·사유·단가는 워커와 ScanGate 가 저장된 요청과 원 전표에서 찾는다.
-     대상: 품목 미출 — 반품구분은 요청자가 접수할 때 고른 값(반품구분: 1 파손·2 오배송·3 미배송·5 기타).
+     대상: 품목 미출 — 반품구분은 요청자가 접수할 때 고른 값(반품구분: 1 파손반품·2 오배송·3 미배송·5 사유없음).
      반품구분이 없는 옛 요청은 사유 미출/누락·파손만 간다. 금액 차감·0원처리는 시너지로 안 간다. */
   function ddSynLines(plan, it) {
     var d = ddParse(it.detail);
