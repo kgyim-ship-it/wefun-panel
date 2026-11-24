@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1350';
+  var PANEL_BUILD = '20261124-1352';
   /* 이 페이지에서 더 새 빌드를 이미 받아둔 적이 있으면, 낡은 캐시본이 다시 떠도 바로 그걸로 넘긴다 */
   try {
     if (window.__wpNewB && window.__wpNewT && window.__wpNewB > PANEL_BUILD) { (0, eval)(window.__wpNewT); return; }
@@ -10498,12 +10498,14 @@ document.getElementById('__wpSave').onclick = function() {
     var items = DD.revItems || [];
     if (!items.length) { alert('엑셀로 받을 차감 요청이 없습니다.'); return; }
     var rows = [['요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '차감액', '공급가', '세액', '품목·내용', '비고', '상태', '처리자', '처리시각', '처리메모']];
+    /* 엑셀엔 연도까지 — 화면용 fmtTs 는 월-일만 보여준다 */
+    function full(v) { if (!v) { return ''; } var t = new Date(String(v)); if (isNaN(t.getTime())) { return String(v).replace('T', ' ').slice(0, 16); } var p2 = function(n) { return ('0' + n).slice(-2); }; return t.getFullYear() + '-' + p2(t.getMonth() + 1) + '-' + p2(t.getDate()) + ' ' + p2(t.getHours()) + ':' + p2(t.getMinutes()); }
     items.forEach(function(it) {
       var d = ddParse(it.detail);
       var body = d.kind === 'item' ? d.items.map(function(x) { return x.name + ' × ' + x.q; }).join(', ') : (d.kind === 'amount' ? '금액조정' : '명세서 전체 미출');
-      rows.push([fmtTs(it.ts), it.dept || '', it.name || '', it.branchName || '', it.hot || '', it.cold || '', d.date || '', d.order || '', d.kindLabel || '', d.reason || '',
+      rows.push([full(it.ts), it.dept || '', it.name || '', it.branchName || '', it.hot || '', it.cold || '', d.date || '', d.order || '', d.kindLabel || '', d.reason || '',
         ddNum(String(d.amountText || '').replace(/\(.*$/, '')), d.amt ? d.amt.supply : '', d.amt ? d.amt.vat : '', body, d.memo || '',
-        it.status || '', it.admin || '', it.decidedTs ? fmtTs(it.decidedTs) : '', it.adminNote || '']);
+        it.status || '', it.admin || '', full(it.decidedTs), it.adminNote || '']);
     });
     var fname = '상품차감_' + (DD.rev === '대기' ? '대기_' + todayStr() : (DD.rfrom + '~' + DD.rto + (DD.rev !== '전체' ? '_' + DD.rev : ''))) + '.xlsx';
     var orig = btn ? btn.textContent : '';
