@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1144';
+  var PANEL_BUILD = '20261124-1153';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -836,7 +836,7 @@
   } /* ---------- 스타일 ---------- */
   var st = document.createElement('style');
   st.id = '__wpStyle';
-  st.textContent = '#__wp *{box-sizing:border-box;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif}#__wp{position:fixed;inset:0;background:rgba(4,12,20,.62);z-index:2147483647;overflow:auto;padding:24px 16px}.wp-card{width:min(1480px,98vw);margin:0 auto;background:#F8FAFC;border-radius:10px;box-shadow:0 24px 70px rgba(2,8,20,.45);overflow:hidden;border:1px solid #0B1220}.wp-head{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#0B1220;color:#F1F5F9;border-bottom:2px solid #38BDF8}.wp-head h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px}.wp-logo{display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1px solid #E2E8F0;border-radius:7px;padding:5px 9px}.wp-who{font-size:12.5px;color:#94A3B8;margin-top:3px}.wp-hbtn{height:34px;display:inline-flex;align-items:center;background:#1E293B;color:#CBD5E1;border:1px solid #334155;border-radius:5px;padding:0 12px;cursor:pointer;font-size:13.5px;margin-left:6px}.wp-hbtn:hover{background:#334155;color:#fff}.wp-hbtn.on{background:#38BDF8;color:#04121F;font-weight:800;border-color:#38BDF8}.wp-ico{width:34px;padding:0;justify-content:center;font-weight:700}#__wp.wp-max{padding:0;overflow:hidden}#__wp.wp-max .wp-card{width:100vw;max-width:100vw;height:100vh;border-radius:0;margin:0;box-shadow:none;border:none;overflow:hidden;display:flex;flex-direction:column}#__wp.wp-max .wp-head{flex:none}#__wp.wp-max .wp-body{padding:14px 30px;flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}#__wp.wp-max #__wpTabs{flex:none}#__wp.wp-max #__wpView{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column}#__wp.wp-max #__wpView .wp-scroll{flex:1;min-height:0;max-height:none;border:1px solid #E2E8F0}.wp-launch{position:fixed;right:22px;bottom:22px;width:56px;height:56px;border-radius:14px;background:#0B1220;color:#38BDF8;font-size:24px;border:1px solid #334155;cursor:grab;box-shadow:0 10px 26px rgba(2,8,20,.5);z-index:2147483647;display:flex;align-items:center;justify-content:center;user-select:none}.wp-launch:active{cursor:grabbing}.wp-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;background:#EF4444;color:#fff;font-size:12px;font-weight:700;line-height:20px;text-align:center;border-radius:10px;border:2px solid #0B1220}.wp-launch:hover{transform:scale(1.06)}.wp-body{padding:16px 20px}.wp-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}.wp-tab{height:38px;display:inline-flex;align-items:center;padding:0 12px;cursor:pointer;border:1px solid #E2E8F0;border-radius:5px;background:#fff;color:#475569;font-weight:700;font-size:14.5px}.wp-tab:hover{background:#F1F5F9}.wp-tab.on{background:#0B1220;color:#fff;border-color:#0B1220}.wp-inp{height:37px;padding:0 11px;border:1px solid #CBD5E1;border-radius:6px;font-size:14.5px;outline:none;background:#fff;color:#17222E}.wp-inp:focus{border-color:#38BDF8;box-shadow:0 0 0 3px rgba(56,189,248,.25)}select.wp-inp{height:37px;cursor:pointer;padding-right:28px}textarea.wp-inp{height:auto;min-height:96px;padding:8px 10px;line-height:1.5}input.wp-inp[type=date]{cursor:pointer;min-width:160px;height:37px;font-size:14.5px;font-weight:500;padding:0 10px;color:#0F172A}input.wp-inp[type=date]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.6;width:17px;height:17px}.wp-btn{height:37px;display:inline-flex;align-items:center;cursor:pointer;border-radius:6px;font-weight:700;font-size:14px;padding:0 15px;border:1px solid transparent}.wp-btn.pri{background:#0B1220;color:#fff}.wp-btn.pri:hover{background:#1E293B}.wp-btn.ok{background:#16A34A;color:#fff}.wp-btn.ok:hover{background:#15803D}.wp-btn.dg{background:#EF4444;color:#fff}.wp-btn.dg:hover{background:#DC2626}.wp-btn.gh{background:#fff;color:#334155;border-color:#CBD5E1}.wp-btn.gh:hover{background:#F1F5F9}.wp-tbl{border-collapse:collapse;width:100%;font-size:14px}.wp-tbl th{position:sticky;top:0;background:#0F172A;color:#CBD5E1;text-align:left;padding:9px 10px;border-bottom:1px solid #0B1220;font-weight:700;font-size:12.5px}.wp-tbl td{padding:9px 10px;border-bottom:1px solid #E2E8F0;color:#1E293B;vertical-align:top;background:#fff}.wp-tbl tbody tr:hover td{background:#F1F5F9}.wp-act{height:29px;display:inline-flex;align-items:center;cursor:pointer;border:1px solid #0B1220;color:#0B1220;background:#fff;border-radius:6px;font-size:12.5px;padding:0 10px;margin:2px;font-weight:600}.wp-act:hover{background:#0B1220;color:#fff}.wp-dd{position:relative;display:inline-block}.wp-ddbtn{height:37px;display:inline-flex;align-items:center;cursor:pointer;border:1px solid #0B1220;color:#0B1220;background:#fff;border-radius:6px;font-size:13.5px;padding:0 12px;font-weight:700}.wp-ddbtn:hover{background:#0B1220;color:#fff}.wp-ddmenu{display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #E2E8F0;border-radius:8px;box-shadow:0 14px 34px rgba(2,8,20,.18);z-index:20;min-width:160px;overflow:hidden}.wp-dd.on .wp-ddmenu{display:block}.wp-ddi{display:block;width:100%;text-align:left;cursor:pointer;border:none;background:none;padding:10px 15px;font-size:14px;color:#1E293B}.wp-ddi:hover{background:#F1F5F9;color:#0B1220;font-weight:600}.wp-scroll{max-height:64vh;overflow:auto;border:1px solid #E2E8F0;border-radius:8px}.wp-form{border:1px solid #E2E8F0;border-radius:8px;padding:18px;margin-top:12px;background:#fff}.wp-meta{background:#F1F5F9;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;margin:10px 0;font-size:13px;line-height:1.8;color:#334155}.wp-fld{display:flex;align-items:center;gap:10px;margin:11px 0}.wp-fld>span{width:200px;color:#475569;font-size:14px;flex:none;font-weight:600}.wp-fld .wp-inp,.wp-fld select{flex:1;min-width:0;height:41px}.wp-pill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:5px;font-size:12px;font-weight:800;font-family:ui-monospace,Menlo,monospace}.wp-day{height:36px;cursor:pointer;border:1px solid #CBD5E1;background:#fff;border-radius:6px;padding:0 12px;margin:2px;font-size:13.5px}.wp-day.on{background:#0B1220;color:#fff;border-color:#0B1220}.wp-log{font-size:12.5px;max-height:52vh;overflow:auto;border:1px solid #E2E8F0;border-radius:8px;padding:6px 12px;margin-top:8px}.wp-log>div{padding:4px 0;border-bottom:1px solid #F1F5F9}';
+  st.textContent = '#__wp *{box-sizing:border-box;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif}#__wp{position:fixed;inset:0;background:rgba(4,12,20,.62);z-index:2147483647;overflow:auto;padding:24px 16px}.wp-card{width:min(1480px,98vw);margin:0 auto;background:#F8FAFC;border-radius:10px;box-shadow:0 24px 70px rgba(2,8,20,.45);overflow:hidden;border:1px solid #0B1220}.wp-head{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#0B1220;color:#F1F5F9;border-bottom:2px solid #38BDF8}.wp-head h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px}.wp-logo{display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1px solid #E2E8F0;border-radius:7px;padding:5px 9px}.wp-who{font-size:12.5px;color:#94A3B8;margin-top:3px}.wp-hbtn{height:34px;display:inline-flex;align-items:center;background:#1E293B;color:#CBD5E1;border:1px solid #334155;border-radius:5px;padding:0 12px;cursor:pointer;font-size:13.5px;margin-left:6px}.wp-hbtn:hover{background:#334155;color:#fff}.wp-hbtn.on{background:#38BDF8;color:#04121F;font-weight:800;border-color:#38BDF8}.wp-ico{width:34px;padding:0;justify-content:center;font-weight:700}#__wp.wp-max{padding:0;overflow:hidden}#__wp.wp-max .wp-card{width:100vw;max-width:100vw;height:100vh;border-radius:0;margin:0;box-shadow:none;border:none;overflow:hidden;display:flex;flex-direction:column}#__wp.wp-max .wp-head{flex:none}#__wp.wp-max .wp-body{padding:14px 30px;flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}#__wp.wp-max #__wpTabs{flex:none}#__wp.wp-max #__wpView{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column}#__wp.wp-max #__wpView .wp-scroll{flex:1;min-height:0;max-height:none;border:1px solid #E2E8F0}.wp-launch{position:fixed;right:22px;bottom:22px;width:56px;height:56px;border-radius:14px;background:#0B1220;color:#38BDF8;font-size:24px;border:1px solid #334155;cursor:grab;box-shadow:0 10px 26px rgba(2,8,20,.5);z-index:2147483647;display:flex;align-items:center;justify-content:center;user-select:none}.wp-launch:active{cursor:grabbing}.wp-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;background:#EF4444;color:#fff;font-size:12px;font-weight:700;line-height:20px;text-align:center;border-radius:10px;border:2px solid #0B1220}.wp-launch:hover{transform:scale(1.06)}.wp-body{padding:16px 20px}.wp-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}.wp-tab{height:38px;display:inline-flex;align-items:center;padding:0 12px;cursor:pointer;border:1px solid #E2E8F0;border-radius:5px;background:#fff;color:#475569;font-weight:700;font-size:14.5px}.wp-tab:hover{background:#F1F5F9}.wp-tab.on{background:#0B1220;color:#fff;border-color:#0B1220}.wp-inp{height:37px;padding:0 11px;border:1px solid #CBD5E1;border-radius:6px;font-size:14.5px;outline:none;background:#fff;color:#17222E}.wp-inp:focus{border-color:#38BDF8;box-shadow:0 0 0 3px rgba(56,189,248,.25)}select.wp-inp{height:37px;cursor:pointer;padding-right:28px}textarea.wp-inp{height:auto;min-height:96px;padding:8px 10px;line-height:1.5}input.wp-inp[type=date]{cursor:pointer;min-width:160px;height:37px;font-size:14.5px;font-weight:500;padding:0 10px;color:#0F172A}input.wp-inp[type=date]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.6;width:17px;height:17px}.wp-btn{height:37px;display:inline-flex;align-items:center;cursor:pointer;border-radius:6px;font-weight:700;font-size:14px;padding:0 15px;border:1px solid transparent}.wp-btn.pri{background:#0B1220;color:#fff}.wp-btn.pri:hover{background:#1E293B}.wp-btn.ok{background:#16A34A;color:#fff}.wp-btn.ok:hover{background:#15803D}.wp-btn.dg{background:#EF4444;color:#fff}.wp-btn.dg:hover{background:#DC2626}.wp-btn.gh{background:#fff;color:#334155;border-color:#CBD5E1}.wp-btn.gh:hover{background:#F1F5F9}.wp-tbl{border-collapse:collapse;width:100%;font-size:14px}.wp-tbl th{position:sticky;top:0;z-index:2;background:#0F172A;color:#CBD5E1;text-align:left;padding:9px 10px;border-bottom:1px solid #0B1220;font-weight:700;font-size:12.5px}.wp-tbl.wp-cmp th{padding:6px 10px}.wp-tbl.wp-cmp td{padding:4px 10px;vertical-align:middle;white-space:nowrap}.wp-tbl td{padding:9px 10px;border-bottom:1px solid #E2E8F0;color:#1E293B;vertical-align:top;background:#fff}.wp-tbl tbody tr:hover td{background:#F1F5F9}.wp-act{height:29px;display:inline-flex;align-items:center;cursor:pointer;border:1px solid #0B1220;color:#0B1220;background:#fff;border-radius:6px;font-size:12.5px;padding:0 10px;margin:2px;font-weight:600}.wp-act:hover{background:#0B1220;color:#fff}.wp-dd{position:relative;display:inline-block}.wp-ddbtn{height:37px;display:inline-flex;align-items:center;cursor:pointer;border:1px solid #0B1220;color:#0B1220;background:#fff;border-radius:6px;font-size:13.5px;padding:0 12px;font-weight:700}.wp-ddbtn:hover{background:#0B1220;color:#fff}.wp-ddmenu{display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #E2E8F0;border-radius:8px;box-shadow:0 14px 34px rgba(2,8,20,.18);z-index:20;min-width:160px;overflow:hidden}.wp-dd.on .wp-ddmenu{display:block}.wp-ddi{display:block;width:100%;text-align:left;cursor:pointer;border:none;background:none;padding:10px 15px;font-size:14px;color:#1E293B}.wp-ddi:hover{background:#F1F5F9;color:#0B1220;font-weight:600}.wp-scroll{max-height:64vh;overflow:auto;border:1px solid #E2E8F0;border-radius:8px}.wp-form{border:1px solid #E2E8F0;border-radius:8px;padding:18px;margin-top:12px;background:#fff}.wp-meta{background:#F1F5F9;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;margin:10px 0;font-size:13px;line-height:1.8;color:#334155}.wp-fld{display:flex;align-items:center;gap:10px;margin:11px 0}.wp-fld>span{width:200px;color:#475569;font-size:14px;flex:none;font-weight:600}.wp-fld .wp-inp,.wp-fld select{flex:1;min-width:0;height:41px}.wp-pill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:5px;font-size:12px;font-weight:800;font-family:ui-monospace,Menlo,monospace}.wp-day{height:36px;cursor:pointer;border:1px solid #CBD5E1;background:#fff;border-radius:6px;padding:0 12px;margin:2px;font-size:13.5px}.wp-day.on{background:#0B1220;color:#fff;border-color:#0B1220}.wp-log{font-size:12.5px;max-height:52vh;overflow:auto;border:1px solid #E2E8F0;border-radius:8px;padding:6px 12px;margin-top:8px}.wp-log>div{padding:4px 0;border-bottom:1px solid #F1F5F9}';
   (document.head || document.documentElement).appendChild(st);
 
   /* 화면·확인창 표시용으로만 날짜 뒤에 요일을 붙인다.
@@ -11462,6 +11462,9 @@ document.getElementById('__wpSave').onclick = function() {
         var k = (c.textContent || '').replace(/\s+/g, '');
         if (WANT[k] && !o[WANT[k]] && cells[ix + 1]) { o[WANT[k]] = (cells[ix + 1].textContent || '').replace(/\s+/g, ' ').trim(); }
       });
+      var ddIn = doc.querySelector('input[name="deliveryDate"]');
+      var ddM = /\d{4}-\d{2}-\d{2}/.exec((ddIn && ddIn.getAttribute('value')) || o.date || '');
+      o.date = ddM ? ddM[0] : (o.date || '');
       var st = /serviceType\s*=\s*["']([^"']*)["']/.exec(html);
       o.serviceType = st ? st[1] : (o.service || '');
       var pe = doc.getElementById('order-item-price');
@@ -11472,7 +11475,7 @@ document.getElementById('__wpSave').onclick = function() {
       o.dc = doc.querySelector('input[name="dcAmountUpdate"]') ?
         { desc: iv('dcDescribeUpdate'), amount: ddNum(iv('dcAmountUpdate')), supply: ddNum(iv('dcSupplyPriceUpdate')), vat: ddNum(iv('dcVatUpdate')) } :
         { desc: iv('dcDescribe'), amount: ddNum(iv('dcAmount')), supply: ddNum(iv('dcSupplyPrice')), vat: ddNum(iv('dcVat')) };
-      o.bulkOk = /execOutstanding/.test(html);
+      o.bulkOk = !!doc.querySelector('.execOutstanding');   /* [미출 실행] 버튼 — 출고완료 + 권한 있는 계정에만 있다 */
       var net = {};
       [].forEach.call(doc.querySelectorAll('#orderItem tbody tr.item_record'), function(tr) {
         var td = tr.querySelectorAll('td');
@@ -11501,6 +11504,8 @@ document.getElementById('__wpSave').onclick = function() {
         net[key] = (net[key] || 0) + it.qty;
         o.items.push(it);
       });
+      /* 오피스는 출고완료 뒤에만 품목별 [미출] 버튼을 준다 — 승인대기·작업중 명세서엔 버튼이 아예 없다 (2026-11-24 실측) */
+      o.preShip = !o.items.some(function(it) { return it.canMinus; });
       var done = {};
       o.items.forEach(function(it) {
         var key = it.barcode || it.code || it.oiid;
@@ -11557,14 +11562,14 @@ document.getElementById('__wpSave').onclick = function() {
     if (!br) { return; }
     if (MODE !== 'requester') { alert('요청 제출은 요청자용 모드에서 하세요.'); return; }
     DD.br = br; DD.ord = null; DD.orders = []; DD.kind = 'item';
-    DD.to = ddAddDays(todayStr(), 3); DD.from = ddAddDays(todayStr(), -30);
+    DD.to = todayStr(); DD.from = ddAddDays(todayStr(), -30);
     var qr = document.getElementById('__wpQr');
     if (qr) { qr.style.display = 'none'; }
     var box = document.getElementById('__wpForm');
     box.innerHTML = '<div class="wp-form"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px;color:#B91C1C">' + DD_ACTION + '</b><button id="__wpDxBack" class="wp-btn gh" style="padding:6px 12px">← 목록</button></div>' +
-      '<div class="wp-meta"><b>거래처</b> ' + esc(br.name) + ' · 점포코드 ' + esc(br.hot) + (br.cold ? '/' + esc(br.cold) : '') + ' · 담당코스 ' + esc(br.course || '-') +
-      '<br><b>요청자</b> ' + esc(REQ.dept) + ' / ' + esc(REQ.name) + ' (' + esc(REQ.email) + ')</div>' +
-      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><b style="font-size:13.5px">차감할 배송일의 거래명세서를 고르세요</b>' +
+      '<div class="wp-meta" style="margin:8px 0;padding:8px 14px"><b>거래처</b> ' + esc(br.name) + ' · 점포코드 ' + esc([br.hot, br.cold].filter(function(c) { return /^\d+$/.test(String(c || '')); }).join('/') || '-') + ' · 담당코스 ' + esc(br.course || '-') +
+      ' · <b>요청자</b> ' + esc(REQ.dept) + ' / ' + esc(REQ.name) + ' (' + esc(REQ.email) + ')</div>' +
+      '<div id="__wpDxBar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><b style="font-size:13.5px">차감할 배송일의 거래명세서를 고르세요</b>' +
       '<span style="flex:1"></span><span style="font-size:12.5px;color:#64748B">배송일</span><input id="__wpDxF" type="date" class="wp-inp"><span style="color:#94A3B8">~</span><input id="__wpDxT" type="date" class="wp-inp">' +
       '<button id="__wpDxGo" class="wp-btn pri">조회</button></div>' +
       '<div id="__wpDxList"></div><div id="__wpDxOrd"></div>' +
@@ -11576,10 +11581,11 @@ document.getElementById('__wpSave').onclick = function() {
       DD.from = document.getElementById('__wpDxF').value;
       DD.to = document.getElementById('__wpDxT').value;
       var lb = document.getElementById('__wpDxList');
+      DD.ord = null;
       document.getElementById('__wpDxOrd').innerHTML = '';
       lb.innerHTML = '<div style="padding:10px;color:#64748B">거래명세서 조회 중…</div>';
       ddOrders(br.name, DD.from, DD.to).then(function(list) {
-        var cs = [br.hot, br.cold].filter(Boolean);
+        var cs = [br.hot, br.cold].filter(function(c) { return /^\d+$/.test(String(c || '')); });
         var mine = list.filter(function(o) { return o.codes.some(function(c) { return cs.indexOf(c) > -1; }) || nn(o.branch) === nn(br.name); });
         DD.orders = mine;
         ddRenderOrders();
@@ -11630,15 +11636,19 @@ document.getElementById('__wpSave').onclick = function() {
     var box = document.getElementById('__wpDxList');
     if (!box) { return; }
     var list = DD.orders;
+    var bar = document.getElementById('__wpDxBar');
+    if (bar) { bar.style.display = (DD.ord && list.length) ? 'none' : 'flex'; }
     if (!list.length) { box.innerHTML = '<div style="padding:10px;color:#64748B">해당 기간에 거래명세서가 없습니다. 거래처명·기간을 확인하세요.</div>'; return; }
-    var h = '<div class="wp-scroll" style="max-height:34vh;flex:none"><table class="wp-tbl"><thead><tr><th style="width:104px">배송일</th><th style="width:92px">명세서</th><th>거래처</th><th style="width:120px;text-align:right">금액</th><th style="width:78px">배송</th><th style="width:88px">주문상태</th><th style="width:78px">정산</th><th style="width:96px">미출요청</th><th style="width:70px"></th></tr></thead><tbody>';
+    if (DD.ord) { box.innerHTML = ''; return; }   /* 명세서를 고른 뒤엔 목록을 접는다 — 스크롤이 겹쳐 불편했다. 다시 고르기는 품목 카드의 [← 명세서 다시 고르기] */
+    var h = '<div class="wp-scroll" style="max-height:52vh;flex:none"><table class="wp-tbl wp-cmp"><thead><tr><th style="width:100px">배송일</th><th style="width:84px">명세서</th><th>거래처</th><th style="width:110px;text-align:right">금액</th><th style="width:60px">배송</th><th style="width:150px">주문상태</th><th style="width:64px">정산</th><th style="width:90px">미출요청</th><th style="width:64px"></th></tr></thead><tbody>';
     list.forEach(function(o) {
-      var on = DD.ord && DD.ord.id === o.id;
-      h += '<tr' + (on ? ' style="outline:2px solid #38BDF8"' : '') + '><td><b>' + esc(o.date) + '</b></td><td>' + esc(o.id) + '</td>' +
-        '<td>' + esc(o.branch) + '<div style="font-size:11.5px;color:#94A3B8">' + esc(o.company) + '</div></td>' +
-        '<td style="text-align:right;font-weight:700">' + ddWon(o.amount) + '</td><td>' + esc(o.method) + '</td><td>' + esc(o.status) + '</td>' +
+      var pre = /승인대기|작업중|출고대기/.test(o.status);
+      h += '<tr><td><b>' + esc(o.date) + '</b></td><td>' + esc(o.id) + '</td>' +
+        '<td style="white-space:normal">' + esc(o.branch) + ' <span style="font-size:11.5px;color:#94A3B8">' + esc(o.company) + '</span></td>' +
+        '<td style="text-align:right;font-weight:700">' + ddWon(o.amount) + '</td><td>' + esc(o.method) + '</td>' +
+        '<td' + (pre ? ' style="color:#94A3B8"' : '') + '>' + esc(o.status) + (pre ? ' <span class="wp-pill" style="background:#F1F5F9;color:#64748B;height:19px">출고 전</span>' : '') + '</td>' +
         '<td' + (/완료/.test(o.settle) ? ' style="color:#B91C1C;font-weight:700"' : '') + '>' + esc(o.settle) + '</td><td>' + esc(o.minus || '-') + '</td>' +
-        '<td><button class="wp-act __wpDxPick" data-id="' + esc(o.id) + '" style="white-space:nowrap">선택</button></td></tr>';
+        '<td><button class="wp-act __wpDxPick" data-id="' + esc(o.id) + '" style="white-space:nowrap;height:26px;margin:0">선택</button></td></tr>';
     });
     box.innerHTML = h + '</tbody></table></div>';
     [].forEach.call(box.querySelectorAll('.__wpDxPick'), function(b) {
@@ -11669,28 +11679,35 @@ document.getElementById('__wpSave').onclick = function() {
     if (buy24) { warn.push('구매24 주문 — 오피스 [서비스관리-주문 현황]에서 처리해야 합니다'); }
     if (o.dc.amount) { warn.push('이미 금액조정 ' + ddWon(o.dc.amount) + ' (' + (o.dc.desc || '-') + ') 이 있습니다'); }
     if (o.hasMinus) { warn.push('이미 미출된 품목이 있습니다 — 남은 수량만 차감할 수 있습니다'); }
-    var h = '<div class="wp-form" style="padding:14px 16px">' +
+    if (o.preShip) {
+      warn.push('출고 전 명세서(' + (o.status || '') + ') — 오피스는 출고완료 뒤에만 미출을 받습니다. 품목 미출·0원처리는 출고완료 후에 접수하세요 (지금은 금액 차감만 가능)');
+      if (DD.kind !== 'amount') { DD.kind = 'amount'; }
+    }
+    var h = '<div class="wp-form" style="padding:12px 16px;margin-top:0">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
       '<div><b style="font-size:15px">' + esc(o.branch || '') + '</b> <span style="color:#64748B;font-size:12.5px">' + esc(o.company || '') + '</span>' +
       '<div style="font-size:12.5px;color:#475569;margin-top:3px">명세서 <a href="/office/order/order/' + esc(o.id) + '" target="_blank" style="color:#1f4e78;font-weight:700">' + esc(o.id) + '</a>' +
       ' · 배송일 <b>' + esc(o.date || '') + '</b> · ' + esc(o.status || '') + ' · 정산 ' + esc(o.settle || '') + ' · ' + esc(o.serviceType || '') + '</div></div>' +
-      '<div style="text-align:right;font-size:12.5px;color:#475569">명세서 금액 <b style="font-size:15px;color:#0F172A">' + ddWon(o.supply + o.vat) + '</b>' +
+      '<div style="text-align:right;font-size:12.5px;color:#475569">' + (DD.orders.length ? '<button id="__wpDxRe" class="wp-act" style="margin:0 10px 0 0">← 명세서 다시 고르기</button>' : '') + '명세서 금액 <b style="font-size:15px;color:#0F172A">' + ddWon(o.supply + o.vat) + '</b>' +
       '<div>세금계산서용 공급가 ' + ddWon(o.supply) + ' / 세액 ' + ddWon(o.vat) + (o.hasTaxfree ? ' <b style="color:#B45309">· 면세 포함</b>' : '') + '</div></div></div>' +
       (warn.length ? '<div style="margin-top:8px;padding:7px 10px;border-radius:6px;background:#FEF3C7;color:#92400E;font-size:12.5px;line-height:1.6">⚠ ' + warn.map(esc).join('<br>⚠ ') + '</div>' : '') +
-      '<div style="display:flex;gap:6px;margin:12px 0 8px">' +
+      '<div style="display:flex;gap:6px;margin:10px 0 8px">' +
       ['item', 'amount', 'zero'].map(function(k) {
-        return '<button class="wp-day __wpDxKind' + (DD.kind === k ? ' on' : '') + '" data-k="' + k + '">' + ({ item: '품목 미출', amount: '금액 차감', zero: '0원처리 (전체)' })[k] + '</button>';
+        var off = o.preShip && k !== 'amount';
+        return '<button class="wp-day __wpDxKind' + (DD.kind === k ? ' on' : '') + '" data-k="' + k + '"' + (off ? ' disabled title="출고완료 후에 가능" style="opacity:.4;cursor:not-allowed"' : '') + '>' + ({ item: '품목 미출', amount: '금액 차감', zero: '0원처리 (전체)' })[k] + '</button>';
       }).join('') + '</div><div id="__wpDxBody"></div>' +
-      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #E2E8F0">' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid #E2E8F0">' +
       '<span style="font-weight:700;font-size:13.5px">사유</span><select id="__wpDxRs" class="wp-inp" style="width:150px">' +
       DD_REASONS.map(function(r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select>' +
       '<input id="__wpDxMemo" class="wp-inp" style="flex:1;min-width:260px" placeholder="비고 (예: 11/12 배송 누락으로 재배송 건)">' +
-      '<span style="font-size:13.5px">차감액 <b id="__wpDxSum" style="font-size:16px;color:#B91C1C">₩0</b></span>' +
+      '<span style="font-size:13.5px;white-space:nowrap">차감액 <b id="__wpDxSum" style="font-size:16px;color:#B91C1C">₩0</b> <span id="__wpDxAfter" style="font-size:12px;color:#64748B"></span></span>' +
       '<button id="__wpDxSub" class="wp-btn ok">차감 요청 접수</button></div></div>';
     box.innerHTML = h;
     [].forEach.call(box.querySelectorAll('.__wpDxKind'), function(b) {
-      b.onclick = function() { DD.kind = b.getAttribute('data-k'); ddRenderOrder(); };
+      b.onclick = function() { if (b.disabled) { return; } DD.kind = b.getAttribute('data-k'); ddRenderOrder(); };
     });
+    var re = document.getElementById('__wpDxRe');
+    if (re) { re.onclick = function() { DD.ord = null; box.innerHTML = ''; ddRenderOrders(); }; }
     ddRenderBody();
     document.getElementById('__wpDxSub').onclick = ddSubmit;
   }
@@ -11700,17 +11717,19 @@ document.getElementById('__wpSave').onclick = function() {
     if (!o || !b) { return; }
     var live = o.items.filter(function(it) { return !it.unreleased; });
     if (DD.kind === 'item') {
-      var h = '<div class="wp-scroll" style="max-height:40vh;flex:none"><table class="wp-tbl"><thead><tr><th style="width:34px"><input type="checkbox" id="__wpDxAll"></th><th>상품</th><th style="width:84px">출고기준</th><th style="width:60px;text-align:right">주문</th><th style="width:64px;text-align:right">기미출</th><th style="width:60px;text-align:right">남음</th><th style="width:96px">차감수량</th><th style="width:110px;text-align:right">차감액</th></tr></thead><tbody>';
+      var h = '<div class="wp-scroll" style="max-height:calc(100vh - 520px);min-height:190px;flex:none"><table class="wp-tbl wp-cmp"><thead><tr><th style="width:34px"><input type="checkbox" id="__wpDxAll"></th><th>상품</th><th style="width:76px">출고기준</th><th style="width:54px;text-align:right">주문</th><th style="width:58px;text-align:right">기미출</th><th style="width:54px;text-align:right">남음</th><th style="width:104px;text-align:right">금액</th><th style="width:92px">차감수량</th><th style="width:104px;text-align:right">차감액</th></tr></thead><tbody>';
       live.forEach(function(it, i) {
         var dis = !it.remain || !it.canMinus;
+        var line = it.supply + it.vat;
         h += '<tr' + (dis ? ' style="opacity:.5"' : '') + '><td><input type="checkbox" class="__wpDxChk" data-i="' + i + '"' + (dis ? ' disabled' : '') + '></td>' +
-          '<td><b>' + esc(it.name) + '</b>' + (it.taxfree ? ' <span class="wp-pill" style="background:#FEF3C7;color:#92400E">면세</span>' : '') +
-          '<div style="font-size:11.5px;color:#94A3B8">' + esc(it.code) + ' · ' + esc(it.barcode) + '</div></td>' +
+          '<td style="white-space:normal"><b>' + esc(it.name) + '</b>' + (it.taxfree ? ' <span class="wp-pill" style="background:#FEF3C7;color:#92400E;height:19px">면세</span>' : '') +
+          ' <span style="font-size:11px;color:#94A3B8">' + esc(it.code) + ' · ' + esc(it.barcode) + '</span></td>' +
           '<td>' + esc(it.crit) + '</td><td style="text-align:right">' + it.qty + '</td>' +
           '<td style="text-align:right;color:' + (it.minused ? '#B91C1C' : '#CBD5E1') + '">' + (it.minused || 0) + '</td>' +
           '<td style="text-align:right;font-weight:700">' + it.remain + '</td>' +
-          '<td><input type="number" class="wp-inp __wpDxQ" data-i="' + i + '" min="1" max="' + it.remain + '" value="' + it.remain + '" style="width:80px;height:32px"' + (dis ? ' disabled' : '') + '></td>' +
-          '<td style="text-align:right" class="__wpDxAmt" data-i="' + i + '">-</td></tr>';
+          '<td style="text-align:right" title="단가 ' + ddWon(it.qty ? line / it.qty : 0) + '">' + ddWon(line) + '</td>' +
+          '<td><input type="number" class="wp-inp __wpDxQ" data-i="' + i + '" min="1" max="' + it.remain + '" value="' + it.remain + '" style="width:76px;height:27px;font-size:13.5px"' + (dis ? ' disabled' : '') + '></td>' +
+          '<td style="text-align:right;font-weight:700;color:#B91C1C" class="__wpDxAmt" data-i="' + i + '">-</td></tr>';
       });
       b.innerHTML = h + '</tbody></table></div>';
       var all = document.getElementById('__wpDxAll');
@@ -11770,6 +11789,8 @@ document.getElementById('__wpSave').onclick = function() {
     var c = ddCollect();
     var el = document.getElementById('__wpDxSum');
     if (el) { el.textContent = ddWon(c.amt.amount); }
+    var af = document.getElementById('__wpDxAfter');
+    if (af) { var cur = DD.ord.supply + DD.ord.vat; af.textContent = '(명세서 ' + ddWon(cur) + ' → ' + ddWon(cur - c.amt.amount) + ')'; }
     var m = document.getElementById('__wpDxAMsg');
     if (m) {
       var bad = c.typed && c.typed !== c.amt.amount;
@@ -11789,6 +11810,7 @@ document.getElementById('__wpSave').onclick = function() {
       if (c.typed && c.typed !== c.amt.amount) { alert('공급가 + 세액이 차감 합계와 같아야 합니다.'); return; }
       if (c.amt.supply > o.supply || c.amt.vat > o.vat) { alert('차감 공급가·세액이 명세서 공급가(' + ddWon(o.supply) + ')·세액(' + ddWon(o.vat) + ')을 넘습니다.'); return; }
     }
+    if (o.preShip && DD.kind !== 'amount') { alert('출고 전 명세서입니다 — 품목 미출·0원처리는 출고완료 후에 접수하세요.'); return; }
     if (DD.kind === 'zero' && !c.amt.amount) { alert('남은 품목이 없습니다 — 이미 전부 미출된 명세서입니다.'); return; }
     var detail = ddDetail(o, DD.kind, c.picks, c.amt, reason, memo);
     var msg = '[상품 차감 접수]\n' + (o.branch || '') + ' · 배송일 ' + (o.date || '') + ' · 명세서 ' + o.id + '\n' +
@@ -11893,6 +11915,7 @@ document.getElementById('__wpSave').onclick = function() {
     return ddLoadOrder(d.order).then(function(o) {
       if (/구매24/.test(o.serviceType || '')) { throw new Error('구매24 주문 — 오피스 [서비스관리-주문 현황]에서 처리해야 합니다'); }
       if (/주문취소/.test(o.status || '')) { throw new Error('주문취소된 명세서입니다'); }
+      if (o.preShip && d.kind !== 'amount') { throw new Error('출고 전 명세서(' + (o.status || '') + ') — 오피스는 출고완료 뒤에만 미출을 받습니다. 출고완료 후 다시 승인하세요'); }
       var steps = [], skip = [];
       var byId = {};
       o.items.forEach(function(x) { byId[x.oiid] = x; });
