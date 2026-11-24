@@ -13,7 +13,39 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1153';
+  var PANEL_BUILD = '20261124-1206';
+  /* 이 페이지에서 더 새 빌드를 이미 받아둔 적이 있으면, 낡은 캐시본이 다시 떠도 바로 그걸로 넘긴다 */
+  try {
+    if (window.__wpNewB && window.__wpNewT && window.__wpNewB > PANEL_BUILD) { (0, eval)(window.__wpNewT); return; }
+  } catch (_nb) {}
+  /* 죽은 캐시 정리 — 안 쓰는 탭(배송통계·기사통계·대시보드) 캐시가 오피스 저장공간(약 5MB)을 꽉 채워서
+     패널 새 버전이 저장되지 못했고, 그래서 낡은 캐시본이 계속 먼저 떴다 (큐레이션 버튼이 떴다 안 떴다 한 원인, 2026-11-24 실측: __wpStats3 혼자 2MB). */
+  try {
+    Object.keys(localStorage).forEach(function (k) {
+      if (/^__wpStats[0-9]*$/.test(k) || /^__wpDash[0-9]*:/.test(k)) { localStorage.removeItem(k); }
+    });
+  } catch (_pr) {}
+  /* 저장된 패널이 지금 도는 빌드보다 낡았으면(또는 없으면) 최신본으로 갈아 끼운다. 저장이 안 되면 낡은 본을 지운다 — 낡은 게 먼저 뜨느니 매번 새로 받는 게 낫다 */
+  try {
+    if (window.__wpCacheSync !== PANEL_BUILD) {
+      window.__wpCacheSync = PANEL_BUILD;
+      setTimeout(function () {
+        var RX = /PANEL_BUILD\s*=\s*'([0-9]{8}-[0-9]{4})'/;
+        var c = '';
+        try { c = localStorage.getItem('__wpPanelV2') || ''; } catch (_c) {}
+        var cm = RX.exec(c);
+        if (cm && cm[1] >= PANEL_BUILD) { return; }
+        fetch('https://wefun-boot.kg-yim.workers.dev/panel.js?v=' + Date.now(), { cache: 'no-store' }).then(function (r) {
+          if (!r.ok) { throw 0; }
+          return r.text();
+        }).then(function (t) {
+          var tm = RX.exec(t || '');
+          if (!t || t.charAt(0) === '<' || t.indexOf('wefunPanel') < 0 || !tm || tm[1] < PANEL_BUILD) { return; }
+          try { localStorage.setItem('__wpPanelV2', t); } catch (_q) { try { localStorage.removeItem('__wpPanelV2'); } catch (_r) {} }
+        }).catch(function () {});
+      }, 2500);
+    }
+  } catch (_cs) {}
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -31,7 +63,8 @@
             var m = /PANEL_BUILD\s*=\s*'([0-9]{8}-[0-9]{4})'/.exec(t);
             if (!m || m[1] <= PANEL_BUILD) { return; }       /* 같거나 더 오래된 빌드는 무시 */
             try { new Function(t); } catch (_s) { return; }   /* 문법 깨진 코드는 버린다 */
-            try { localStorage.setItem('__wpPanelV2', t); } catch (_l) {}
+            try { localStorage.setItem('__wpPanelV2', t); } catch (_l) { try { localStorage.removeItem('__wpPanelV2'); } catch (_l2) {} }
+            window.__wpNewT = t; window.__wpNewB = m[1];
             var fm = document.getElementById('__wpForm');
             if (fm && fm.innerHTML) { return; }               /* 뭔가 작성 중이면 건드리지 않는다 */
             (0, eval)(t);
@@ -11447,6 +11480,19 @@ document.getElementById('__wpSave').onclick = function() {
     });
   }
 
+  /* 조회 기간을 최근부터 3일 · 4일 · 이후 7일씩으로 쪼갠다 */
+  function ddChunks(from, to) {
+    var out = [], end = to, step = [3, 4];
+    while (end >= from && out.length < 40) {
+      var n = step.length ? step.shift() : 7;
+      var st = ddAddDays(end, -(n - 1));
+      if (st < from) { st = from; }
+      out.push([st, end]);
+      end = ddAddDays(st, -1);
+    }
+    return out;
+  }
+
   /* 거래명세서 상세 — 품목·남은 수량·기존 금액조정까지 */
   function ddLoadOrder(id) {
     return fetch('/office/order/order/' + id, { cache: 'no-store' }).then(function(r) {
@@ -11577,19 +11623,67 @@ document.getElementById('__wpSave').onclick = function() {
     document.getElementById('__wpDxBack').onclick = function() { box.innerHTML = ''; if (qr) { qr.style.display = 'block'; } };
     document.getElementById('__wpDxF').value = DD.from;
     document.getElementById('__wpDxT').value = DD.to;
+    /* 오피스 거래명세 검색은 기간에 비례해 느리다(실측: 1일 0.5초 · 7일 3초 · 30일 8~12초, 동시에 던져도 서버가 줄 세워 처리).
+       → 최근 3일부터 받아 바로 보여주고, 이전 날짜는 뒤에서 이어 붙인다. 명세서를 고르면 이어받기를 멈춘다(상세 조회가 뒤로 밀리지 않게). */
+    /* 빠른 길: 거래처의 배송일정 페이지(orderScheduleList)에 배송일별 명세서 번호·주문상태가 같이 들어 있다 — 0.1초 (거래명세 검색은 8~12초).
+       일정에 안 걸린 명세서(수기 주문 등)는 여기 안 나오므로, 목록 아래 [거래명세 전체 검색]으로 느린 검색도 돌릴 수 있게 둔다. */
     function go() {
       DD.from = document.getElementById('__wpDxF').value;
       DD.to = document.getElementById('__wpDxT').value;
-      var lb = document.getElementById('__wpDxList');
       DD.ord = null;
       document.getElementById('__wpDxOrd').innerHTML = '';
-      lb.innerHTML = '<div style="padding:10px;color:#64748B">거래명세서 조회 중…</div>';
-      ddOrders(br.name, DD.from, DD.to).then(function(list) {
-        var cs = [br.hot, br.cold].filter(function(c) { return /^\d+$/.test(String(c || '')); });
-        var mine = list.filter(function(o) { return o.codes.some(function(c) { return cs.indexOf(c) > -1; }) || nn(o.branch) === nn(br.name); });
-        DD.orders = mine;
+      var seq = DD.seq = (DD.seq || 0) + 1;
+      DD.orders = []; DD.left = 1; DD.paused = false; DD.waiting = false; DD.upto = ''; DD.fast = true; DD.resume = null; DD.slow = goSlow;
+      ddRenderOrders();
+      resolveSid(br.id, br.name).then(function(ids) {
+        if (!ids || !ids.length) { throw new Error('nosid'); }
+        return Promise.all(ids.slice(0, 4).map(function(sid) { return getScheduleEvents(sid).catch(function() { return []; }); }));
+      }).then(function(lists) {
+        if (seq !== DD.seq) { return; }
+        var seen = {}, out = [];
+        lists.forEach(function(l) {
+          (l || []).forEach(function(e) {
+            if (!e.orderId || seen[e.orderId] || e.deliveryDate < DD.from || e.deliveryDate > DD.to) { return; }
+            seen[e.orderId] = 1;
+            out.push({ id: e.orderId, date: e.deliveryDate, status: e.orderStatus || '', branch: br.name, company: '', method: br.method || '', codes: [] });
+          });
+        });
+        if (!out.length) { goSlow(); return; }
+        out.sort(function(a, b) { return String(b.date).localeCompare(String(a.date)) || (b.id - a.id); });
+        DD.orders = out; DD.left = 0;
         ddRenderOrders();
-      }).catch(function(e) { lb.innerHTML = '<div style="color:#b00;padding:10px">' + esc((e && e.message) || e) + '</div>'; });
+      }).catch(function() { if (seq === DD.seq) { goSlow(); } });
+    }
+    function goSlow() {
+      DD.ord = null;
+      document.getElementById('__wpDxOrd').innerHTML = '';
+      DD.fast = false;
+      var seq = DD.seq = (DD.seq || 0) + 1;
+      var chunks = ddChunks(DD.from, DD.to), i = 0;
+      var cs = [br.hot, br.cold].filter(function(c) { return /^\d+$/.test(String(c || '')); });
+      DD.orders = []; DD.left = chunks.length; DD.paused = false; DD.waiting = false; DD.upto = '';
+      ddRenderOrders();
+      function next() {
+        if (seq !== DD.seq) { return; }
+        if (i >= chunks.length) { DD.left = 0; ddRenderOrders(); return; }
+        if (DD.paused) { DD.waiting = true; return; }
+        var c = chunks[i++];
+        ddOrders(br.name, c[0], c[1]).then(function(list) {
+          if (seq !== DD.seq) { return; }
+          var mine = list.filter(function(o) { return o.codes.some(function(x) { return cs.indexOf(x) > -1; }) || nn(o.branch) === nn(br.name); });
+          DD.orders = DD.orders.concat(mine);
+          DD.left = chunks.length - i; DD.upto = c[0];
+          ddRenderOrders();
+          next();
+        }).catch(function(e) {
+          if (seq !== DD.seq) { return; }
+          DD.left = 0;
+          var lb = document.getElementById('__wpDxList');
+          if (lb) { lb.innerHTML = '<div style="color:#b00;padding:10px">' + esc((e && e.message) || e) + '</div>'; }
+        });
+      }
+      DD.resume = function() { DD.paused = false; if (DD.waiting) { DD.waiting = false; next(); } };
+      next();
     }
     document.getElementById('__wpDxGo').onclick = go;
     go();
@@ -11637,10 +11731,25 @@ document.getElementById('__wpSave').onclick = function() {
     if (!box) { return; }
     var list = DD.orders;
     var bar = document.getElementById('__wpDxBar');
-    if (bar) { bar.style.display = (DD.ord && list.length) ? 'none' : 'flex'; }
-    if (!list.length) { box.innerHTML = '<div style="padding:10px;color:#64748B">해당 기간에 거래명세서가 없습니다. 거래처명·기간을 확인하세요.</div>'; return; }
-    if (DD.ord) { box.innerHTML = ''; return; }   /* 명세서를 고른 뒤엔 목록을 접는다 — 스크롤이 겹쳐 불편했다. 다시 고르기는 품목 카드의 [← 명세서 다시 고르기] */
-    var h = '<div class="wp-scroll" style="max-height:52vh;flex:none"><table class="wp-tbl wp-cmp"><thead><tr><th style="width:100px">배송일</th><th style="width:84px">명세서</th><th>거래처</th><th style="width:110px;text-align:right">금액</th><th style="width:60px">배송</th><th style="width:150px">주문상태</th><th style="width:64px">정산</th><th style="width:90px">미출요청</th><th style="width:64px"></th></tr></thead><tbody>';
+    if (bar) { bar.style.display = DD.ord ? 'none' : 'flex'; }
+    if (DD.ord) { box.innerHTML = ''; return; }
+    var more = DD.left > 0 ? '<div style="padding:6px 10px;font-size:12.5px;color:#0369A1">⏳ ' + (DD.fast ? '배송일정 불러오는 중…' : ((DD.upto ? esc(DD.upto) + ' 이후까지 표시 · ' : '') + '이전 날짜 조회 중… (최근 날짜부터 불러옵니다)')) + '</div>' : '';
+    if (!list.length) { box.innerHTML = more || '<div style="padding:10px;color:#64748B">해당 기간에 거래명세서가 없습니다. 거래처명·기간을 확인하세요.</div>'; return; }
+    /* 명세서를 고른 뒤엔 목록을 접는다(위에서 처리) — 스크롤이 겹쳐 불편했다. 다시 고르기는 품목 카드의 [← 명세서 다시 고르기] */
+    var h;
+    if (DD.fast) {
+      /* 배송일정 기준 목록 — 금액·정산은 명세서를 고르면 나온다 */
+      h = '<div class="wp-scroll" style="max-height:52vh;flex:none"><table class="wp-tbl wp-cmp"><thead><tr><th style="width:150px">배송일</th><th style="width:110px">명세서</th><th>주문상태</th><th style="width:64px"></th></tr></thead><tbody>';
+      list.forEach(function(o) {
+        var pre = /승인대기|작업중|출고대기/.test(o.status);
+        var dw = '일월화수목금토'.charAt(new Date(o.date + 'T00:00:00').getDay());
+        h += '<tr><td><b>' + esc(o.date) + '</b> <span style="color:#94A3B8">(' + dw + ')</span></td><td>' + esc(o.id) + '</td>' +
+          '<td' + (pre ? ' style="color:#94A3B8"' : '') + '>' + esc(o.status) + (pre ? ' <span class="wp-pill" style="background:#F1F5F9;color:#64748B;height:19px">출고 전</span>' : '') + '</td>' +
+          '<td><button class="wp-act __wpDxPick" data-id="' + esc(o.id) + '" style="white-space:nowrap;height:26px;margin:0">선택</button></td></tr>';
+      });
+      more += '<div style="padding:6px 2px 0;font-size:12px;color:#64748B">배송일정 기준 ' + list.length + '건 · 찾는 명세서가 없으면 <button id="__wpDxSlow" class="wp-act" style="height:24px;margin:0 2px">거래명세 전체 검색</button> (10초쯤 걸림)</div>';
+    } else {
+    h = '<div class="wp-scroll" style="max-height:52vh;flex:none"><table class="wp-tbl wp-cmp"><thead><tr><th style="width:100px">배송일</th><th style="width:84px">명세서</th><th>거래처</th><th style="width:110px;text-align:right">금액</th><th style="width:60px">배송</th><th style="width:150px">주문상태</th><th style="width:64px">정산</th><th style="width:90px">미출요청</th><th style="width:64px"></th></tr></thead><tbody>';
     list.forEach(function(o) {
       var pre = /승인대기|작업중|출고대기/.test(o.status);
       h += '<tr><td><b>' + esc(o.date) + '</b></td><td>' + esc(o.id) + '</td>' +
@@ -11650,7 +11759,10 @@ document.getElementById('__wpSave').onclick = function() {
         '<td' + (/완료/.test(o.settle) ? ' style="color:#B91C1C;font-weight:700"' : '') + '>' + esc(o.settle) + '</td><td>' + esc(o.minus || '-') + '</td>' +
         '<td><button class="wp-act __wpDxPick" data-id="' + esc(o.id) + '" style="white-space:nowrap;height:26px;margin:0">선택</button></td></tr>';
     });
-    box.innerHTML = h + '</tbody></table></div>';
+    }
+    box.innerHTML = h + '</tbody></table></div>' + more;
+    var sl = document.getElementById('__wpDxSlow');
+    if (sl) { sl.onclick = function() { if (DD.slow) { DD.slow(); } }; }
     [].forEach.call(box.querySelectorAll('.__wpDxPick'), function(b) {
       b.onclick = function() { ddOpen(b.getAttribute('data-id')); };
     });
@@ -11660,12 +11772,16 @@ document.getElementById('__wpSave').onclick = function() {
     var box = document.getElementById('__wpDxOrd');
     if (!box) { return; }
     box.innerHTML = '<div class="wp-form" style="color:#64748B">명세서 ' + esc(id) + ' 불러오는 중…</div>';
+    DD.paused = true;   /* 이전 날짜 이어받기는 잠시 멈춘다 */
     ddLoadOrder(id).then(function(o) {
       DD.ord = o;
       DD.kind = 'item';
-      if (DD.orders.length) { ddRenderOrders(); }
+      ddRenderOrders();
       ddRenderOrder();
-    }).catch(function(e) { box.innerHTML = '<div class="wp-form" style="color:#b00">' + esc((e && e.message) || e) + '</div>'; });
+    }).catch(function(e) {
+      box.innerHTML = '<div class="wp-form" style="color:#b00">' + esc((e && e.message) || e) + '</div>';
+      if (DD.resume) { DD.resume(); }
+    });
   }
 
   function ddRenderOrder() {
@@ -11707,7 +11823,7 @@ document.getElementById('__wpSave').onclick = function() {
       b.onclick = function() { if (b.disabled) { return; } DD.kind = b.getAttribute('data-k'); ddRenderOrder(); };
     });
     var re = document.getElementById('__wpDxRe');
-    if (re) { re.onclick = function() { DD.ord = null; box.innerHTML = ''; ddRenderOrders(); }; }
+    if (re) { re.onclick = function() { DD.ord = null; box.innerHTML = ''; ddRenderOrders(); if (DD.resume) { DD.resume(); } }; }
     ddRenderBody();
     document.getElementById('__wpDxSub').onclick = ddSubmit;
   }
@@ -11827,6 +11943,7 @@ document.getElementById('__wpSave').onclick = function() {
       DD.ord = null;
       document.getElementById('__wpDxOrd').innerHTML = '<div class="wp-form" style="color:#0a7d47;font-weight:700">✓ 요청됐습니다 — 큐레이션팀이 승인하면 오피스 명세서에 반영됩니다. 처리 결과는 [내 요청 상태]에서 볼 수 있습니다.</div>';
       ddRenderOrders();
+      if (DD.resume) { DD.resume(); }
       revBadges(true);
     }).catch(function(e) {
       btn.disabled = false; btn.textContent = '차감 요청 접수';
