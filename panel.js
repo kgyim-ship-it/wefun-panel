@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261118-1659';
+  var PANEL_BUILD = '20261124-1134';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -337,6 +337,9 @@
   })();
   var ADMINS = ['kg_yim@wefun.io', 'sm_jung@wefun.io']; /* 관리자용을 볼 수 있는 이메일(물류팀). 쉼표로 추가 */ /* ============================================= */
   var IS_ADMIN = false;
+  /* 큐레이션팀 — [큐레이션] 모드(상품 차감 접수·처리). 심윤보m 명단 2026-11-24 + 임광규 */
+  var CURATION = ['gu_bae@wefun.io', 'sj_lee@wefun.io', 'hj_gu@wefun.io', 'dhkim@wefun.io', 'bm_kim@wefun.io', 'ybsim@wefun.io', 'kg_yim@wefun.io'];
+  var IS_CUR = false;
   var VERSION = '26.09.16';
   var CYCLES = ['매일', '매주1회', '매주2회', '매주3회', '매주4회', '격주', '매월1회_첫째주', '매월1회_둘째주', '매월1회_셋째주', '매월1회_넷째주', '매월2회_첫째_셋째주', '매월2회_둘째_넷째주', '매월3회_첫째_둘째_셋째주', '매월3회_첫째_둘째_넷째주', '매월3회_첫째_셋째_넷째주', '매월3회_둘째_셋째_넷째주', '매월4회_첫째_둘째_셋째_넷째주', '수기일정생성', '계획일정없음'];
 
@@ -861,7 +864,7 @@
   var LOGO = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 197 37" width="116" height="22" style="display:block"><path d="M14.7 34.8C12.2 32.3 1.3 13.4 1.0 11.0C0.3 6.1 3.5 2.0 8.0 2.0C11.4 2.0 13.2 3.5 16.8 9.4L19.8 14.3L21.4 11.3C25.5 3.2 30.1 0.4 35.0 3.0C37.7 4.4 50.0 26.4 50.0 29.8C50.0 35.3 43.0 38.9 38.6 35.7C37.7 35.0 35.6 32.3 34.1 29.6L31.2 24.8L28.5 29.4C24.0 37.2 19.0 39.1 14.7 34.8ZM116.6 35.0C110.3 33.0 107.1 26.7 109.3 20.3C110.9 15.4 114.8 12.7 120.1 12.8C125.7 12.9 129.2 16.2 129.4 21.6L129.5 25.5L122.2 25.8C118.3 26.0 115.0 26.5 115.0 27.0C115.0 29.3 120.1 31.3 124.4 30.7C128.2 30.2 128.9 30.3 129.3 32.0C129.6 33.2 129.2 34.1 128.1 34.4C124.2 35.6 119.3 35.8 116.6 35.0ZM158.4 35.3C157.2 35.1 155.2 33.8 154.0 32.5C152.0 30.4 151.7 28.9 151.6 21.8L151.5 13.5L154.5 13.5L157.5 13.5L158.0 21.5C158.5 29.1 158.6 29.5 160.9 29.8C164.6 30.4 166.0 27.6 166.0 19.8L166.0 13.0L169.1 13.0L172.3 13.0L171.8 21.2C171.6 25.9 170.7 30.5 169.9 31.8C168.7 33.6 162.9 36.3 161.0 35.9C160.7 35.8 159.5 35.5 158.4 35.3ZM77.8 23.9L74.1 12.9L77.3 13.2C80.4 13.5 80.6 13.8 82.5 21.0L84.4 28.5L86.8 20.8C88.8 13.9 89.4 13.0 91.5 13.0C93.6 13.0 94.2 13.9 96.1 19.9C98.5 27.2 99.3 27.9 100.4 23.3C102.9 13.0 102.9 13.0 106.1 13.0C108.2 13.0 109.1 13.4 108.8 14.2C108.5 14.9 106.8 19.9 105.1 25.2C102.0 34.4 101.7 35.0 99.1 35.0C96.6 35.0 96.2 34.4 94.1 28.0C92.9 24.1 91.7 21.0 91.5 21.0C91.2 21.0 90.1 24.1 88.9 28.0C87.0 34.4 86.6 35.0 84.1 35.0C81.6 35.0 81.2 34.4 77.8 23.9ZM136.0 26.5C136.0 18.7 135.8 18.0 134.0 18.0C132.5 18.0 132.0 17.3 132.0 15.5C132.0 13.7 132.5 13.0 133.9 13.0C135.4 13.0 136.0 12.0 136.5 8.8C137.4 3.7 140.9 -0.0 144.9 0.0C149.5 0.0 150.8 0.8 150.2 3.5C149.9 5.4 149.3 5.9 147.6 5.5C144.7 4.8 143.1 6.1 142.4 9.8C141.8 12.9 141.9 13.0 144.9 13.0C147.5 13.0 148.0 13.4 148.0 15.5C148.0 17.6 147.5 18.0 145.0 18.0L142.0 18.0L142.0 26.5L142.0 35.0L139.0 35.0L136.0 35.0L136.0 26.5ZM176.0 24.0L176.0 13.0L179.0 13.0C181.1 13.0 182.0 13.5 182.0 14.7C182.0 16.1 182.2 16.1 184.0 14.5C186.8 12.0 191.6 12.2 194.3 14.9C196.2 16.7 196.6 18.4 196.8 26.0L197.2 35.0L194.1 35.0L191.0 35.0L191.0 27.7C191.0 19.9 190.1 18.0 186.3 18.0C183.3 18.0 182.0 21.3 182.0 29.1C182.0 35.0 182.0 35.0 179.0 35.0L176.0 35.0L176.0 24.0ZM124.0 20.6C124.0 16.6 117.7 16.0 115.2 19.8C113.8 22.0 113.8 22.0 118.9 22.0C122.6 22.0 124.0 21.6 124.0 20.6Z" fill="#17181A"/><circle cx="53.5" cy="8.5" r="7.5" fill="#FFE100"/></svg>';
   var ov = document.createElement('div');
   ov.id = '__wp';
-  ov.innerHTML = '<div class="wp-card">' + '<div class="wp-head"><div style="display:flex;align-items:center;gap:11px"><span class="wp-logo">' + LOGO + '</span><div><h2>물류 · 배송관리 <span style="font-size:10.5px;font-weight:600;color:#38BDF8">· 최대화(전체화면) 단독 사용 권장</span></h2><div class="wp-who" id="__wpWho">요청자 확인 중…</div></div></div>' + '<div style="text-align:right"><div><button class="wp-hbtn" id="__wpMreq">요청자용</button><button class="wp-hbtn" id="__wpMadm">관리자용</button>' + '<button class="wp-hbtn" id="__wpCfg">⚙️ 연결설정</button>' + '<button class="wp-hbtn wp-ico" id="__wpMin" title="최소화">—</button>' + '<button class="wp-hbtn wp-ico" id="__wpMax" title="최대화">▢</button>' + '<button class="wp-hbtn wp-ico" id="__wpX" title="닫기">✕</button></div>' + '</div></div>' + '<div class="wp-body"><div class="wp-tabs" id="__wpTabs"></div><div id="__wpView"></div></div></div>';
+  ov.innerHTML = '<div class="wp-card">' + '<div class="wp-head"><div style="display:flex;align-items:center;gap:11px"><span class="wp-logo">' + LOGO + '</span><div><h2>물류 · 배송관리 <span style="font-size:10.5px;font-weight:600;color:#38BDF8">· 최대화(전체화면) 단독 사용 권장</span></h2><div class="wp-who" id="__wpWho">요청자 확인 중…</div></div></div>' + '<div style="text-align:right"><div><button class="wp-hbtn" id="__wpMreq">요청자용</button><button class="wp-hbtn" id="__wpMadm">관리자용</button><button class="wp-hbtn" id="__wpMcur" style="display:none">큐레이션</button>' + '<button class="wp-hbtn" id="__wpCfg">⚙️ 연결설정</button>' + '<button class="wp-hbtn wp-ico" id="__wpMin" title="최소화">—</button>' + '<button class="wp-hbtn wp-ico" id="__wpMax" title="최대화">▢</button>' + '<button class="wp-hbtn wp-ico" id="__wpX" title="닫기">✕</button></div>' + '</div></div>' + '<div class="wp-body"><div class="wp-tabs" id="__wpTabs"></div><div id="__wpView"></div></div></div>';
   /* 배경(바깥) 클릭으로는 닫히지 않음 — 실수로 꺼짐 방지 */ /* 날짜칸 아무 곳이나 클릭/포커스하면 달력 바로 열림 */
   function popDate(e) {
     var t = e.target;
@@ -1159,6 +1162,9 @@
   document.getElementById('__wpMadm').onclick = function() {
     setMode('admin');
   };
+  document.getElementById('__wpMcur').onclick = function() {
+    setMode('curation');
+  };
   var VIEW = document.getElementById('__wpView');
 
   function applyAccess() {
@@ -1172,6 +1178,9 @@
     document.getElementById('__wpMadm').style.display = IS_ADMIN ? '' : 'none';
     document.getElementById('__wpCfg').style.display = IS_ADMIN ? '' : 'none';
     if (!IS_ADMIN && MODE === 'admin') setMode('requester');
+    IS_CUR = CURATION.indexOf(e) > -1;
+    document.getElementById('__wpMcur').style.display = IS_CUR ? '' : 'none';
+    if (!IS_CUR && MODE === 'curation') setMode('requester');
     /* 접속 기록 — 패널 열 때 1회만 D1에 남긴다 (누가 언제 열었는지, 관리자 '접속 이력'에서 조회).
        실패해도 무시 — 접속 로그 때문에 패널이 막히면 안 된다. */
     if (!window.__wpVisitSent) {
@@ -1251,7 +1260,7 @@
 
   var _tabsBuilt = false;
   function setMode(m) {
-    if (m === 'admin' && !IS_ADMIN) {
+    if ((m === 'admin' && !IS_ADMIN) || (m === 'curation' && !IS_CUR)) {
       m = 'requester';
     }
     var _changed = (MODE !== m) || !_tabsBuilt;
@@ -1259,6 +1268,7 @@
     localStorage.setItem('__wpMode', m);
     document.getElementById('__wpMreq').className = 'wp-hbtn' + (m === 'requester' ? ' on' : '');
     document.getElementById('__wpMadm').className = 'wp-hbtn' + (m === 'admin' ? ' on' : '');
+    document.getElementById('__wpMcur').className = 'wp-hbtn' + (m === 'curation' ? ' on' : '');
     if (_changed) { _tabsBuilt = true; buildTabs(); }
   }
   var TABS = {
@@ -1284,6 +1294,11 @@
       ['dcstat', '배송취소'],
       ['ticket', '차량고지서'],
       ['visits', '접속 이력']
+    ],
+    curation: [
+      ['dd_rev', '차감 처리'],
+      ['dd_new', '차감 접수'],
+      ['find', '거래처 조회']
     ]
   };
 
@@ -1312,15 +1327,17 @@
      예약 승인된 주기변경(반영일 대기)은 이미 처리한 건이라 뺀다. 2분마다 + 승인·반려 직후 갱신 */
   var REVB = { t: null, busy: false };
   function revBadges(soon) {
-    if (MODE !== 'admin' || !IS_ADMIN) return;
+    var CURM = MODE === 'curation' && IS_CUR;
+    if (!CURM && (MODE !== 'admin' || !IS_ADMIN)) return;
     if (soon) { clearTimeout(REVB.t); REVB.t = setTimeout(function() { revBadges(); }, 1500); return; }
     if (REVB.busy || !document.getElementById('__wpTabs')) return;
     REVB.busy = true;
     listReq({ status: '대기' }).then(function(items) {
-      var n = { review_deliv: 0, review_syn: 0, review_pick: 0 };
+      var n = { review_deliv: 0, review_syn: 0, review_pick: 0, dd_rev: 0 };
       (items || []).forEach(function(it) {
         if (!it || it.status !== '대기') return;
         try { if (bookedDate(it)) return; } catch (_b) {}
+        if (it.action === DD_ACTION) { n.dd_rev++; return; }
         if (REV_GROUPS.deliv.indexOf(it.action) > -1) n.review_deliv++;
         else if (REV_GROUPS.syn.indexOf(it.action) > -1) n.review_syn++;
         else if (REV_GROUPS.pick.indexOf(it.action) > -1) n.review_pick++;
@@ -1359,6 +1376,8 @@
     else if (t === 'visits') viewVisits();
     else if (t === 'voc') viewVoc();
     else if (t === 'newcode') viewNewCode();
+    else if (t === 'dd_new') viewDdNew();
+    else if (t === 'dd_rev') viewDdRev();
     else if (t === 'board_update') viewBoard('update');
     else if (t === 'board_feature') viewBoard('feature');
   } /* ---------- 거래처 조회 ---------- */
@@ -11371,6 +11390,595 @@ document.getElementById('__wpSave').onclick = function() {
       var ta = box.querySelector('.__wpVocFbT');
       (navigator.clipboard ? navigator.clipboard.writeText(ta.value) : Promise.reject()).then(function() { toast('✓ 복사됨', '#0a7d47'); }).catch(function() { ta.select(); try { document.execCommand('copy'); toast('✓ 복사됨', '#0a7d47'); } catch (e2) {} });
     };
+  }
+
+  /* ================= 상품 차감 (큐레이션팀) =================
+     [CX/상품] 차감요청 시트를 패널로 옮기는 프로토타입 (2026-11, 심윤보m 요청).
+     접수: 거래처 → 배송일별 거래명세서 → 품목·수량 체크(또는 금액/0원처리) → 요청.
+     처리: 큐레이션팀이 [승인]하는 순간 오피스 거래명세서에 바로 반영한다 — 배치(9시/16시) 안 기다림.
+       · 품목 미출  = 주문서 상세 품목별 [미출] 버튼과 같은 요청 (POST /office/order/order/minus-item)
+       · 금액 차감  = [금액조정] 버튼과 같은 요청 (POST /office/order/order/discount) — 기존 조정액에 더해서 넣는다
+       · 0원처리   = 미출된 게 하나도 없으면 [미출 실행 · 전체] (PUT /office/order/item/{id}),
+                     하나라도 있으면 남은 수량만 품목별 미출 → 중복 차감이 구조상 안 생긴다
+     미출하면 오피스는 원래 줄을 그대로 두고 같은 바코드로 수량 음수 줄(data-unreleased=true)을 추가한다.
+     그래서 '남은 수량' = 같은 바코드 줄 수량의 합.
+     오피스 작업은 승인 누르는 사람의 오피스 로그인으로 돈다 — [미출 실행]은 권한 있는 계정만 된다. */
+  var DD_ACTION = '상품차감';
+  var DD_REASONS = ['미출/누락', 'voc차감', '파손', '반품', '유통기한 경과', '품질이슈', '기타'];
+  var DD_KINDS = { item: '품목미출', amount: '금액차감', zero: '0원처리' };
+  var DD = { kw: '', from: '', to: '', orders: [], ord: null, kind: 'item', rev: '대기', rfrom: '', rto: '' };
+
+  function ddWon(v) { return '₩' + Math.round(Number(v || 0)).toLocaleString(); }
+  function ddNum(s) { var v = parseInt(String(s == null ? '' : s).replace(/[^0-9-]/g, ''), 10); return isNaN(v) ? 0 : v; }
+  function ddClean(s) { return String(s == null ? '' : s).replace(/[·|,:]/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function ddAddDays(ymd, n) { var d = new Date(ymd + 'T00:00:00'); d.setDate(d.getDate() + n); return ymdOf(d); }
+
+  /* 거래명세서 목록 — 오피스 판매 > 거래명세 검색 (배송일 기준) */
+  function ddOrders(kw, from, to) {
+    var u = '/office/order/order?searchYN=Y&size=200&page=1&deliveryDateBegin=' + from + '&deliveryDateEnd=' + to +
+      '&searchKeyword=' + encodeURIComponent(kw);
+    return fetch(u).then(function(r) { return r.text(); }).then(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var out = [];
+      [].forEach.call(doc.querySelectorAll('table.orderSearchTable tbody tr'), function(tr) {
+        var td = tr.querySelectorAll('td');
+        if (td.length < 16) { return; }
+        var id = td[1].textContent.replace(/[^0-9]/g, '');
+        if (!id) { return; }
+        var money = (td[4].textContent.match(/₩\s*[\d,]+/g) || []).map(ddNum);
+        var br = td[3].querySelector('a');
+        out.push({
+          id: id,
+          company: td[2].textContent.split('#')[0].replace(/\s+/g, ' ').trim(),
+          branch: ((br ? br.textContent : td[3].textContent) || '').split('#')[0].replace(/\s+/g, ' ').trim(),
+          amount: money[0] || 0, supply: money[1] || 0, vat: money[2] || 0,
+          method: td[10].textContent.replace(/\s+/g, ' ').trim(),
+          date: td[12].textContent.trim(),
+          status: td[14].textContent.replace(/\s+/g, ' ').trim(),
+          settle: td[15].textContent.replace(/\s+/g, ' ').trim(),
+          minus: (td[20] ? td[20].textContent.replace(/\s+/g, ' ').trim() : '')
+        });
+      });
+      out.sort(function(a, b) { return String(b.date).localeCompare(String(a.date)) || (b.id - a.id); });
+      return out;
+    });
+  }
+
+  /* 거래명세서 상세 — 품목·남은 수량·기존 금액조정까지 */
+  function ddLoadOrder(id) {
+    return fetch('/office/order/order/' + id, { cache: 'no-store' }).then(function(r) {
+      if (!r.ok) { throw new Error('오피스 명세서 ' + id + ' 열기 실패 (HTTP ' + r.status + ')'); }
+      return r.text();
+    }).then(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      if (!doc.getElementById('orderItem')) { throw new Error('명세서 ' + id + ' 품목표를 못 찾음 (로그인 만료 또는 권한 없음)'); }
+      var o = { id: String(id), items: [], hasMinus: false, hasTaxfree: false };
+      var cells = [].slice.call(doc.querySelectorAll('th,td'));
+      var WANT = { '기업': 'company', '거래처': 'branch', '서비스': 'service', '배송일': 'date', '주문상태': 'status', '정산상태': 'settle' };
+      cells.forEach(function(c, ix) {
+        var k = (c.textContent || '').replace(/\s+/g, '');
+        if (WANT[k] && !o[WANT[k]] && cells[ix + 1]) { o[WANT[k]] = (cells[ix + 1].textContent || '').replace(/\s+/g, ' ').trim(); }
+      });
+      var st = /serviceType\s*=\s*["']([^"']*)["']/.exec(html);
+      o.serviceType = st ? st[1] : (o.service || '');
+      var pe = doc.getElementById('order-item-price');
+      o.supply = pe ? ddNum(pe.getAttribute('data-supply_price')) : 0;
+      o.vat = pe ? ddNum(pe.getAttribute('data-vat')) : 0;
+      function iv(n) { var e = doc.querySelector('input[name="' + n + '"]'); return e ? (e.getAttribute('value') || '') : ''; }
+      /* 이미 금액조정이 있으면 오피스는 수정용 칸(…Update)에 기존 값을 채워 보여준다 — 그쪽을 먼저 본다 */
+      o.dc = doc.querySelector('input[name="dcAmountUpdate"]') ?
+        { desc: iv('dcDescribeUpdate'), amount: ddNum(iv('dcAmountUpdate')), supply: ddNum(iv('dcSupplyPriceUpdate')), vat: ddNum(iv('dcVatUpdate')) } :
+        { desc: iv('dcDescribe'), amount: ddNum(iv('dcAmount')), supply: ddNum(iv('dcSupplyPrice')), vat: ddNum(iv('dcVat')) };
+      o.bulkOk = /execOutstanding/.test(html);
+      var net = {};
+      [].forEach.call(doc.querySelectorAll('#orderItem tbody tr.item_record'), function(tr) {
+        var td = tr.querySelectorAll('td');
+        var q = tr.querySelector('input[name="quantity"]');
+        var sp = tr.querySelector('input[name="supplyPriceSum"]'), vt = tr.querySelector('input[name="vatSum"]');
+        var ip = tr.querySelector('input[name="itemPrice"]');
+        var mb = tr.querySelector('button[onclick*="setOrderItemMinusBtn"]');
+        var code = td[2] ? (td[2].textContent.trim().split(/\s+/)[0] || '') : '';
+        var it = {
+          oiid: tr.getAttribute('data-order-item-id') || '',
+          name: tr.getAttribute('data-name') || '',
+          barcode: tr.getAttribute('data-barcode') || '',
+          code: code,
+          unreleased: tr.getAttribute('data-unreleased') === 'true',
+          taxfree: tr.getAttribute('data-istaxfree') === 'true',
+          qty: q ? ddNum(q.getAttribute('value')) : 0,
+          supply: sp ? ddNum(sp.getAttribute('value')) : 0,
+          vat: vt ? ddNum(vt.getAttribute('value')) : 0,
+          price: ip ? ddNum(ip.getAttribute('value')) : 0,
+          crit: td.length ? td[td.length - 1].textContent.replace(/\s+/g, ' ').trim() : '',
+          canMinus: !!mb
+        };
+        if (it.unreleased) { o.hasMinus = true; }
+        if (it.taxfree && !it.unreleased) { o.hasTaxfree = true; }
+        var key = it.barcode || it.code || it.oiid;
+        net[key] = (net[key] || 0) + it.qty;
+        o.items.push(it);
+      });
+      var done = {};
+      o.items.forEach(function(it) {
+        var key = it.barcode || it.code || it.oiid;
+        if (it.unreleased) { it.remain = 0; return; }
+        /* 같은 바코드 원래 줄이 여러 개면 남은 수량은 첫 줄에 몰아준다 */
+        if (done[key]) { it.remain = 0; return; }
+        done[key] = 1;
+        it.remain = Math.max(0, net[key]);
+        it.minused = Math.max(0, it.qty - it.remain);
+      });
+      return o;
+    });
+  }
+
+  /* 품목 k개 차감액 — 품목 줄의 공급가·세액을 수량 비례로 (면세는 세액 0 그대로) */
+  function ddPart(it, k) {
+    if (!it.qty) { return { amount: 0, supply: 0, vat: 0 }; }
+    var s = Math.round(it.supply * k / it.qty), v = Math.round(it.vat * k / it.qty);
+    return { amount: s + v, supply: s, vat: v };
+  }
+
+  /* ---------- 요청 내용 문자열 (사람이 읽는 형식 + 처리에 필요한 값) ---------- */
+  function ddDetail(o, kind, picks, amt, reason, memo) {
+    var parts = ['명세서: ' + o.id, '배송일: ' + (o.date || ''), '종류: ' + DD_KINDS[kind], '사유: ' + reason];
+    if (kind === 'item') {
+      parts.push('차감액: ' + amt.amount.toLocaleString());
+      parts.push('품목: ' + picks.map(function(p) { return p.oiid + '|' + ddClean(p.name) + '|' + p.q; }).join(' , '));
+    } else if (kind === 'amount') {
+      parts.push('차감액: ' + amt.amount.toLocaleString());
+      parts.push('금액: ' + amt.amount + '/' + amt.supply + '/' + amt.vat);
+    } else {
+      parts.push('차감액: ' + amt.amount.toLocaleString() + ' (명세서 전체)');
+    }
+    if (memo) { parts.push('비고: ' + ddClean(memo)); }
+    return parts.join(' · ');
+  }
+  function ddParse(detail) {
+    var d = { order: detailGet(detail, '명세서'), date: detailGet(detail, '배송일'), kindLabel: detailGet(detail, '종류'),
+      reason: detailGet(detail, '사유'), memo: detailGet(detail, '비고'), amountText: detailGet(detail, '차감액'), items: [], amt: null };
+    d.kind = d.kindLabel === DD_KINDS.amount ? 'amount' : (d.kindLabel === DD_KINDS.zero ? 'zero' : 'item');
+    detailGet(detail, '품목').split(',').forEach(function(s) {
+      var a = s.trim().split('|');
+      if (a.length >= 3 && /^\d+$/.test(a[0].trim())) { d.items.push({ oiid: a[0].trim(), name: a[1].trim(), q: ddNum(a[2]) }); }
+    });
+    var m = /^(\d+)\/(\d+)\/(\d+)$/.exec(detailGet(detail, '금액').replace(/\s/g, ''));
+    if (m) { d.amt = { amount: +m[1], supply: +m[2], vat: +m[3] }; }
+    return d;
+  }
+
+  /* ================= 차감 접수 ================= */
+  function viewDdNew() {
+    if (!DD.from) { DD.to = ddAddDays(todayStr(), 3); DD.from = ddAddDays(todayStr(), -30); }
+    VIEW.innerHTML =
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<b style="font-size:14px;margin-right:4px">상품 차감 접수</b>' +
+      '<input id="__wpDxKw" class="wp-inp" style="width:260px" placeholder="거래처명 · 기업명 · 명세서번호">' +
+      '<span style="font-size:12.5px;color:#64748B">배송일</span>' +
+      '<input id="__wpDxF" type="date" class="wp-inp"><span style="color:#94A3B8">~</span><input id="__wpDxT" type="date" class="wp-inp">' +
+      '<button id="__wpDxGo" class="wp-btn pri">명세서 조회</button></div>' +
+      '<div class="wp-meta" style="margin:0 0 10px;font-size:12.5px;line-height:1.7">거래처를 검색해 <b>차감할 배송일의 거래명세서</b>를 누르세요 → 품목·수량을 체크(또는 금액 / 0원처리)해서 접수합니다.<br>' +
+      '접수 건은 <b>[차감 처리]</b> 탭에서 큐레이션팀이 승인하는 순간 오피스 명세서에 바로 반영됩니다. (프로토타입 — 큐레이션팀만 보임, 슬랙 알림 없음)</div>' +
+      '<div id="__wpDxList"></div><div id="__wpDxOrd"></div>';
+    var kw = document.getElementById('__wpDxKw');
+    kw.value = DD.kw;
+    document.getElementById('__wpDxF').value = DD.from;
+    document.getElementById('__wpDxT').value = DD.to;
+    function go() {
+      DD.kw = kw.value.trim();
+      DD.from = document.getElementById('__wpDxF').value;
+      DD.to = document.getElementById('__wpDxT').value;
+      if (!DD.kw) { kw.focus(); return; }
+      document.getElementById('__wpDxOrd').innerHTML = '';
+      var box = document.getElementById('__wpDxList');
+      if (/^\d{6,}$/.test(DD.kw)) { DD.orders = []; box.innerHTML = ''; ddOpen(DD.kw); return; }
+      box.innerHTML = '<div style="padding:10px;color:#64748B">오피스 거래명세 조회 중…</div>';
+      ddOrders(DD.kw, DD.from, DD.to).then(function(list) {
+        DD.orders = list;
+        ddRenderOrders();
+      }).catch(function(e) { box.innerHTML = '<div style="color:#b00;padding:10px">' + esc((e && e.message) || e) + '</div>'; });
+    }
+    document.getElementById('__wpDxGo').onclick = go;
+    kw.onkeydown = function(e) { if (e.key === 'Enter') { go(); } };
+    if (DD.orders.length) { ddRenderOrders(); }
+    if (DD.ord) { ddRenderOrder(); }
+  }
+
+  function ddRenderOrders() {
+    var box = document.getElementById('__wpDxList');
+    if (!box) { return; }
+    var list = DD.orders;
+    if (!list.length) { box.innerHTML = '<div style="padding:10px;color:#64748B">해당 기간에 거래명세서가 없습니다. 거래처명·기간을 확인하세요.</div>'; return; }
+    var h = '<div class="wp-scroll" style="max-height:34vh;flex:none"><table class="wp-tbl"><thead><tr><th style="width:104px">배송일</th><th style="width:92px">명세서</th><th>거래처</th><th style="width:120px;text-align:right">금액</th><th style="width:78px">배송</th><th style="width:88px">주문상태</th><th style="width:78px">정산</th><th style="width:96px">미출요청</th><th style="width:70px"></th></tr></thead><tbody>';
+    list.forEach(function(o) {
+      var on = DD.ord && DD.ord.id === o.id;
+      h += '<tr' + (on ? ' style="outline:2px solid #38BDF8"' : '') + '><td><b>' + esc(o.date) + '</b></td><td>' + esc(o.id) + '</td>' +
+        '<td>' + esc(o.branch) + '<div style="font-size:11.5px;color:#94A3B8">' + esc(o.company) + '</div></td>' +
+        '<td style="text-align:right;font-weight:700">' + ddWon(o.amount) + '</td><td>' + esc(o.method) + '</td><td>' + esc(o.status) + '</td>' +
+        '<td' + (/완료/.test(o.settle) ? ' style="color:#B91C1C;font-weight:700"' : '') + '>' + esc(o.settle) + '</td><td>' + esc(o.minus || '-') + '</td>' +
+        '<td><button class="wp-act __wpDxPick" data-id="' + esc(o.id) + '" style="white-space:nowrap">선택</button></td></tr>';
+    });
+    box.innerHTML = h + '</tbody></table></div>';
+    [].forEach.call(box.querySelectorAll('.__wpDxPick'), function(b) {
+      b.onclick = function() { ddOpen(b.getAttribute('data-id')); };
+    });
+  }
+
+  function ddOpen(id) {
+    var box = document.getElementById('__wpDxOrd');
+    if (!box) { return; }
+    box.innerHTML = '<div class="wp-form" style="color:#64748B">명세서 ' + esc(id) + ' 불러오는 중…</div>';
+    ddLoadOrder(id).then(function(o) {
+      DD.ord = o;
+      DD.kind = 'item';
+      if (DD.orders.length) { ddRenderOrders(); }
+      ddRenderOrder();
+    }).catch(function(e) { box.innerHTML = '<div class="wp-form" style="color:#b00">' + esc((e && e.message) || e) + '</div>'; });
+  }
+
+  function ddRenderOrder() {
+    var box = document.getElementById('__wpDxOrd');
+    var o = DD.ord;
+    if (!box || !o) { return; }
+    var settled = /완료/.test(o.settle || '');
+    var buy24 = /구매24/.test(o.serviceType || '');
+    var warn = [];
+    if (settled) { warn.push('정산완료 명세서 — 오피스에서 차감이 안 될 수 있습니다'); }
+    if (buy24) { warn.push('구매24 주문 — 오피스 [서비스관리-주문 현황]에서 처리해야 합니다'); }
+    if (o.dc.amount) { warn.push('이미 금액조정 ' + ddWon(o.dc.amount) + ' (' + (o.dc.desc || '-') + ') 이 있습니다'); }
+    if (o.hasMinus) { warn.push('이미 미출된 품목이 있습니다 — 남은 수량만 차감할 수 있습니다'); }
+    var h = '<div class="wp-form" style="padding:14px 16px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+      '<div><b style="font-size:15px">' + esc(o.branch || '') + '</b> <span style="color:#64748B;font-size:12.5px">' + esc(o.company || '') + '</span>' +
+      '<div style="font-size:12.5px;color:#475569;margin-top:3px">명세서 <a href="/office/order/order/' + esc(o.id) + '" target="_blank" style="color:#1f4e78;font-weight:700">' + esc(o.id) + '</a>' +
+      ' · 배송일 <b>' + esc(o.date || '') + '</b> · ' + esc(o.status || '') + ' · 정산 ' + esc(o.settle || '') + ' · ' + esc(o.serviceType || '') + '</div></div>' +
+      '<div style="text-align:right;font-size:12.5px;color:#475569">명세서 금액 <b style="font-size:15px;color:#0F172A">' + ddWon(o.supply + o.vat) + '</b>' +
+      '<div>세금계산서용 공급가 ' + ddWon(o.supply) + ' / 세액 ' + ddWon(o.vat) + (o.hasTaxfree ? ' <b style="color:#B45309">· 면세 포함</b>' : '') + '</div></div></div>' +
+      (warn.length ? '<div style="margin-top:8px;padding:7px 10px;border-radius:6px;background:#FEF3C7;color:#92400E;font-size:12.5px;line-height:1.6">⚠ ' + warn.map(esc).join('<br>⚠ ') + '</div>' : '') +
+      '<div style="display:flex;gap:6px;margin:12px 0 8px">' +
+      ['item', 'amount', 'zero'].map(function(k) {
+        return '<button class="wp-day __wpDxKind' + (DD.kind === k ? ' on' : '') + '" data-k="' + k + '">' + ({ item: '품목 미출', amount: '금액 차감', zero: '0원처리 (전체)' })[k] + '</button>';
+      }).join('') + '</div><div id="__wpDxBody"></div>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #E2E8F0">' +
+      '<span style="font-weight:700;font-size:13.5px">사유</span><select id="__wpDxRs" class="wp-inp" style="width:150px">' +
+      DD_REASONS.map(function(r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select>' +
+      '<input id="__wpDxMemo" class="wp-inp" style="flex:1;min-width:260px" placeholder="비고 (예: 11/12 배송 누락으로 재배송 건)">' +
+      '<span style="font-size:13.5px">차감액 <b id="__wpDxSum" style="font-size:16px;color:#B91C1C">₩0</b></span>' +
+      '<button id="__wpDxSub" class="wp-btn ok">차감 요청 접수</button></div></div>';
+    box.innerHTML = h;
+    [].forEach.call(box.querySelectorAll('.__wpDxKind'), function(b) {
+      b.onclick = function() { DD.kind = b.getAttribute('data-k'); ddRenderOrder(); };
+    });
+    ddRenderBody();
+    document.getElementById('__wpDxSub').onclick = ddSubmit;
+  }
+
+  function ddRenderBody() {
+    var o = DD.ord, b = document.getElementById('__wpDxBody');
+    if (!o || !b) { return; }
+    var live = o.items.filter(function(it) { return !it.unreleased; });
+    if (DD.kind === 'item') {
+      var h = '<div class="wp-scroll" style="max-height:40vh;flex:none"><table class="wp-tbl"><thead><tr><th style="width:34px"><input type="checkbox" id="__wpDxAll"></th><th>상품</th><th style="width:84px">출고기준</th><th style="width:60px;text-align:right">주문</th><th style="width:64px;text-align:right">기미출</th><th style="width:60px;text-align:right">남음</th><th style="width:96px">차감수량</th><th style="width:110px;text-align:right">차감액</th></tr></thead><tbody>';
+      live.forEach(function(it, i) {
+        var dis = !it.remain || !it.canMinus;
+        h += '<tr' + (dis ? ' style="opacity:.5"' : '') + '><td><input type="checkbox" class="__wpDxChk" data-i="' + i + '"' + (dis ? ' disabled' : '') + '></td>' +
+          '<td><b>' + esc(it.name) + '</b>' + (it.taxfree ? ' <span class="wp-pill" style="background:#FEF3C7;color:#92400E">면세</span>' : '') +
+          '<div style="font-size:11.5px;color:#94A3B8">' + esc(it.code) + ' · ' + esc(it.barcode) + '</div></td>' +
+          '<td>' + esc(it.crit) + '</td><td style="text-align:right">' + it.qty + '</td>' +
+          '<td style="text-align:right;color:' + (it.minused ? '#B91C1C' : '#CBD5E1') + '">' + (it.minused || 0) + '</td>' +
+          '<td style="text-align:right;font-weight:700">' + it.remain + '</td>' +
+          '<td><input type="number" class="wp-inp __wpDxQ" data-i="' + i + '" min="1" max="' + it.remain + '" value="' + it.remain + '" style="width:80px;height:32px"' + (dis ? ' disabled' : '') + '></td>' +
+          '<td style="text-align:right" class="__wpDxAmt" data-i="' + i + '">-</td></tr>';
+      });
+      b.innerHTML = h + '</tbody></table></div>';
+      var all = document.getElementById('__wpDxAll');
+      all.onchange = function() { [].forEach.call(b.querySelectorAll('.__wpDxChk:not([disabled])'), function(c) { c.checked = all.checked; }); ddCalc(); };
+      [].forEach.call(b.querySelectorAll('.__wpDxChk,.__wpDxQ'), function(x) { x.oninput = ddCalc; x.onchange = ddCalc; });
+    } else if (DD.kind === 'amount') {
+      b.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 0">' +
+        '<span style="font-weight:700;font-size:13.5px">차감 합계</span><input id="__wpDxA" class="wp-inp" style="width:150px;text-align:right" placeholder="0">' +
+        '<span style="font-size:13px;color:#475569">공급가</span><input id="__wpDxAS" class="wp-inp" style="width:130px;text-align:right">' +
+        '<span style="font-size:13px;color:#475569">세액</span><input id="__wpDxAV" class="wp-inp" style="width:110px;text-align:right">' +
+        '<span id="__wpDxAMsg" style="font-size:12px;color:#64748B"></span></div>' +
+        '<div style="font-size:12px;color:#64748B;line-height:1.6">합계를 넣으면 공급가·세액을 10:1로 자동으로 나눕니다(오피스와 같은 방식).' +
+        (o.hasTaxfree ? ' <b style="color:#B45309">면세 품목이 있는 명세서 — 세금계산서용 공급가 ' + ddWon(o.supply) + ' / 세액 ' + ddWon(o.vat) + ' 를 보고 공급가·세액을 직접 맞춰주세요.</b>' : '') +
+        '<br>합계 = 공급가 + 세액이어야 오피스에 반영됩니다. 기존 금액조정이 있으면 승인할 때 더해서 넣습니다.</div>';
+      var A = document.getElementById('__wpDxA'), S = document.getElementById('__wpDxAS'), V = document.getElementById('__wpDxAV');
+      A.oninput = function() { var a = ddNum(A.value); var s = Math.round(a / 11 * 10); S.value = a ? s : ''; V.value = a ? (a - s) : ''; ddCalc(); };
+      S.oninput = V.oninput = ddCalc;
+    } else {
+      var left = live.reduce(function(s, it) { return s + (it.remain || 0); }, 0);
+      b.innerHTML = '<div style="padding:10px 12px;border-radius:6px;background:#FEF2F2;color:#991B1B;font-size:13px;line-height:1.7">' +
+        '명세서 품목 <b>전체를 미출</b>합니다 (남은 수량 합계 ' + left + '개).<br>' +
+        (o.hasMinus ? '이미 미출된 품목이 있어서 <b>남은 수량만</b> 품목별로 미출합니다 — 중복 차감 없음.' : '미출된 품목이 없어서 오피스 [미출 실행 · 전체]로 한 번에 처리합니다.') +
+        (o.dc.amount ? '<br><b>이미 금액조정 ' + ddWon(o.dc.amount) + '이 있어서 0원처리하면 이중 차감됩니다 — 오피스에서 금액조정을 먼저 확인하세요.</b>' : '') + '</div>';
+    }
+    ddCalc();
+  }
+
+  /* 현재 입력 기준 차감 내용 */
+  function ddCollect() {
+    var o = DD.ord;
+    var live = o.items.filter(function(it) { return !it.unreleased; });
+    if (DD.kind === 'item') {
+      var picks = [], tot = { amount: 0, supply: 0, vat: 0 };
+      [].forEach.call(document.querySelectorAll('#__wpDxBody .__wpDxChk'), function(c) {
+        var i = +c.getAttribute('data-i'), it = live[i];
+        var qi = document.querySelector('#__wpDxBody .__wpDxQ[data-i="' + i + '"]');
+        var q = Math.min(ddNum(qi && qi.value), it.remain);
+        var cell = document.querySelector('#__wpDxBody .__wpDxAmt[data-i="' + i + '"]');
+        if (!c.checked || q <= 0) { if (cell) { cell.textContent = '-'; } return; }
+        var p = ddPart(it, q);
+        if (cell) { cell.textContent = ddWon(p.amount); }
+        tot.amount += p.amount; tot.supply += p.supply; tot.vat += p.vat;
+        picks.push({ oiid: it.oiid, name: it.name, q: q });
+      });
+      return { picks: picks, amt: tot };
+    }
+    if (DD.kind === 'amount') {
+      var s = ddNum((document.getElementById('__wpDxAS') || {}).value), v = ddNum((document.getElementById('__wpDxAV') || {}).value);
+      return { picks: [], amt: { amount: s + v, supply: s, vat: v }, typed: ddNum((document.getElementById('__wpDxA') || {}).value) };
+    }
+    var z = { amount: 0, supply: 0, vat: 0 };
+    live.forEach(function(it) { if (it.remain) { var p = ddPart(it, it.remain); z.amount += p.amount; z.supply += p.supply; z.vat += p.vat; } });
+    return { picks: [], amt: z };
+  }
+  function ddCalc() {
+    if (!DD.ord) { return; }
+    var c = ddCollect();
+    var el = document.getElementById('__wpDxSum');
+    if (el) { el.textContent = ddWon(c.amt.amount); }
+    var m = document.getElementById('__wpDxAMsg');
+    if (m) {
+      var bad = c.typed && c.typed !== c.amt.amount;
+      m.innerHTML = bad ? '<b style="color:#B91C1C">공급가+세액(' + ddWon(c.amt.amount) + ')이 합계와 다릅니다</b>' : '';
+    }
+  }
+
+  function ddSubmit() {
+    var o = DD.ord;
+    if (!o) { return; }
+    var c = ddCollect();
+    var reason = document.getElementById('__wpDxRs').value;
+    var memo = document.getElementById('__wpDxMemo').value.trim();
+    if (DD.kind === 'item' && !c.picks.length) { alert('차감할 품목을 체크하세요.'); return; }
+    if (DD.kind === 'amount') {
+      if (!c.amt.amount) { alert('차감 금액을 넣으세요.'); return; }
+      if (c.typed && c.typed !== c.amt.amount) { alert('공급가 + 세액이 차감 합계와 같아야 합니다.'); return; }
+      if (c.amt.supply > o.supply || c.amt.vat > o.vat) { alert('차감 공급가·세액이 명세서 공급가(' + ddWon(o.supply) + ')·세액(' + ddWon(o.vat) + ')을 넘습니다.'); return; }
+    }
+    if (DD.kind === 'zero' && !c.amt.amount) { alert('남은 품목이 없습니다 — 이미 전부 미출된 명세서입니다.'); return; }
+    var detail = ddDetail(o, DD.kind, c.picks, c.amt, reason, memo);
+    var msg = '[상품 차감 접수]\n' + (o.branch || '') + ' · 배송일 ' + (o.date || '') + ' · 명세서 ' + o.id + '\n' +
+      DD_KINDS[DD.kind] + ' · ' + reason + ' · 차감액 ' + ddWon(c.amt.amount) +
+      (c.picks.length ? '\n' + c.picks.map(function(p) { return ' - ' + p.name + ' × ' + p.q; }).join('\n') : '') +
+      '\n\n접수할까요? (큐레이션팀 승인 시 오피스에 반영)';
+    if (!confirm(msg)) { return; }
+    var btn = document.getElementById('__wpDxSub');
+    btn.disabled = true; btn.textContent = '접수 중…';
+    submitReq({ ts: now(), dept: REQ.dept, name: REQ.name, email: REQ.email, action: DD_ACTION, hot: '', cold: '',
+      branchId: '', branchName: o.branch || '', detail: detail }).then(function(r) {
+      toast('✓ 차감 요청 접수됐습니다' + (r && r.dup ? ' (같은 요청이 이미 대기 중)' : ''), '#0a7d47');
+      DD.ord = null;
+      document.getElementById('__wpDxOrd').innerHTML = '<div class="wp-form" style="color:#0a7d47;font-weight:700">✓ 접수됐습니다 — [차감 처리] 탭에서 승인하면 오피스에 반영됩니다.</div>';
+      ddRenderOrders();
+      revBadges(true);
+    }).catch(function(e) {
+      btn.disabled = false; btn.textContent = '차감 요청 접수';
+      alert('접수 실패: ' + ((e && e.message) || e));
+    });
+  }
+
+  /* ================= 차감 처리 (승인 = 오피스 반영) ================= */
+  function viewDdRev() {
+    if (!DD.rfrom) { DD.rfrom = ddAddDays(todayStr(), -14); DD.rto = todayStr(); }
+    var F = ['대기', '완료', '반려', '전체'];
+    VIEW.innerHTML = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px">' +
+      F.map(function(f) { return '<button class="wp-day __wpDrF' + (DD.rev === f ? ' on' : '') + '" data-f="' + f + '">' + f + '</button>'; }).join('') +
+      '<span id="__wpDrDr" style="display:' + (DD.rev === '대기' ? 'none' : 'inline-flex') + ';gap:6px;align-items:center;margin-left:8px">' +
+      '<input id="__wpDrFr" type="date" class="wp-inp"><span style="color:#94A3B8">~</span><input id="__wpDrTo" type="date" class="wp-inp"><button id="__wpDrGo" class="wp-btn pri">조회</button></span>' +
+      '<span style="flex:1"></span><span style="font-size:12px;color:#64748B">승인하면 바로 오피스 명세서에 반영됩니다 · 승인 전에 반영 내용을 한 번 더 보여드립니다</span></div>' +
+      '<div id="__wpDrList" class="wp-scroll">불러오는 중…</div>';
+    document.getElementById('__wpDrFr').value = DD.rfrom;
+    document.getElementById('__wpDrTo').value = DD.rto;
+    [].forEach.call(VIEW.querySelectorAll('.__wpDrF'), function(b) { b.onclick = function() { DD.rev = b.getAttribute('data-f'); viewDdRev(); }; });
+    document.getElementById('__wpDrGo').onclick = function() {
+      DD.rfrom = document.getElementById('__wpDrFr').value; DD.rto = document.getElementById('__wpDrTo').value; ddLoadRev();
+    };
+    ddLoadRev();
+  }
+
+  function ddLoadRev() {
+    var box = document.getElementById('__wpDrList');
+    var f = DD.rev === '대기' ? { status: '대기' } : { from: DD.rfrom, to: DD.rto };
+    listReq(f).then(function(items) {
+      items = (items || []).filter(function(it) { return it.action === DD_ACTION; });
+      if (DD.rev !== '대기') {
+        items = filterByDate(items, DD.rfrom, DD.rto);
+        if (DD.rev !== '전체') { items = items.filter(function(it) { return it.status === DD.rev; }); }
+      }
+      items.sort(function(a, b) { return String(b.ts || '').localeCompare(String(a.ts || '')); });
+      ddRenderRev(items);
+    }).catch(function(e) { box.innerHTML = '<div style="color:#b00;padding:10px">' + esc((e && e.message) || e) + '</div>'; });
+  }
+
+  function ddRenderRev(items) {
+    var box = document.getElementById('__wpDrList');
+    if (!box) { return; }
+    if (!items.length) { box.innerHTML = '<div style="padding:14px;color:#64748B">' + (DD.rev === '대기' ? '대기 중인 차감 요청이 없습니다.' : '해당 기간 차감 요청이 없습니다.') + '</div>'; return; }
+    var map = {};
+    var h = '<table class="wp-tbl"><thead><tr><th style="width:118px">요청</th><th>거래처 · 명세서</th><th style="width:96px">종류</th><th style="width:96px">사유</th><th style="width:110px;text-align:right">차감액</th><th>내용</th><th style="width:220px">처리</th></tr></thead><tbody>';
+    items.forEach(function(it) {
+      map[it.id] = it;
+      var d = ddParse(it.detail);
+      var body = d.kind === 'item' ? d.items.map(function(x) { return esc(x.name) + ' × <b>' + x.q + '</b>'; }).join('<br>') :
+        (d.kind === 'amount' && d.amt ? '공급가 ' + ddWon(d.amt.supply) + ' / 세액 ' + ddWon(d.amt.vat) : '명세서 전체 미출');
+      var act;
+      if (it.status === '대기') {
+        act = '<button class="wp-btn ok __wpDrOk" data-id="' + esc(it.id) + '" style="height:32px;padding:0 12px">승인·오피스 반영</button> ' +
+          '<button class="wp-btn gh __wpDrNo" data-id="' + esc(it.id) + '" style="height:32px;padding:0 10px">반려</button>';
+      } else {
+        act = '<b style="color:' + (it.status === '완료' ? '#0a7d47' : '#B91C1C') + '">' + esc(it.status) + '</b> <span style="font-size:12px;color:#64748B">' + esc(it.admin || '') + ' ' + esc(fmtTs(it.decidedTs || '')) + '</span>' +
+          (it.adminNote ? '<div style="font-size:12px;color:#475569;margin-top:3px">' + esc(it.adminNote) + '</div>' : '');
+      }
+      h += '<tr><td style="font-size:12.5px">' + esc(fmtTs(it.ts)) + '<div style="color:#64748B">' + esc(it.name || '') + '</div></td>' +
+        '<td><b>' + esc(it.branchName || '') + '</b><div style="font-size:12px;color:#475569">배송일 ' + esc(d.date) + ' · 명세서 <a href="/office/order/order/' + esc(d.order) + '" target="_blank" style="color:#1f4e78">' + esc(d.order) + '</a></div></td>' +
+        '<td><b>' + esc(d.kindLabel) + '</b></td><td>' + esc(d.reason) + '</td>' +
+        '<td style="text-align:right;font-weight:800;color:#B91C1C">' + esc(d.amountText ? '₩' + d.amountText : '') + '</td>' +
+        '<td style="font-size:12.5px">' + body + (d.memo ? '<div style="color:#64748B;margin-top:3px">' + esc(d.memo) + '</div>' : '') + '</td>' +
+        '<td>' + act + '</td></tr>';
+    });
+    box.innerHTML = h + '</tbody></table>';
+    [].forEach.call(box.querySelectorAll('.__wpDrOk'), function(b) { b.onclick = function() { ddApprove(map[b.getAttribute('data-id')], b); }; });
+    [].forEach.call(box.querySelectorAll('.__wpDrNo'), function(b) {
+      b.onclick = function() {
+        var it = map[b.getAttribute('data-id')];
+        var note = prompt('반려 사유를 입력하세요.\n' + (it.branchName || ''), '');
+        if (note === null) { return; }
+        b.disabled = true;
+        decideReq(it.id, '반려', note || '반려', it.slackTs).then(function() {
+          toast('반려 처리했습니다', '#b45309'); ddLoadRev(); revBadges(true);
+        }).catch(function(e) { b.disabled = false; alert('반려 실패: ' + ((e && e.message) || e)); });
+      };
+    });
+  }
+
+  /* 승인 전에 오피스에 보낼 작업을 계산 — 명세서를 새로 읽어서 남은 수량 기준 */
+  function ddPlan(it) {
+    var d = ddParse(it.detail);
+    if (!/^\d+$/.test(d.order || '')) { return Promise.reject(new Error('명세서 번호가 없습니다')); }
+    return ddLoadOrder(d.order).then(function(o) {
+      if (/구매24/.test(o.serviceType || '')) { throw new Error('구매24 주문 — 오피스 [서비스관리-주문 현황]에서 처리해야 합니다'); }
+      if (/주문취소/.test(o.status || '')) { throw new Error('주문취소된 명세서입니다'); }
+      var steps = [], skip = [];
+      var byId = {};
+      o.items.forEach(function(x) { byId[x.oiid] = x; });
+      var live = o.items.filter(function(x) { return !x.unreleased; });
+      if (d.kind === 'item') {
+        d.items.forEach(function(p) {
+          var x = byId[p.oiid];
+          if (!x) { skip.push(p.name + ' — 명세서에 없음'); return; }
+          if (!x.canMinus) { skip.push(p.name + ' — 미출 버튼 없음'); return; }
+          var q = Math.min(p.q, x.remain || 0);
+          if (q <= 0) { skip.push(p.name + ' — 이미 전부 미출됨'); return; }
+          if (q < p.q) { skip.push(p.name + ' — 남은 ' + q + '개만 미출 (요청 ' + p.q + ')'); }
+          steps.push({ t: 'minus', oiid: x.oiid, q: q, name: x.name, amt: ddPart(x, q).amount });
+        });
+      } else if (d.kind === 'amount') {
+        if (!d.amt) { throw new Error('요청 금액을 읽지 못했습니다'); }
+        var n = { amount: o.dc.amount + d.amt.amount, supply: o.dc.supply + d.amt.supply, vat: o.dc.vat + d.amt.vat };
+        if (n.amount !== n.supply + n.vat) { throw new Error('공급가 + 세액이 합계와 다릅니다'); }
+        if (n.supply > o.supply || n.vat > o.vat) { throw new Error('차감 공급가·세액이 명세서 금액을 넘습니다 (명세서 공급가 ' + ddWon(o.supply) + ' / 세액 ' + ddWon(o.vat) + ')'); }
+        var desc = (o.dc.desc || ('차감 ' + d.reason)).slice(0, 20);
+        steps.push({ t: 'discount', desc: desc, amount: n.amount, supply: n.supply, vat: n.vat, prev: o.dc.amount, add: d.amt.amount });
+      } else {
+        if (o.dc.amount) { throw new Error('이미 금액조정 ' + ddWon(o.dc.amount) + '이 있어 0원처리하면 이중 차감됩니다 — 오피스에서 확인 후 처리하세요'); }
+        var rest = live.filter(function(x) { return x.remain > 0 && x.canMinus; });
+        if (!rest.length) { throw new Error('남은 품목이 없습니다 — 이미 전부 미출된 명세서입니다'); }
+        if (!o.hasMinus && o.bulkOk) {
+          steps.push({ t: 'bulk', cond: '전체', amt: rest.reduce(function(s, x) { return s + ddPart(x, x.remain).amount; }, 0), n: rest.length });
+        } else {
+          rest.forEach(function(x) { steps.push({ t: 'minus', oiid: x.oiid, q: x.remain, name: x.name, amt: ddPart(x, x.remain).amount }); });
+          if (!o.hasMinus && !o.bulkOk) { skip.push('[미출 실행] 권한이 없어 품목별 미출로 처리'); }
+        }
+      }
+      if (!steps.length) { throw new Error('오피스에 반영할 게 없습니다' + (skip.length ? '\n' + skip.join('\n') : '')); }
+      return { d: d, o: o, steps: steps, skip: skip };
+    });
+  }
+
+  function ddStepText(s) {
+    if (s.t === 'minus') { return '미출  ' + s.name + ' × ' + s.q + '  (' + ddWon(s.amt) + ')'; }
+    if (s.t === 'bulk') { return '미출 실행 · ' + s.cond + '  (품목 ' + s.n + '개 · ' + ddWon(s.amt) + ')'; }
+    return '금액조정  ' + ddWon(s.amount) + ' (공급가 ' + ddWon(s.supply) + ' / 세액 ' + ddWon(s.vat) + ')' + (s.prev ? '  ← 기존 ' + ddWon(s.prev) + ' + 이번 ' + ddWon(s.add) : '') + '  적요 "' + s.desc + '"';
+  }
+
+  function ddForm(obj) {
+    var p = new URLSearchParams();
+    Object.keys(obj).forEach(function(k) { p.append(k, obj[k]); });
+    return p;
+  }
+
+  function ddRunStep(orderId, s) {
+    if (s.t === 'minus') {
+      return fetch('/office/order/order/minus-item', { method: 'POST', credentials: 'same-origin',
+        body: ddForm({ searchKeyword: '', orderId: orderId, orderItemId: s.oiid, quantity: s.q }) }).then(function(r) {
+        if (!r.ok) { throw new Error('미출 실패 (' + s.name + ') HTTP ' + r.status); }
+      });
+    }
+    if (s.t === 'bulk') {
+      return fetch('/office/order/item/' + orderId, { method: 'PUT', credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: ddForm({ outstandingConditionType: s.cond }) }).then(function(r) {
+        return r.text().then(function(t) {
+          var j = null; try { j = JSON.parse(t); } catch (e) {}
+          if (!r.ok || !j || !j.ok) { throw new Error('미출 실행 실패' + (j && j.message ? ' — ' + j.message : ' HTTP ' + r.status)); }
+        });
+      });
+    }
+    return fetch('/office/order/order/discount', { method: 'POST', credentials: 'same-origin',
+      body: ddForm({ searchKeyword: '', orderId: orderId, dcDescribe: s.desc, dcAmount: s.amount, dcSupplyPrice: s.supply, dcVat: s.vat }) }).then(function(r) {
+      if (!r.ok) { throw new Error('금액조정 실패 HTTP ' + r.status); }
+    });
+  }
+
+  /* 반영 확인 — 명세서를 다시 읽어 실제로 바뀌었는지 */
+  function ddVerify(plan) {
+    return ddLoadOrder(plan.o.id).then(function(o2) {
+      var bad = [];
+      var before = {}, after = {};
+      plan.o.items.forEach(function(x) { if (!x.unreleased) { before[x.oiid] = x.remain; } });
+      o2.items.forEach(function(x) { if (!x.unreleased) { after[x.oiid] = x.remain; } });
+      plan.steps.forEach(function(s) {
+        if (s.t === 'minus' && !(after[s.oiid] <= before[s.oiid] - s.q)) { bad.push(s.name + ' 미출 확인 안 됨'); }
+        if (s.t === 'discount' && o2.dc.amount !== s.amount) { bad.push('금액조정 확인 안 됨 (현재 ' + ddWon(o2.dc.amount) + ')'); }
+      });
+      if (plan.steps.some(function(s) { return s.t === 'bulk'; })) {
+        var left = o2.items.filter(function(x) { return !x.unreleased && x.remain > 0 && x.canMinus; }).length;
+        if (left) { bad.push('미출 실행 후에도 남은 품목 ' + left + '개'); }
+      }
+      return { o2: o2, bad: bad };
+    });
+  }
+
+  function ddApprove(it, btn) {
+    if (!it || btn.disabled) { return; }
+    btn.disabled = true;
+    var orig = btn.textContent;
+    btn.textContent = '명세서 확인 중…';
+    ddPlan(it).then(function(plan) {
+      var msg = '[상품 차감 승인 · 오피스 반영]\n' + (plan.o.branch || it.branchName || '') + '\n명세서 ' + plan.o.id + ' · 배송일 ' + (plan.o.date || '') +
+        ' · 현재 ' + ddWon(plan.o.supply + plan.o.vat) + '\n\n오피스에 보낼 작업:\n' + plan.steps.map(function(s) { return ' · ' + ddStepText(s); }).join('\n') +
+        (plan.skip.length ? '\n\n참고:\n' + plan.skip.map(function(s) { return ' - ' + s; }).join('\n') : '') +
+        '\n\n승인하면 바로 오피스 명세서에 반영됩니다. 진행할까요?';
+      if (!confirm(msg)) { btn.disabled = false; btn.textContent = orig; return; }
+      btn.textContent = '오피스 반영 중…';
+      var ch = Promise.resolve(), done = [];
+      plan.steps.forEach(function(s) { ch = ch.then(function() { return ddRunStep(plan.o.id, s).then(function() { done.push(s); }); }); });
+      return ch.catch(function(e) {
+        if (!done.length) { throw e; }
+        /* 일부만 반영된 채 대기로 두면 다시 승인할 때 같은 품목이 또 빠질 수 있다 → 완료 + 확인 필요로 닫는다 */
+        var msg = '⚠ 일부만 반영 · 반영: ' + done.map(ddStepText).join(' / ') + ' · 실패: ' + ((e && e.message) || e);
+        return decideReq(it.id, '완료', msg, it.slackTs).then(function() {
+          ddLoadRev(); revBadges(true);
+          throw new Error('일부만 오피스에 반영됐습니다 — 요청은 완료(확인 필요)로 닫았습니다.\n오피스 명세서 ' + plan.o.id + '를 직접 확인하세요.\n\n' + msg);
+        });
+      }).then(function() {
+        btn.textContent = '반영 확인 중…';
+        return ddVerify(plan);
+      }).then(function(v) {
+        var acts = plan.steps.map(function(s) { return s.t === 'minus' ? (s.name + '×' + s.q) : (s.t === 'bulk' ? '전체 미출' : ('금액조정 ' + ddWon(s.amount))); }).join(', ');
+        /* 확인이 안 돼도 오피스엔 이미 보냈다 — 대기로 두면 다시 승인할 때 이중 차감되니 '완료 + 확인 필요'로 닫는다 */
+        var note = (v.bad.length ? '⚠ 반영 확인 필요(' + v.bad.join(' / ') + ') · ' : '오피스 반영 · ') + acts + ' · 반영 전 명세서 ' + ddWon(plan.o.supply + plan.o.vat);
+        return decideReq(it.id, '완료', note, it.slackTs).then(function() {
+          ddLoadRev(); revBadges(true);
+          if (v.bad.length) { alert('오피스에 보냈지만 반영 여부를 확인하지 못했습니다.\n오피스 명세서 ' + plan.o.id + '를 직접 확인하세요.\n\n' + v.bad.join('\n')); }
+          else { toast('✓ 차감 반영 완료 — ' + (plan.o.branch || ''), '#0a7d47'); }
+        });
+      });
+    }).catch(function(e) {
+      btn.disabled = false; btn.textContent = orig;
+      alert('차감 처리 실패\n\n' + ((e && e.message) || e));
+    });
   }
 
   /* ================= 저온 발주 (직배송_저온 납품처별 발주자료 자동 생성) =================
