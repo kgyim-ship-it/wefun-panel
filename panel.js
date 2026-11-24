@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1623';
+  var PANEL_BUILD = '20261124-1711';
   /* 이 페이지에서 더 새 빌드를 이미 받아둔 적이 있으면, 낡은 캐시본이 다시 떠도 바로 그걸로 넘긴다 */
   try {
     if (window.__wpNewB && window.__wpNewT && window.__wpNewB > PANEL_BUILD) { (0, eval)(window.__wpNewT); return; }
@@ -9952,6 +9952,11 @@ document.getElementById('__wpSave').onclick = function() {
   var DD_ACTION = '상품차감';
   var DD_REASONS = ['미출/누락', 'voc차감', '파손', '반품', '유통기한 경과', '품질이슈', '기타'];
   var DD_KINDS = { item: '품목미출', amount: '금액차감', zero: '0원처리' };
+  /* 시너지 반품구분 — 요청자가 접수할 때 고른다(26.11.24). 품목 미출만 시너지 반품 전표로 가고, 고른 코드가 그대로 전표의 반품구분이 된다.
+     사유를 바꾸면 기본값이 따라 바뀐다(파손→파손, 미출/누락→미송, 그 밖→기타). 직접 고친 뒤에는 안 바꾼다. */
+  var DD_SYNCODES = [['1', '파손'], ['2', '오입고'], ['3', '미송'], ['5', '기타']];
+  function ddSynDefault(reason) { return reason === '파손' ? '1' : (reason === '미출/누락' ? '3' : '5'); }
+  function ddSynLabel(code) { var r = ''; DD_SYNCODES.forEach(function(c) { if (c[0] === String(code)) { r = c[1]; } }); return r; }
   var DD = { kw: '', from: '', to: '', orders: [], ord: null, kind: 'item', rev: '대기', rfrom: '', rto: '' };
 
   function ddWon(v) { return '₩' + Math.round(Number(v || 0)).toLocaleString(); }
@@ -10102,9 +10107,10 @@ document.getElementById('__wpSave').onclick = function() {
   }
 
   /* ---------- 요청 내용 문자열 (사람이 읽는 형식 + 처리에 필요한 값) ---------- */
-  function ddDetail(o, kind, picks, amt, reason, memo) {
+  function ddDetail(o, kind, picks, amt, reason, memo, sc) {
     var parts = ['명세서: ' + o.id, '배송일: ' + (o.date || ''), '종류: ' + DD_KINDS[kind], '사유: ' + reason];
     if (kind === 'item') {
+      if (sc && ddSynLabel(sc)) { parts.push('반품구분: ' + sc + ' ' + ddSynLabel(sc)); }
       parts.push('차감액: ' + amt.amount.toLocaleString());
       /* 품목 = 주문품목id|이름|수량|공급가|세액|상품코드|바코드 (뒤 4칸은 26.11.24 추가 — 엑셀용. 앞 3칸만 있는 옛 건도 그대로 읽힌다) */
       parts.push('품목: ' + picks.map(function(p) { return [p.oiid, ddClean(p.name), p.q, p.supply || 0, p.vat || 0, ddClean(p.code), ddClean(p.barcode)].join('|'); }).join(' , '));
@@ -10119,7 +10125,7 @@ document.getElementById('__wpSave').onclick = function() {
   }
   function ddParse(detail) {
     var d = { order: detailGet(detail, '명세서'), date: detailGet(detail, '배송일'), kindLabel: detailGet(detail, '종류'),
-      reason: detailGet(detail, '사유'), memo: detailGet(detail, '비고'), amountText: detailGet(detail, '차감액'), items: [], amt: null };
+      reason: detailGet(detail, '사유'), syn: detailGet(detail, '반품구분').replace(/^\d+\s*/, ''), memo: detailGet(detail, '비고'), amountText: detailGet(detail, '차감액'), items: [], amt: null };
     d.kind = d.kindLabel === DD_KINDS.amount ? 'amount' : (d.kindLabel === DD_KINDS.zero ? 'zero' : 'item');
     detailGet(detail, '품목').split(',').forEach(function(s) {
       var a = s.trim().split('|');
@@ -10346,6 +10352,8 @@ document.getElementById('__wpSave').onclick = function() {
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid #E2E8F0">' +
       '<span style="font-weight:700;font-size:13.5px">사유</span><select id="__wpDxRs" class="wp-inp" style="width:150px">' +
       DD_REASONS.map(function(r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select>' +
+      (DD.kind === 'item' ? '<span style="font-weight:700;font-size:13.5px" title="풀필(시너지) 반품 전표에 들어가는 구분입니다">반품구분</span><select id="__wpDxSc" class="wp-inp" style="width:104px" title="풀필(시너지) 반품 전표에 들어가는 구분입니다">' +
+        DD_SYNCODES.map(function(c) { return '<option value="' + c[0] + '">' + esc(c[1]) + '</option>'; }).join('') + '</select>' : '') +
       '<input id="__wpDxMemo" class="wp-inp" style="flex:1;min-width:260px" placeholder="비고 (예: 11/12 배송 누락으로 재배송 건)">' +
       '<span style="font-size:13.5px;white-space:nowrap">차감액 <b id="__wpDxSum" style="font-size:16px;color:#B91C1C">₩0</b> <span id="__wpDxAfter" style="font-size:12px;color:#64748B"></span></span>' +
       '<button id="__wpDxSub" class="wp-btn ok">차감 요청 접수</button></div></div>';
@@ -10355,6 +10363,12 @@ document.getElementById('__wpSave').onclick = function() {
     });
     var re = document.getElementById('__wpDxRe');
     if (re) { re.onclick = function() { DD.ord = null; box.innerHTML = ''; ddRenderOrders(); if (DD.resume) { DD.resume(); } }; }
+    var rsEl = document.getElementById('__wpDxRs'), scEl = document.getElementById('__wpDxSc');
+    if (rsEl && scEl) {
+      scEl.value = ddSynDefault(rsEl.value);
+      scEl.onchange = function() { scEl.setAttribute('data-t', '1'); };
+      rsEl.onchange = function() { if (!scEl.getAttribute('data-t')) { scEl.value = ddSynDefault(rsEl.value); } };
+    }
     ddRenderBody();
     document.getElementById('__wpDxSub').onclick = ddSubmit;
   }
@@ -10459,9 +10473,11 @@ document.getElementById('__wpSave').onclick = function() {
     }
     if (o.preShip && DD.kind !== 'amount') { alert('출고 전 명세서입니다 — 품목 미출·0원처리는 출고완료 후에 접수하세요.'); return; }
     if (DD.kind === 'zero' && !c.amt.amount) { alert('남은 품목이 없습니다 — 이미 전부 미출된 명세서입니다.'); return; }
-    var detail = ddDetail(o, DD.kind, c.picks, c.amt, reason, memo);
+    var scSel = document.getElementById('__wpDxSc');
+    var sc = (DD.kind === 'item' && scSel) ? scSel.value : '';
+    var detail = ddDetail(o, DD.kind, c.picks, c.amt, reason, memo, sc);
     var msg = '[상품 차감 접수]\n' + (o.branch || '') + ' · 배송일 ' + (o.date || '') + ' · 명세서 ' + o.id + '\n' +
-      DD_KINDS[DD.kind] + ' · ' + reason + ' · 차감액 ' + ddWon(c.amt.amount) +
+      DD_KINDS[DD.kind] + ' · ' + reason + (sc ? ' · 반품구분 ' + ddSynLabel(sc) : '') + ' · 차감액 ' + ddWon(c.amt.amount) +
       (c.picks.length ? '\n' + c.picks.map(function(p) { return ' - ' + p.name + ' × ' + p.q; }).join('\n') : '') +
       '\n\n접수할까요? (큐레이션팀 승인 시 오피스에 반영)';
     if (!confirm(msg)) { return; }
@@ -10535,13 +10551,13 @@ document.getElementById('__wpSave').onclick = function() {
     if (!items.length) { alert('엑셀로 받을 차감 요청이 없습니다.'); return; }
     /* 엑셀엔 연도까지 — 화면용 fmtTs 는 월-일만 보여준다 */
     function full(v) { if (!v) { return ''; } var t = new Date(String(v)); if (isNaN(t.getTime())) { return String(v).replace('T', ' ').slice(0, 16); } var p2 = function(n) { return ('0' + n).slice(-2); }; return t.getFullYear() + '-' + p2(t.getMonth() + 1) + '-' + p2(t.getDate()) + ' ' + p2(t.getHours()) + ':' + p2(t.getMinutes()); }
-    var H1 = ['요청번호', '요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '상품코드', '바코드', '품목', '수량', '차감액', '공급가', '세액', '비고', '상태', '처리자', '처리시각', '처리메모', '시너지'];
-    var H2 = ['요청번호', '요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '품목수', '수량합계', '차감액', '공급가', '세액', '비고', '상태', '처리자', '처리시각', '처리메모', '시너지'];
+    var H1 = ['요청번호', '요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '반품구분', '상품코드', '바코드', '품목', '수량', '차감액', '공급가', '세액', '비고', '상태', '처리자', '처리시각', '처리메모', '시너지'];
+    var H2 = ['요청번호', '요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '반품구분', '품목수', '수량합계', '차감액', '공급가', '세액', '비고', '상태', '처리자', '처리시각', '처리메모', '시너지'];
     var R1 = [], R2 = [];
     items.forEach(function(it) {
       var d = ddParse(it.detail);
       var total = ddNum(String(d.amountText || '').replace(/\(.*$/, ''));
-      var pre = [String(it.id || ''), full(it.ts), it.dept || '', it.name || '', it.branchName || '', it.hot || '', it.cold || '', d.date || '', d.order || '', d.kindLabel || '', d.reason || ''];
+      var pre = [String(it.id || ''), full(it.ts), it.dept || '', it.name || '', it.branchName || '', it.hot || '', it.cold || '', d.date || '', d.order || '', d.kindLabel || '', d.reason || '', d.syn || ''];
       var sx = ddSynOf(it);
       var post = [d.memo || '', it.status || '', it.admin || '', full(it.decidedTs), it.adminNote || '',
         !sx ? '' : (sx.st === 'done' ? sx.text : (sx.st === 'none' ? '대상 아님' : (sx.st === 'off' ? '준비 중(미등록)' : (sx.st === 'hold' ? '보류' : '실패: ' + (sx.text || '')))))];
@@ -10567,8 +10583,8 @@ document.getElementById('__wpSave').onclick = function() {
     if (btn) { btn.disabled = true; btn.textContent = '만드는 중…'; }
     ensureExcel().then(function() {
       var wb = new ExcelJS.Workbook();
-      ddXlsSheet(wb, '품목별', H1, R1, [14, 15, 16, 17]);
-      ddXlsSheet(wb, '요청별', H2, R2, [11, 12, 13, 14, 15]);
+      ddXlsSheet(wb, '품목별', H1, R1, [15, 16, 17, 18]);
+      ddXlsSheet(wb, '요청별', H2, R2, [12, 13, 14, 15, 16]);
       return wb.xlsx.writeBuffer();
     }).then(function(buf) {
       var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -10627,7 +10643,7 @@ document.getElementById('__wpSave').onclick = function() {
       }
       h += '<tr><td style="font-size:12.5px">' + esc(fmtTs(it.ts)) + '<div style="color:#64748B">' + esc(it.name || '') + '</div></td>' +
         '<td><b>' + esc(it.branchName || '') + '</b><div style="font-size:12px;color:#475569">배송일 ' + esc(d.date) + ' · 명세서 <a href="/office/order/order/' + esc(d.order) + '" target="_blank" style="color:#1f4e78">' + esc(d.order) + '</a></div></td>' +
-        '<td><b>' + esc(d.kindLabel) + '</b></td><td>' + esc(d.reason) + '</td>' +
+        '<td><b>' + esc(d.kindLabel) + '</b></td><td>' + esc(d.reason) + (d.syn ? '<div style="font-size:11.5px;color:#64748B;white-space:nowrap">반품구분 ' + esc(d.syn) + '</div>' : '') + '</td>' +
         '<td style="text-align:right;font-weight:800;color:#B91C1C">' + esc(d.amountText ? '₩' + d.amountText : '') + '</td>' +
         '<td style="font-size:12.5px">' + body + (d.memo ? '<div style="color:#64748B;margin-top:3px">' + esc(d.memo) + '</div>' : '') + '</td>' +
         '<td>' + act + '</td></tr>';
@@ -10663,7 +10679,8 @@ document.getElementById('__wpSave').onclick = function() {
   /* ---- 시너지(풀필) 차감 연결 (26.11.24) ----
      승인하면 워커가 ScanGate 를 거쳐 시너지에 반품 전표를 넣는다 (상온 품목 → 상온 시너지, 저온 품목 → 저온 시너지).
      패널은 '어느 상품을 주문 몇 개 중 몇 개 뺐는지'만 넘긴다 — 판매처·일자·사유·단가는 워커와 ScanGate 가 저장된 요청과 원 전표에서 찾는다.
-     대상: 품목 미출 + 사유 미출/누락·파손. 금액 차감·0원처리·그 밖의 사유는 시너지로 안 간다. */
+     대상: 품목 미출 — 반품구분은 요청자가 접수할 때 고른 값(반품구분: 1 파손·2 오입고·3 미송·5 기타).
+     반품구분이 없는 옛 요청은 사유 미출/누락·파손만 간다. 금액 차감·0원처리는 시너지로 안 간다. */
   function ddSynLines(plan, it) {
     var d = ddParse(it.detail);
     if (d.kind !== 'item') { return []; }
