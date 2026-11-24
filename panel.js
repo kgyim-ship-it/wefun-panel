@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1436';
+  var PANEL_BUILD = '20261124-1623';
   /* 이 페이지에서 더 새 빌드를 이미 받아둔 적이 있으면, 낡은 캐시본이 다시 떠도 바로 그걸로 넘긴다 */
   try {
     if (window.__wpNewB && window.__wpNewT && window.__wpNewB > PANEL_BUILD) { (0, eval)(window.__wpNewT); return; }
@@ -846,15 +846,17 @@
     if (!e) return Promise.resolve();
     return new Promise(function(rs) { setTimeout(rs, 1500); }).then(function() { return api({ e: 'editdetail', id: id, detail: e.detail, admin: REQ.name || '' }); }).catch(function() {});
   }
-  function decideReq(id, status, note, threadTs) {
-    return api({
+  function decideReq(id, status, note, threadTs, extra) {
+    var prm = {
       e: 'decide',
       id: id,
       status: status,
       note: note || '',
       admin: REQ.name,
       threadTs: threadTs || ''
-    }).then(function(j) { return reassertEdited(id).then(function() { return j; }); });
+    };
+    if (extra) { Object.keys(extra).forEach(function(k) { prm[k] = extra[k]; }); }
+    return api(prm).then(function(j) { return reassertEdited(id).then(function() { return j; }); });
   }
 
   function decideStage(id, stage, note, threadTs) {
@@ -10533,14 +10535,16 @@ document.getElementById('__wpSave').onclick = function() {
     if (!items.length) { alert('엑셀로 받을 차감 요청이 없습니다.'); return; }
     /* 엑셀엔 연도까지 — 화면용 fmtTs 는 월-일만 보여준다 */
     function full(v) { if (!v) { return ''; } var t = new Date(String(v)); if (isNaN(t.getTime())) { return String(v).replace('T', ' ').slice(0, 16); } var p2 = function(n) { return ('0' + n).slice(-2); }; return t.getFullYear() + '-' + p2(t.getMonth() + 1) + '-' + p2(t.getDate()) + ' ' + p2(t.getHours()) + ':' + p2(t.getMinutes()); }
-    var H1 = ['요청번호', '요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '상품코드', '바코드', '품목', '수량', '차감액', '공급가', '세액', '비고', '상태', '처리자', '처리시각', '처리메모'];
-    var H2 = ['요청번호', '요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '품목수', '수량합계', '차감액', '공급가', '세액', '비고', '상태', '처리자', '처리시각', '처리메모'];
+    var H1 = ['요청번호', '요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '상품코드', '바코드', '품목', '수량', '차감액', '공급가', '세액', '비고', '상태', '처리자', '처리시각', '처리메모', '시너지'];
+    var H2 = ['요청번호', '요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '품목수', '수량합계', '차감액', '공급가', '세액', '비고', '상태', '처리자', '처리시각', '처리메모', '시너지'];
     var R1 = [], R2 = [];
     items.forEach(function(it) {
       var d = ddParse(it.detail);
       var total = ddNum(String(d.amountText || '').replace(/\(.*$/, ''));
       var pre = [String(it.id || ''), full(it.ts), it.dept || '', it.name || '', it.branchName || '', it.hot || '', it.cold || '', d.date || '', d.order || '', d.kindLabel || '', d.reason || ''];
-      var post = [d.memo || '', it.status || '', it.admin || '', full(it.decidedTs), it.adminNote || ''];
+      var sx = ddSynOf(it);
+      var post = [d.memo || '', it.status || '', it.admin || '', full(it.decidedTs), it.adminNote || '',
+        !sx ? '' : (sx.st === 'done' ? sx.text : (sx.st === 'none' ? '대상 아님' : (sx.st === 'off' ? '준비 중(미등록)' : (sx.st === 'hold' ? '보류' : '실패: ' + (sx.text || '')))))];
       var qSum = 0, sSum = '', vSum = '';
       if (d.kind === 'item' && d.items.length) {
         var allAmt = d.items.every(function(x) { return x.hasAmt; });
@@ -10600,7 +10604,7 @@ document.getElementById('__wpSave').onclick = function() {
     if (!box) { return; }
     if (!items.length) { box.innerHTML = '<div style="padding:14px;color:#64748B">' + (DD.rev === '대기' ? '대기 중인 차감 요청이 없습니다.' : '해당 기간 차감 요청이 없습니다.') + '</div>'; return; }
     var map = {};
-    var h = '<table class="wp-tbl"><thead><tr><th style="width:118px">요청</th><th>거래처 · 명세서</th><th style="width:96px">종류</th><th style="width:96px">사유</th><th style="width:110px;text-align:right">차감액</th><th>내용</th><th style="width:220px">처리</th></tr></thead><tbody>';
+    var h = '<table class="wp-tbl"><thead><tr><th style="width:118px">요청</th><th>거래처 · 명세서</th><th style="width:96px">종류</th><th style="width:96px">사유</th><th style="width:110px;text-align:right">차감액</th><th>내용</th><th style="width:270px">처리</th></tr></thead><tbody>';
     items.forEach(function(it) {
       map[it.id] = it;
       var d = ddParse(it.detail);
@@ -10613,6 +10617,13 @@ document.getElementById('__wpSave').onclick = function() {
       } else {
         act = '<b style="color:' + (it.status === '완료' ? '#0a7d47' : '#B91C1C') + '">' + esc(it.status) + '</b> <span style="font-size:12px;color:#64748B">' + esc(it.admin || '') + ' ' + esc(fmtTs(it.decidedTs || '')) + '</span>' +
           (it.adminNote ? '<div style="font-size:12px;color:#475569;margin-top:3px">' + esc(it.adminNote) + '</div>' : '');
+        var sy = it.status === '완료' ? ddSynOf(it) : null;
+        if (sy && sy.st && sy.st !== 'none') {
+          var again = sy.st === 'fail' || sy.st === 'off' || sy.st === 'hold';
+          act += '<div style="font-size:12px;margin-top:4px;line-height:1.5;color:' + (sy.st === 'done' ? '#0a7d47' : (sy.st === 'fail' ? '#B91C1C' : '#64748B')) + '">' +
+            '<b>시너지</b> ' + esc(sy.st === 'done' ? sy.text : (sy.st === 'off' ? '자동 등록 준비 중 (아직 안 들어감)' : (sy.st === 'hold' ? '보류 — 오피스 반영 확인 후 보내기' : '실패 — ' + sy.text))) +
+            (again ? ' <button class="wp-act __wpDrSyn" data-id="' + esc(it.id) + '" style="height:22px;font-size:11.5px;padding:0 7px;margin:0 0 0 4px">시너지 다시 보내기</button>' : '') + '</div>';
+        }
       }
       h += '<tr><td style="font-size:12.5px">' + esc(fmtTs(it.ts)) + '<div style="color:#64748B">' + esc(it.name || '') + '</div></td>' +
         '<td><b>' + esc(it.branchName || '') + '</b><div style="font-size:12px;color:#475569">배송일 ' + esc(d.date) + ' · 명세서 <a href="/office/order/order/' + esc(d.order) + '" target="_blank" style="color:#1f4e78">' + esc(d.order) + '</a></div></td>' +
@@ -10623,6 +10634,19 @@ document.getElementById('__wpSave').onclick = function() {
     });
     box.innerHTML = h + '</tbody></table>';
     [].forEach.call(box.querySelectorAll('.__wpDrOk'), function(b) { b.onclick = function() { ddApprove(map[b.getAttribute('data-id')], b); }; });
+    [].forEach.call(box.querySelectorAll('.__wpDrSyn'), function(b) {
+      b.onclick = function() {
+        var it = map[b.getAttribute('data-id')];
+        if (!confirm('시너지(풀필)에 반품 전표를 다시 보냅니다.\n' + (it.branchName || '') + '\n\n이미 들어간 전표가 있으면 새로 넣지 않습니다. 진행할까요?')) { return; }
+        b.disabled = true; b.textContent = '보내는 중…';
+        api({ e: 'synret_send', id: it.id, admin: REQ.name }).then(function(j) {
+          var sy = (j && j.syn) || {};
+          if (sy.st === 'done') { toast('✓ 시너지 반품 전표 등록 — ' + (it.branchName || ''), '#0a7d47'); }
+          else { alert('시너지에 넣지 못했습니다.\n\n' + (sy.st === 'off' ? '자동 등록이 아직 꺼져 있습니다(준비 중).' : (sy.text || (j && j.error) || '알 수 없는 오류'))); }
+          ddLoadRev();
+        }).catch(function(e) { b.disabled = false; b.textContent = '시너지 다시 보내기'; alert('시너지 보내기 실패: ' + ((e && e.message) || e)); });
+      };
+    });
     [].forEach.call(box.querySelectorAll('.__wpDrNo'), function(b) {
       b.onclick = function() {
         var it = map[b.getAttribute('data-id')];
@@ -10634,6 +10658,50 @@ document.getElementById('__wpSave').onclick = function() {
         }).catch(function(e) { b.disabled = false; alert('반려 실패: ' + ((e && e.message) || e)); });
       };
     });
+  }
+
+  /* ---- 시너지(풀필) 차감 연결 (26.11.24) ----
+     승인하면 워커가 ScanGate 를 거쳐 시너지에 반품 전표를 넣는다 (상온 품목 → 상온 시너지, 저온 품목 → 저온 시너지).
+     패널은 '어느 상품을 주문 몇 개 중 몇 개 뺐는지'만 넘긴다 — 판매처·일자·사유·단가는 워커와 ScanGate 가 저장된 요청과 원 전표에서 찾는다.
+     대상: 품목 미출 + 사유 미출/누락·파손. 금액 차감·0원처리·그 밖의 사유는 시너지로 안 간다. */
+  function ddSynLines(plan, it) {
+    var d = ddParse(it.detail);
+    if (d.kind !== 'item') { return []; }
+    var byId = {}, tot = {};
+    plan.o.items.forEach(function(x) {
+      if (x.unreleased) { return; }
+      byId[x.oiid] = x;
+      var k = x.barcode || x.oiid;
+      tot[k] = (tot[k] || 0) + x.qty;
+    });
+    var out = [];
+    plan.steps.forEach(function(s) {
+      if (s.t !== 'minus') { return; }
+      var x = byId[s.oiid];
+      if (!x) { return; }
+      out.push({ oiid: x.oiid, barcode: x.barcode || '', orderQty: tot[x.barcode || x.oiid] || x.qty, qty: s.q,
+        temp: /저온|냉장|냉동/.test(x.crit || '') ? '저온' : (/상온/.test(x.crit || '') ? '상온' : '') });
+    });
+    return out;
+  }
+  function ddSynText(syn) {
+    if (!syn) { return ''; }
+    var head = '\n\n시너지(풀필) 차감:\n';
+    if (syn.st === 'none') { return head + ' · 대상 아님 — ' + syn.text; }
+    if (syn.st === 'off') { return head + ' · 자동 등록 준비 중 — 지금은 오피스만 반영됩니다'; }
+    if (syn.st === 'fail') { return head + ' · ⚠ 자동으로 못 넣음 — ' + syn.text + '\n   (오피스만 반영됩니다. 풀필 차감은 담당자에게 따로 요청하세요)'; }
+    return head + (syn.parts || []).map(function(p) { return ' · ' + p.text; }).join('\n') + '\n   (승인하면 시너지에도 반품 전표가 자동으로 들어갑니다)';
+  }
+  function ddSynPlan(it, synL) {
+    return api({ e: 'synret_plan', id: it.id, lines: JSON.stringify(synL) }).then(function(j) {
+      return ddSynText(j && j.syn);
+    }).catch(function(e) {
+      return '\n\n시너지(풀필) 차감:\n · 미리 확인 실패 (' + ((e && e.message) || e) + ') — 승인 뒤 [시너지 다시 보내기]로 넣을 수 있습니다';
+    });
+  }
+  function ddSynOf(it) {
+    if (!it || !it.syn) { return null; }
+    try { return JSON.parse(it.syn); } catch (e) { return null; }
   }
 
   /* 승인 전에 오피스에 보낼 작업을 계산 — 명세서를 새로 읽어서 남은 수량 기준 */
@@ -10741,10 +10809,14 @@ document.getElementById('__wpSave').onclick = function() {
     var orig = btn.textContent;
     btn.textContent = '명세서 확인 중…';
     ddPlan(it).then(function(plan) {
+      var synL = ddSynLines(plan, it);
+      var synP = { syn: JSON.stringify(synL) };
+      btn.textContent = '시너지 확인 중…';
+      return ddSynPlan(it, synL).then(function(synTxt) {
       var msg = '[상품 차감 승인 · 오피스 반영]\n' + (plan.o.branch || it.branchName || '') + '\n명세서 ' + plan.o.id + ' · 배송일 ' + (plan.o.date || '') +
         ' · 현재 ' + ddWon(plan.o.supply + plan.o.vat) + '\n\n오피스에 보낼 작업:\n' + plan.steps.map(function(s) { return ' · ' + ddStepText(s); }).join('\n') +
         (plan.skip.length ? '\n\n참고:\n' + plan.skip.map(function(s) { return ' - ' + s; }).join('\n') : '') +
-        '\n\n승인하면 바로 오피스 명세서에 반영됩니다. 진행할까요?';
+        synTxt + '\n\n승인하면 바로 오피스 명세서에 반영됩니다. 진행할까요?';
       if (!confirm(msg)) { btn.disabled = false; btn.textContent = orig; return; }
       btn.textContent = '오피스 반영 중…';
       var ch = Promise.resolve(), done = [];
@@ -10753,7 +10825,7 @@ document.getElementById('__wpSave').onclick = function() {
         if (!done.length) { throw e; }
         /* 일부만 반영된 채 대기로 두면 다시 승인할 때 같은 품목이 또 빠질 수 있다 → 완료 + 확인 필요로 닫는다 */
         var msg = '⚠ 일부만 반영 · 반영: ' + done.map(ddStepText).join(' / ') + ' · 실패: ' + ((e && e.message) || e);
-        return decideReq(it.id, '완료', msg, it.slackTs).then(function() {
+        return decideReq(it.id, '완료', msg, it.slackTs, synP).then(function() {
           ddLoadRev(); revBadges(true);
           throw new Error('일부만 오피스에 반영됐습니다 — 요청은 완료(확인 필요)로 닫았습니다.\n오피스 명세서 ' + plan.o.id + '를 직접 확인하세요.\n\n' + msg);
         });
@@ -10764,11 +10836,14 @@ document.getElementById('__wpSave').onclick = function() {
         var acts = plan.steps.map(function(s) { return s.t === 'minus' ? (s.name + '×' + s.q) : (s.t === 'bulk' ? '전체 미출' : ('금액조정 ' + ddWon(s.amount))); }).join(', ');
         /* 확인이 안 돼도 오피스엔 이미 보냈다 — 대기로 두면 다시 승인할 때 이중 차감되니 '완료 + 확인 필요'로 닫는다 */
         var note = (v.bad.length ? '⚠ 반영 확인 필요(' + v.bad.join(' / ') + ') · ' : '오피스 반영 · ') + acts + ' · 반영 전 명세서 ' + ddWon(plan.o.supply + plan.o.vat);
-        return decideReq(it.id, '완료', note, it.slackTs).then(function() {
+        return decideReq(it.id, '완료', note, it.slackTs, synP).then(function(dj) {
           ddLoadRev(); revBadges(true);
+          var sy = (dj && dj.syn) || null;
           if (v.bad.length) { alert('오피스에 보냈지만 반영 여부를 확인하지 못했습니다.\n오피스 명세서 ' + plan.o.id + '를 직접 확인하세요.\n\n' + v.bad.join('\n')); }
-          else { toast('✓ 차감 반영 완료 — ' + (plan.o.branch || ''), '#0a7d47'); }
+          else if (sy && sy.st === 'fail') { alert('오피스 차감은 반영됐습니다.\n시너지(풀필) 차감은 자동으로 못 넣었습니다:\n\n' + sy.text + '\n\n[완료] 목록에서 [시너지 다시 보내기]를 누르거나, 풀필 담당에게 따로 요청하세요.'); }
+          else { toast('✓ 차감 반영 완료 — ' + (plan.o.branch || '') + (sy && sy.st === 'done' ? ' · 시너지 반품 전표 등록' : ''), '#0a7d47'); }
         });
+      });
       });
     }).catch(function(e) {
       btn.disabled = false; btn.textContent = orig;
