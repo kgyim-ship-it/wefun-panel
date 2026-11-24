@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1331';
+  var PANEL_BUILD = '20261124-1350';
   /* 이 페이지에서 더 새 빌드를 이미 받아둔 적이 있으면, 낡은 캐시본이 다시 떠도 바로 그걸로 넘긴다 */
   try {
     if (window.__wpNewB && window.__wpNewT && window.__wpNewB > PANEL_BUILD) { (0, eval)(window.__wpNewT); return; }
@@ -10480,6 +10480,7 @@ document.getElementById('__wpSave').onclick = function() {
       F.map(function(f) { return '<button class="wp-day __wpDrF' + (DD.rev === f ? ' on' : '') + '" data-f="' + f + '">' + f + '</button>'; }).join('') +
       '<span id="__wpDrDr" style="display:' + (DD.rev === '대기' ? 'none' : 'inline-flex') + ';gap:6px;align-items:center;margin-left:8px">' +
       '<input id="__wpDrFr" type="date" class="wp-inp"><span style="color:#94A3B8">~</span><input id="__wpDrTo" type="date" class="wp-inp"><button id="__wpDrGo" class="wp-btn pri">조회</button></span>' +
+      '<button id="__wpDrXls" class="wp-btn gh" style="margin-left:8px" title="지금 화면에 보이는 목록을 엑셀로 받습니다">⬇ 엑셀</button>' +
       '<span style="flex:1"></span><span style="font-size:12px;color:#64748B">승인하면 바로 오피스 명세서에 반영됩니다 · 승인 전에 반영 내용을 한 번 더 보여드립니다</span></div>' +
       '<div id="__wpDrList" class="wp-scroll">불러오는 중…</div>';
     document.getElementById('__wpDrFr').value = DD.rfrom;
@@ -10488,11 +10489,33 @@ document.getElementById('__wpSave').onclick = function() {
     document.getElementById('__wpDrGo').onclick = function() {
       DD.rfrom = document.getElementById('__wpDrFr').value; DD.rto = document.getElementById('__wpDrTo').value; ddLoadRev();
     };
+    document.getElementById('__wpDrXls').onclick = function() { ddRevXlsx(this); };
     ddLoadRev();
+  }
+
+  /* 차감 처리 목록 엑셀 — 지금 화면에 보이는 목록(필터·기간 그대로)을 한 요청 = 한 줄로 */
+  function ddRevXlsx(btn) {
+    var items = DD.revItems || [];
+    if (!items.length) { alert('엑셀로 받을 차감 요청이 없습니다.'); return; }
+    var rows = [['요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '차감액', '공급가', '세액', '품목·내용', '비고', '상태', '처리자', '처리시각', '처리메모']];
+    items.forEach(function(it) {
+      var d = ddParse(it.detail);
+      var body = d.kind === 'item' ? d.items.map(function(x) { return x.name + ' × ' + x.q; }).join(', ') : (d.kind === 'amount' ? '금액조정' : '명세서 전체 미출');
+      rows.push([fmtTs(it.ts), it.dept || '', it.name || '', it.branchName || '', it.hot || '', it.cold || '', d.date || '', d.order || '', d.kindLabel || '', d.reason || '',
+        ddNum(String(d.amountText || '').replace(/\(.*$/, '')), d.amt ? d.amt.supply : '', d.amt ? d.amt.vat : '', body, d.memo || '',
+        it.status || '', it.admin || '', it.decidedTs ? fmtTs(it.decidedTs) : '', it.adminNote || '']);
+    });
+    var fname = '상품차감_' + (DD.rev === '대기' ? '대기_' + todayStr() : (DD.rfrom + '~' + DD.rto + (DD.rev !== '전체' ? '_' + DD.rev : ''))) + '.xlsx';
+    var orig = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '만드는 중…'; }
+    xlsxDownload(rows, null, '상품차감', fname).then(function() { toast('✓ 엑셀 ' + items.length + '건', '#0a7d47'); })
+      .catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); })
+      .then(function() { if (btn) { btn.disabled = false; btn.textContent = orig; } });
   }
 
   function ddLoadRev() {
     var box = document.getElementById('__wpDrList');
+    DD.revItems = [];
     var f = DD.rev === '대기' ? { status: '대기' } : { from: DD.rfrom, to: DD.rto };
     listReq(f).then(function(items) {
       items = (items || []).filter(function(it) { return it.action === DD_ACTION; });
@@ -10507,6 +10530,7 @@ document.getElementById('__wpSave').onclick = function() {
 
   function ddRenderRev(items) {
     var box = document.getElementById('__wpDrList');
+    DD.revItems = items || [];
     if (!box) { return; }
     if (!items.length) { box.innerHTML = '<div style="padding:14px;color:#64748B">' + (DD.rev === '대기' ? '대기 중인 차감 요청이 없습니다.' : '해당 기간 차감 요청이 없습니다.') + '</div>'; return; }
     var map = {};
