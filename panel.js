@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1134';
+  var PANEL_BUILD = '20261124-1144';
   try {
     if (!window.__wpSelfUpd) {
       window.__wpSelfUpd = 1;
@@ -1296,9 +1296,7 @@
       ['visits', '접속 이력']
     ],
     curation: [
-      ['dd_rev', '차감 처리'],
-      ['dd_new', '차감 접수'],
-      ['find', '거래처 조회']
+      ['dd_rev', '차감 처리']
     ]
   };
 
@@ -1838,10 +1836,12 @@
   function openActMenu(btn, bid) {
     closeActMenu();
     var acts = actionKeys().filter(function(a) { return a !== '신규코드발급'; });
+    if (IS_CUR) { acts.push(DD_ACTION); }   /* 상품차감 — 프로토타입 동안 큐레이션팀 명단만 보임 */
     var m = document.createElement('div');
     m.id = '__wpActMenu';
     m.style.cssText = 'position:fixed;z-index:2147483647;background:#fff;border:1px solid #e2e8f0;border-radius:11px;box-shadow:0 16px 40px rgba(15,23,42,.22);min-width:168px;padding:5px;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif';
     m.innerHTML = acts.map(function(a) {
+      if (a === DD_ACTION) { return '<button class="wp-ami" data-a="' + esc(a) + '" data-red="1" style="display:block;width:100%;text-align:left;border:none;background:#FEF2F2;padding:10px 14px;font-size:13px;color:#B91C1C;font-weight:700;cursor:pointer;border-radius:7px;margin-top:3px">' + esc(a) + '</button>'; }
       return '<button class="wp-ami" data-a="' + esc(a) + '" style="display:block;width:100%;text-align:left;border:none;background:none;padding:10px 14px;font-size:13px;color:#1e293b;cursor:pointer;border-radius:7px">' + esc(a) + '</button>';
     }).join('');
     document.body.appendChild(m);
@@ -1860,15 +1860,17 @@
         b.style.fontWeight = '600';
       };
       b.onmouseout = function() {
-        b.style.background = 'none';
-        b.style.color = '#1e293b';
-        b.style.fontWeight = '400';
+        var red = b.getAttribute('data-red');
+        b.style.background = red ? '#FEF2F2' : 'none';
+        b.style.color = red ? '#B91C1C' : '#1e293b';
+        b.style.fontWeight = red ? '700' : '400';
       };
       b.onclick = function() {
         var a = b.getAttribute('data-a');
         closeActMenu();
         /* 배송시간문의는 먼저 조회한다 — 이미 완료된 건이면 요청을 만들 이유가 없다 */
         if (a === '배송시간문의') { openDeliveryTime(FOUND[bid]); return; }
+        if (a === DD_ACTION) { ddOpenForBranch(FOUND[bid]); return; }
         openForm(a, FOUND[bid]);
       };
     });
@@ -11436,7 +11438,8 @@ document.getElementById('__wpSave').onclick = function() {
           date: td[12].textContent.trim(),
           status: td[14].textContent.replace(/\s+/g, ' ').trim(),
           settle: td[15].textContent.replace(/\s+/g, ' ').trim(),
-          minus: (td[20] ? td[20].textContent.replace(/\s+/g, ' ').trim() : '')
+          minus: (td[20] ? td[20].textContent.replace(/\s+/g, ' ').trim() : ''),
+          codes: (td[7] ? td[7].textContent.replace(/\s+/g, ' ').trim().split(' ') : [])
         });
       });
       out.sort(function(a, b) { return String(b.date).localeCompare(String(a.date)) || (b.id - a.id); });
@@ -11547,7 +11550,46 @@ document.getElementById('__wpSave').onclick = function() {
     return d;
   }
 
-  /* ================= 차감 접수 ================= */
+  /* ================= 차감 접수 — [거래처 조회·요청] › 작업 요청 › 상품차감 =================
+     요청자용 화면에서 거래처를 고르면 그 거래처의 배송일별 거래명세서가 뜬다 → 명세서 선택 → 품목·수량 체크 → 요청.
+     처리는 [큐레이션] 모드 › [차감 처리]에서 승인/반려. */
+  function ddOpenForBranch(br) {
+    if (!br) { return; }
+    if (MODE !== 'requester') { alert('요청 제출은 요청자용 모드에서 하세요.'); return; }
+    DD.br = br; DD.ord = null; DD.orders = []; DD.kind = 'item';
+    DD.to = ddAddDays(todayStr(), 3); DD.from = ddAddDays(todayStr(), -30);
+    var qr = document.getElementById('__wpQr');
+    if (qr) { qr.style.display = 'none'; }
+    var box = document.getElementById('__wpForm');
+    box.innerHTML = '<div class="wp-form"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px;color:#B91C1C">' + DD_ACTION + '</b><button id="__wpDxBack" class="wp-btn gh" style="padding:6px 12px">← 목록</button></div>' +
+      '<div class="wp-meta"><b>거래처</b> ' + esc(br.name) + ' · 점포코드 ' + esc(br.hot) + (br.cold ? '/' + esc(br.cold) : '') + ' · 담당코스 ' + esc(br.course || '-') +
+      '<br><b>요청자</b> ' + esc(REQ.dept) + ' / ' + esc(REQ.name) + ' (' + esc(REQ.email) + ')</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><b style="font-size:13.5px">차감할 배송일의 거래명세서를 고르세요</b>' +
+      '<span style="flex:1"></span><span style="font-size:12.5px;color:#64748B">배송일</span><input id="__wpDxF" type="date" class="wp-inp"><span style="color:#94A3B8">~</span><input id="__wpDxT" type="date" class="wp-inp">' +
+      '<button id="__wpDxGo" class="wp-btn pri">조회</button></div>' +
+      '<div id="__wpDxList"></div><div id="__wpDxOrd"></div>' +
+      '<div style="font-size:11.5px;color:#94a3b8;margin-top:8px;line-height:1.7">* 요청하면 큐레이션팀이 확인 후 승인하는 순간 오피스 거래명세서에 바로 반영됩니다.</div></div>';
+    document.getElementById('__wpDxBack').onclick = function() { box.innerHTML = ''; if (qr) { qr.style.display = 'block'; } };
+    document.getElementById('__wpDxF').value = DD.from;
+    document.getElementById('__wpDxT').value = DD.to;
+    function go() {
+      DD.from = document.getElementById('__wpDxF').value;
+      DD.to = document.getElementById('__wpDxT').value;
+      var lb = document.getElementById('__wpDxList');
+      document.getElementById('__wpDxOrd').innerHTML = '';
+      lb.innerHTML = '<div style="padding:10px;color:#64748B">거래명세서 조회 중…</div>';
+      ddOrders(br.name, DD.from, DD.to).then(function(list) {
+        var cs = [br.hot, br.cold].filter(Boolean);
+        var mine = list.filter(function(o) { return o.codes.some(function(c) { return cs.indexOf(c) > -1; }) || nn(o.branch) === nn(br.name); });
+        DD.orders = mine;
+        ddRenderOrders();
+      }).catch(function(e) { lb.innerHTML = '<div style="color:#b00;padding:10px">' + esc((e && e.message) || e) + '</div>'; });
+    }
+    document.getElementById('__wpDxGo').onclick = go;
+    go();
+  }
+
+  /* ================= (구) 차감 접수 탭 — 지금은 탭에서 뺐다. 명세서 번호로 바로 여는 용도로 남겨둠 ================= */
   function viewDdNew() {
     if (!DD.from) { DD.to = ddAddDays(todayStr(), 3); DD.from = ddAddDays(todayStr(), -30); }
     VIEW.innerHTML =
@@ -11756,11 +11798,12 @@ document.getElementById('__wpSave').onclick = function() {
     if (!confirm(msg)) { return; }
     var btn = document.getElementById('__wpDxSub');
     btn.disabled = true; btn.textContent = '접수 중…';
-    submitReq({ ts: now(), dept: REQ.dept, name: REQ.name, email: REQ.email, action: DD_ACTION, hot: '', cold: '',
-      branchId: '', branchName: o.branch || '', detail: detail }).then(function(r) {
+    submitReq({ ts: now(), dept: REQ.dept, name: REQ.name, email: REQ.email, action: DD_ACTION,
+      branchId: (DD.br && DD.br.id) || '', branchName: (DD.br && DD.br.name) || o.branch || '', detail: detail,
+      hot: (DD.br && DD.br.hot) || '', cold: (DD.br && DD.br.cold) || '' }).then(function(r) {
       toast('✓ 차감 요청 접수됐습니다' + (r && r.dup ? ' (같은 요청이 이미 대기 중)' : ''), '#0a7d47');
       DD.ord = null;
-      document.getElementById('__wpDxOrd').innerHTML = '<div class="wp-form" style="color:#0a7d47;font-weight:700">✓ 접수됐습니다 — [차감 처리] 탭에서 승인하면 오피스에 반영됩니다.</div>';
+      document.getElementById('__wpDxOrd').innerHTML = '<div class="wp-form" style="color:#0a7d47;font-weight:700">✓ 요청됐습니다 — 큐레이션팀이 승인하면 오피스 명세서에 반영됩니다. 처리 결과는 [내 요청 상태]에서 볼 수 있습니다.</div>';
       ddRenderOrders();
       revBadges(true);
     }).catch(function(e) {
