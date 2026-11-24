@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1206';
+  var PANEL_BUILD = '20261124-1237';
   /* 이 페이지에서 더 새 빌드를 이미 받아둔 적이 있으면, 낡은 캐시본이 다시 떠도 바로 그걸로 넘긴다 */
   try {
     if (window.__wpNewB && window.__wpNewT && window.__wpNewB > PANEL_BUILD) { (0, eval)(window.__wpNewT); return; }
@@ -1869,7 +1869,7 @@
   function openActMenu(btn, bid) {
     closeActMenu();
     var acts = actionKeys().filter(function(a) { return a !== '신규코드발급'; });
-    if (IS_CUR) { acts.push(DD_ACTION); }   /* 상품차감 — 프로토타입 동안 큐레이션팀 명단만 보임 */
+    acts.push(DD_ACTION);   /* 상품차감 — 26.11.24 전체 요청자에게 오픈 (승인·반려는 큐레이션팀 명단만) */
     var m = document.createElement('div');
     m.id = '__wpActMenu';
     m.style.cssText = 'position:fixed;z-index:2147483647;background:#fff;border:1px solid #e2e8f0;border-radius:11px;box-shadow:0 16px 40px rgba(15,23,42,.22);min-width:168px;padding:5px;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif';
@@ -4298,7 +4298,7 @@ document.getElementById('__wpSave').onclick = function() {
         last = '<td style="white-space:normal">' + _lastInner + '</td>';
       }
       var bn = it.branchId ? ('<a href="/office/sales/branch/' + esc(it.branchId) + '" target="_blank" style="color:#1f4e78;text-decoration:none">' + esc(it.branchName) + '</a>') : esc(it.branchName);
-      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제|취소)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + ((codeGubun(it.action) || it.action === '배송주기변경') ? d1Badge(it) : '') + ((it.action === '배송메모' && memoOnce(it.detail).t) ? '<div style="margin-top:4px;display:inline-block;padding:2px 8px;border-radius:999px;background:#F59E0B;color:#fff;font-size:11px;font-weight:800;white-space:nowrap">📌 1회성</div>' : '') + (bookedDate(it) ? ('<div style="margin-top:3px;display:inline-block;padding:1px 7px;border-radius:999px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:800">✓ 예약 · ' + esc(bookedDate(it).slice(5).replace('-', '/')) + ' 10시 자동반영</div>') : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + (memoOnceHtml(it) || addDow(esc(it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>')) + '</td>' + '<td style="white-space:nowrap">' + pill((it.status === '대기' && bookedDate(it)) ? '예약' : it.status) + '</td>' + last + '</tr>';
+      h += '<tr data-id="' + esc(it.id) + '">' + (sel ? ('<td><input type="checkbox" class="__wpSel" data-id="' + esc(it.id) + '" style="cursor:pointer"></td>') : '') + '<td style="white-space:nowrap;color:#64748b">' + esc(fmtTs(it.ts)) + '</td>' + (cn ? ('<td style="white-space:nowrap"><select class="__wpNotice" data-id="' + esc(it.id) + '" style="display:inline-block;width:78px;height:30px;line-height:1;font-size:12.5px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;vertical-align:top;box-sizing:border-box"><option value=""' + (String(it.custNotice || '') === '완료' ? '' : ' selected') + '></option><option value="완료"' + (String(it.custNotice || '') === '완료' ? ' selected' : '') + '>완료</option></select></td>') : ('<td style="white-space:nowrap">' + esc(it.dept) + '</td>')) + '<td style="white-space:nowrap">' + esc(it.name) + '</td>' + '<td style="white-space:normal;word-break:break-word;line-height:1.25;font-weight:600">' + esc(it.action) + ((admin && it.status === '대기' && /^배송(주기변경|일정생성|일정변경|일정삭제|취소)$/.test(it.action)) ? '<br><span class="__wpDvT" data-id="' + esc(it.id) + '" style="font-weight:400;color:#CBD5E1;font-size:10.5px">배송방법…</span>' : '') + ((codeGubun(it.action) || it.action === '배송주기변경') ? d1Badge(it) : '') + ((it.action === '배송메모' && memoOnce(it.detail).t) ? '<div style="margin-top:4px;display:inline-block;padding:2px 8px;border-radius:999px;background:#F59E0B;color:#fff;font-size:11px;font-weight:800;white-space:nowrap">📌 1회성</div>' : '') + (bookedDate(it) ? ('<div style="margin-top:3px;display:inline-block;padding:1px 7px;border-radius:999px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:800">✓ 예약 · ' + esc(bookedDate(it).slice(5).replace('-', '/')) + ' 10시 자동반영</div>') : '') + '</td>' + '<td style="white-space:nowrap">' + esc(it.hot || '-') + '</td>' + '<td style="word-break:break-word;line-height:1.35">' + bn + '</td>' + '<td style="color:#334155;white-space:normal;word-break:break-word;line-height:1.5;">' + (memoOnceHtml(it) || addDow(esc(it.action === DD_ACTION ? ddPretty(it.detail) : it.detail)).replace(/\n/g, '<br>').split(' · ').map(function(_p, _i, _a) { return (_i > 0 && /^변경/.test(_p) && /^기존/.test(_a[_i - 1]) ? '<div style="height:7px"></div>' : '') + _p; }).join('<br>')) + '</td>' + '<td style="white-space:nowrap">' + pill((it.status === '대기' && bookedDate(it)) ? '예약' : it.status) + '</td>' + last + '</tr>';
     });
     h += '</tbody></table>';
     box.innerHTML = h;
@@ -11445,6 +11445,18 @@ document.getElementById('__wpSave').onclick = function() {
 
   function ddWon(v) { return '₩' + Math.round(Number(v || 0)).toLocaleString(); }
   function ddNum(s) { var v = parseInt(String(s == null ? '' : s).replace(/[^0-9-]/g, ''), 10); return isNaN(v) ? 0 : v; }
+  /* 목록(내 요청 상태)에 보일 때: '품목: 주문품목id|이름|수량' → '이름 × 수량', '금액: 합계/공급가/세액' → 읽기 쉬운 글 */
+  function ddPretty(detail) {
+    return String(detail || '').split(' · ').map(function(p) {
+      if (/^품목:/.test(p)) {
+        return '품목: ' + p.replace(/^품목:\s*/, '').split(',').map(function(x) { var a = x.trim().split('|'); return a.length >= 3 ? (a[1].trim() + ' × ' + a[2].trim()) : x.trim(); }).join(', ');
+      }
+      var m = /^금액:\s*(\d+)\/(\d+)\/(\d+)$/.exec(p.trim());
+      if (m) { return '금액조정: 공급가 ' + ddWon(+m[2]) + ' / 세액 ' + ddWon(+m[3]); }
+      if (/^차감액:\s*\d/.test(p)) { return p.replace(/^차감액:\s*/, '차감액: ₩'); }
+      return p;
+    }).join(' · ');
+  }
   function ddClean(s) { return String(s == null ? '' : s).replace(/[·|,:]/g, ' ').replace(/\s+/g, ' ').trim(); }
   function ddAddDays(ymd, n) { var d = new Date(ymd + 'T00:00:00'); d.setDate(d.getDate() + n); return ymdOf(d); }
 
@@ -11700,7 +11712,7 @@ document.getElementById('__wpSave').onclick = function() {
       '<input id="__wpDxF" type="date" class="wp-inp"><span style="color:#94A3B8">~</span><input id="__wpDxT" type="date" class="wp-inp">' +
       '<button id="__wpDxGo" class="wp-btn pri">명세서 조회</button></div>' +
       '<div class="wp-meta" style="margin:0 0 10px;font-size:12.5px;line-height:1.7">거래처를 검색해 <b>차감할 배송일의 거래명세서</b>를 누르세요 → 품목·수량을 체크(또는 금액 / 0원처리)해서 접수합니다.<br>' +
-      '접수 건은 <b>[차감 처리]</b> 탭에서 큐레이션팀이 승인하는 순간 오피스 명세서에 바로 반영됩니다. (프로토타입 — 큐레이션팀만 보임, 슬랙 알림 없음)</div>' +
+      '접수 건은 <b>[차감 처리]</b> 탭에서 큐레이션팀이 승인하는 순간 오피스 명세서에 바로 반영됩니다.</div>' +
       '<div id="__wpDxList"></div><div id="__wpDxOrd"></div>';
     var kw = document.getElementById('__wpDxKw');
     kw.value = DD.kw;
