@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1357';
+  var PANEL_BUILD = '20261124-1436';
   /* 이 페이지에서 더 새 빌드를 이미 받아둔 적이 있으면, 낡은 캐시본이 다시 떠도 바로 그걸로 넘긴다 */
   try {
     if (window.__wpNewB && window.__wpNewT && window.__wpNewB > PANEL_BUILD) { (0, eval)(window.__wpNewT); return; }
@@ -10071,8 +10071,13 @@ document.getElementById('__wpSave').onclick = function() {
         net[key] = (net[key] || 0) + it.qty;
         o.items.push(it);
       });
-      /* 오피스는 출고완료 뒤에만 품목별 [미출] 버튼을 준다 — 승인대기·작업중 명세서엔 버튼이 아예 없다 (2026-11-24 실측) */
-      o.preShip = !o.items.some(function(it) { return it.canMinus; });
+      /* 출고 전/후는 주문상태(주문취소·승인대기·출고대기·작업중·출고완료)로 판단한다.
+         [미출] 버튼은 '출고완료 + 미출 권한이 있는 오피스 계정'에만 보인다 — 버튼 유무로 판단하면 권한 없는 요청자(CX 등)는
+         출고완료 명세서도 전부 '출고 전'으로 보여 품목 미출·0원처리를 접수할 수 없었다 (2026-11-24 실측: 같은 명세서가 계정에 따라 버튼 9개/0개). */
+      var hasBtn = o.items.some(function(it) { return it.canMinus; });
+      o.preShip = o.status ? !/출고완료/.test(o.status) : !hasBtn;
+      /* 출고완료인데 버튼이 하나도 없다 = 지금 로그인한 오피스 계정에 미출 권한이 없다 (접수는 되고, 승인·반영은 권한 있는 계정만) */
+      o.noPerm = !o.preShip && !hasBtn && o.items.some(function(it) { return !it.unreleased; });
       var done = {};
       o.items.forEach(function(it) {
         var key = it.barcode || it.code || it.oiid;
@@ -10359,7 +10364,7 @@ document.getElementById('__wpSave').onclick = function() {
     if (DD.kind === 'item') {
       var h = '<div class="wp-scroll" style="max-height:calc(100vh - 520px);min-height:190px;flex:none"><table class="wp-tbl wp-cmp"><thead><tr><th style="width:34px"><input type="checkbox" id="__wpDxAll"></th><th>상품</th><th style="width:76px">출고기준</th><th style="width:54px;text-align:right">주문</th><th style="width:58px;text-align:right">기미출</th><th style="width:54px;text-align:right">남음</th><th style="width:104px;text-align:right">금액</th><th style="width:92px">차감수량</th><th style="width:104px;text-align:right">차감액</th></tr></thead><tbody>';
       live.forEach(function(it, i) {
-        var dis = !it.remain || !it.canMinus;
+        var dis = !it.remain || (!it.canMinus && !o.noPerm);   /* 권한 없는 계정은 버튼이 없어도 접수는 할 수 있다 */
         var line = it.supply + it.vat;
         h += '<tr' + (dis ? ' style="opacity:.5"' : '') + '><td><input type="checkbox" class="__wpDxChk" data-i="' + i + '"' + (dis ? ' disabled' : '') + '></td>' +
           '<td style="white-space:normal"><b>' + esc(it.name) + '</b>' + (it.taxfree ? ' <span class="wp-pill" style="background:#FEF3C7;color:#92400E;height:19px">면세</span>' : '') +
@@ -10643,6 +10648,7 @@ document.getElementById('__wpSave').onclick = function() {
       var byId = {};
       o.items.forEach(function(x) { byId[x.oiid] = x; });
       var live = o.items.filter(function(x) { return !x.unreleased; });
+      if (o.noPerm && d.kind !== 'amount') { throw new Error('지금 로그인한 오피스 계정에는 미출 권한이 없습니다 ([미출] 버튼이 안 보이는 계정).\n미출 권한이 있는 계정으로 오피스에 로그인한 뒤 다시 승인하세요.'); }
       if (d.kind === 'item') {
         d.items.forEach(function(p) {
           var x = byId[p.oiid];
