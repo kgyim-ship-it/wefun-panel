@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1352';
+  var PANEL_BUILD = '20261124-1357';
   /* 이 페이지에서 더 새 빌드를 이미 받아둔 적이 있으면, 낡은 캐시본이 다시 떠도 바로 그걸로 넘긴다 */
   try {
     if (window.__wpNewB && window.__wpNewT && window.__wpNewB > PANEL_BUILD) { (0, eval)(window.__wpNewT); return; }
@@ -10099,7 +10099,8 @@ document.getElementById('__wpSave').onclick = function() {
     var parts = ['명세서: ' + o.id, '배송일: ' + (o.date || ''), '종류: ' + DD_KINDS[kind], '사유: ' + reason];
     if (kind === 'item') {
       parts.push('차감액: ' + amt.amount.toLocaleString());
-      parts.push('품목: ' + picks.map(function(p) { return p.oiid + '|' + ddClean(p.name) + '|' + p.q; }).join(' , '));
+      /* 품목 = 주문품목id|이름|수량|공급가|세액|상품코드|바코드 (뒤 4칸은 26.11.24 추가 — 엑셀용. 앞 3칸만 있는 옛 건도 그대로 읽힌다) */
+      parts.push('품목: ' + picks.map(function(p) { return [p.oiid, ddClean(p.name), p.q, p.supply || 0, p.vat || 0, ddClean(p.code), ddClean(p.barcode)].join('|'); }).join(' , '));
     } else if (kind === 'amount') {
       parts.push('차감액: ' + amt.amount.toLocaleString());
       parts.push('금액: ' + amt.amount + '/' + amt.supply + '/' + amt.vat);
@@ -10115,7 +10116,9 @@ document.getElementById('__wpSave').onclick = function() {
     d.kind = d.kindLabel === DD_KINDS.amount ? 'amount' : (d.kindLabel === DD_KINDS.zero ? 'zero' : 'item');
     detailGet(detail, '품목').split(',').forEach(function(s) {
       var a = s.trim().split('|');
-      if (a.length >= 3 && /^\d+$/.test(a[0].trim())) { d.items.push({ oiid: a[0].trim(), name: a[1].trim(), q: ddNum(a[2]) }); }
+      if (a.length >= 3 && /^\d+$/.test(a[0].trim())) {
+        d.items.push({ oiid: a[0].trim(), name: a[1].trim(), q: ddNum(a[2]), hasAmt: a.length >= 5, supply: a.length >= 5 ? ddNum(a[3]) : 0, vat: a.length >= 5 ? ddNum(a[4]) : 0, code: (a[5] || '').trim(), barcode: (a[6] || '').trim() });
+      }
     });
     var m = /^(\d+)\/(\d+)\/(\d+)$/.exec(detailGet(detail, '금액').replace(/\s/g, ''));
     if (m) { d.amt = { amount: +m[1], supply: +m[2], vat: +m[3] }; }
@@ -10409,7 +10412,7 @@ document.getElementById('__wpSave').onclick = function() {
         var p = ddPart(it, q);
         if (cell) { cell.textContent = ddWon(p.amount); }
         tot.amount += p.amount; tot.supply += p.supply; tot.vat += p.vat;
-        picks.push({ oiid: it.oiid, name: it.name, q: q });
+        picks.push({ oiid: it.oiid, name: it.name, q: q, supply: p.supply, vat: p.vat, code: it.code, barcode: it.barcode });
       });
       return { picks: picks, amt: tot };
     }
@@ -10493,25 +10496,81 @@ document.getElementById('__wpSave').onclick = function() {
     ddLoadRev();
   }
 
-  /* 차감 처리 목록 엑셀 — 지금 화면에 보이는 목록(필터·기간 그대로)을 한 요청 = 한 줄로 */
+  /* 차감 처리 목록 엑셀 — 지금 화면에 보이는 목록(필터·기간 그대로).
+     시트 1 '품목별': 품목 하나 = 한 줄 (품목·수량·금액이 각자 칸) · 시트 2 '요청별': 요청 하나 = 한 줄 합계 */
+  function ddXlsSheet(wb, name, head, rows, numCols) {
+    var ws = wb.addWorksheet(name, { views: [{ state: 'frozen', ySplit: 1 }] });
+    var hr = ws.addRow(head);
+    hr.height = 22;
+    hr.eachCell({ includeEmpty: true }, function(cell) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } };
+      cell.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    rows.forEach(function(r) { ws.addRow(r); });
+    for (var c = 0; c < head.length; c++) {
+      var w = 6;
+      [head].concat(rows).forEach(function(r) {
+        var v = r[c] == null ? '' : (typeof r[c] === 'number' ? r[c].toLocaleString() : String(r[c])), len = 0;
+        for (var x = 0; x < v.length; x++) { len += v.charCodeAt(x) > 127 ? 2 : 1; }
+        if (len > w) { w = len; }
+      });
+      ws.getColumn(c + 1).width = Math.min(50, w + 3);
+    }
+    numCols.forEach(function(ci) {
+      for (var r = 2; r <= rows.length + 1; r++) { ws.getCell(r, ci + 1).numFmt = '#,##0'; }
+    });
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: head.length } };
+    return ws;
+  }
   function ddRevXlsx(btn) {
     var items = DD.revItems || [];
     if (!items.length) { alert('엑셀로 받을 차감 요청이 없습니다.'); return; }
-    var rows = [['요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '차감액', '공급가', '세액', '품목·내용', '비고', '상태', '처리자', '처리시각', '처리메모']];
     /* 엑셀엔 연도까지 — 화면용 fmtTs 는 월-일만 보여준다 */
     function full(v) { if (!v) { return ''; } var t = new Date(String(v)); if (isNaN(t.getTime())) { return String(v).replace('T', ' ').slice(0, 16); } var p2 = function(n) { return ('0' + n).slice(-2); }; return t.getFullYear() + '-' + p2(t.getMonth() + 1) + '-' + p2(t.getDate()) + ' ' + p2(t.getHours()) + ':' + p2(t.getMinutes()); }
+    var H1 = ['요청번호', '요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '상품코드', '바코드', '품목', '수량', '차감액', '공급가', '세액', '비고', '상태', '처리자', '처리시각', '처리메모'];
+    var H2 = ['요청번호', '요청시각', '요청부서', '요청자', '거래처', '상온코드', '저온코드', '배송일', '명세서', '종류', '사유', '품목수', '수량합계', '차감액', '공급가', '세액', '비고', '상태', '처리자', '처리시각', '처리메모'];
+    var R1 = [], R2 = [];
     items.forEach(function(it) {
       var d = ddParse(it.detail);
-      var body = d.kind === 'item' ? d.items.map(function(x) { return x.name + ' × ' + x.q; }).join(', ') : (d.kind === 'amount' ? '금액조정' : '명세서 전체 미출');
-      rows.push([full(it.ts), it.dept || '', it.name || '', it.branchName || '', it.hot || '', it.cold || '', d.date || '', d.order || '', d.kindLabel || '', d.reason || '',
-        ddNum(String(d.amountText || '').replace(/\(.*$/, '')), d.amt ? d.amt.supply : '', d.amt ? d.amt.vat : '', body, d.memo || '',
-        it.status || '', it.admin || '', full(it.decidedTs), it.adminNote || '']);
+      var total = ddNum(String(d.amountText || '').replace(/\(.*$/, ''));
+      var pre = [String(it.id || ''), full(it.ts), it.dept || '', it.name || '', it.branchName || '', it.hot || '', it.cold || '', d.date || '', d.order || '', d.kindLabel || '', d.reason || ''];
+      var post = [d.memo || '', it.status || '', it.admin || '', full(it.decidedTs), it.adminNote || ''];
+      var qSum = 0, sSum = '', vSum = '';
+      if (d.kind === 'item' && d.items.length) {
+        var allAmt = d.items.every(function(x) { return x.hasAmt; });
+        if (allAmt) { sSum = 0; vSum = 0; }
+        d.items.forEach(function(x, i) {
+          qSum += x.q;
+          /* 품목별 금액이 없는 옛 건: 합계를 첫 줄에만 적는다 (줄마다 적으면 합칠 때 두 번 세진다) */
+          var amt = x.hasAmt ? (x.supply + x.vat) : (i === 0 ? total : '');
+          if (allAmt) { sSum += x.supply; vSum += x.vat; }
+          R1.push(pre.concat([x.code || '', x.barcode || '', x.name, x.q, amt, x.hasAmt ? x.supply : '', x.hasAmt ? x.vat : '']).concat(post));
+        });
+      } else {
+        if (d.amt) { sSum = d.amt.supply; vSum = d.amt.vat; }
+        R1.push(pre.concat(['', '', d.kind === 'amount' ? '(금액 차감)' : '(명세서 전체)', '', total, sSum, vSum]).concat(post));
+      }
+      R2.push(pre.concat([d.kind === 'item' ? d.items.length : '', d.kind === 'item' ? qSum : '', total, sSum, vSum]).concat(post));
     });
     var fname = '상품차감_' + (DD.rev === '대기' ? '대기_' + todayStr() : (DD.rfrom + '~' + DD.rto + (DD.rev !== '전체' ? '_' + DD.rev : ''))) + '.xlsx';
     var orig = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = '만드는 중…'; }
-    xlsxDownload(rows, null, '상품차감', fname).then(function() { toast('✓ 엑셀 ' + items.length + '건', '#0a7d47'); })
-      .catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); })
+    ensureExcel().then(function() {
+      var wb = new ExcelJS.Workbook();
+      ddXlsSheet(wb, '품목별', H1, R1, [14, 15, 16, 17]);
+      ddXlsSheet(wb, '요청별', H2, R2, [11, 12, 13, 14, 15]);
+      return wb.xlsx.writeBuffer();
+    }).then(function(buf) {
+      var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() { if (a.parentNode) { a.remove(); } URL.revokeObjectURL(a.href); }, 1200);
+      toast('✓ 엑셀 ' + items.length + '건 (품목 ' + R1.length + '줄)', '#0a7d47');
+    }).catch(function(e) { alert('엑셀 생성 실패: ' + ((e && e.message) || e)); })
       .then(function() { if (btn) { btn.disabled = false; btn.textContent = orig; } });
   }
 
