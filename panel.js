@@ -13,7 +13,7 @@
      부트 스크립트는 캐시로 패널이 이미 떠 있으면 새 코드를 '저장만' 하고 실행하지 않는다.
      그래서 수정사항이 항상 다음에 누를 때 적용됐다(한 박자 늦음).
      여기서 직접 최신본을 확인해, 빌드가 더 새로우면 그 자리에서 교체한다. */
-  var PANEL_BUILD = '20261124-1847';
+  var PANEL_BUILD = '20261125-1727';
   /* 이 페이지에서 더 새 빌드를 이미 받아둔 적이 있으면, 낡은 캐시본이 다시 떠도 바로 그걸로 넘긴다 */
   try {
     if (window.__wpNewB && window.__wpNewT && window.__wpNewB > PANEL_BUILD) { (0, eval)(window.__wpNewT); return; }
@@ -10143,7 +10143,7 @@ document.getElementById('__wpSave').onclick = function() {
   }
   function ddParse(detail) {
     var d = { order: detailGet(detail, '명세서'), date: detailGet(detail, '배송일'), kindLabel: detailGet(detail, '종류'),
-      reason: detailGet(detail, '사유'), syn: detailGet(detail, '반품구분').replace(/^\d+\s*/, ''), memo: detailGet(detail, '비고'), amountText: detailGet(detail, '차감액'), items: [], amt: null };
+      reason: detailGet(detail, '사유'), syn: (function(v) { var m = /^(\d)/.exec(v); return (m && ddSynLabel(m[1])) || v.replace(/^\d+\s*/, ''); })(detailGet(detail, '반품구분')),   /* 코드로 지금 이름을 보여준다(옛 요청의 '미송'도 '미배송'으로) */ memo: detailGet(detail, '비고'), amountText: detailGet(detail, '차감액'), items: [], amt: null };
     d.kind = d.kindLabel === DD_KINDS.amount ? 'amount' : (d.kindLabel === DD_KINDS.zero ? 'zero' : 'item');
     detailGet(detail, '품목').split(',').forEach(function(s) {
       var a = s.trim().split('|');
@@ -10539,6 +10539,7 @@ document.getElementById('__wpSave').onclick = function() {
       F.map(function(f) { return '<button class="wp-day __wpDrF' + (DD.rev === f ? ' on' : '') + '" data-f="' + f + '">' + f + '</button>'; }).join('') +
       '<span id="__wpDrDr" style="display:' + (DD.rev === '대기' ? 'none' : 'inline-flex') + ';gap:6px;align-items:center;margin-left:8px">' +
       '<input id="__wpDrFr" type="date" class="wp-inp"><span style="color:#94A3B8">~</span><input id="__wpDrTo" type="date" class="wp-inp"><button id="__wpDrGo" class="wp-btn pri">조회</button></span>' +
+      '<input id="__wpDrQ" class="wp-inp" style="width:240px;margin-left:8px" placeholder="명세서 번호 · 거래처명 검색" title="명세서 번호, 거래처명, 점포코드, 요청자로 찾습니다 (지금 조회한 목록 안에서)">' +
       '<button id="__wpDrXls" class="wp-btn gh" style="margin-left:8px" title="지금 화면에 보이는 목록을 엑셀로 받습니다">⬇ 엑셀</button>' +
       '<span style="flex:1"></span><span style="font-size:12px;color:#64748B">승인하면 바로 오피스 명세서에 반영됩니다 · 승인 전에 반영 내용을 한 번 더 보여드립니다</span></div>' +
       '<div id="__wpDrList" class="wp-scroll">불러오는 중…</div>';
@@ -10549,6 +10550,10 @@ document.getElementById('__wpSave').onclick = function() {
       DD.rfrom = document.getElementById('__wpDrFr').value; DD.rto = document.getElementById('__wpDrTo').value; ddLoadRev();
     };
     document.getElementById('__wpDrXls').onclick = function() { ddRevXlsx(this); };
+    /* 검색 (26.11.25 심윤보m 요청): 조회해 둔 목록 안에서 바로 거른다 — 서버를 다시 부르지 않음. 엑셀도 걸러진 목록 그대로 */
+    var q = document.getElementById('__wpDrQ');
+    q.value = DD.rq || '';
+    q.oninput = function() { DD.rq = q.value; ddRevShow(); };
     ddLoadRev();
   }
 
@@ -10632,9 +10637,20 @@ document.getElementById('__wpSave').onclick = function() {
       .then(function() { if (btn) { btn.disabled = false; btn.textContent = orig; } });
   }
 
+  function ddRevShow() {
+    if (!DD.revAll) { return; }   /* 아직 불러오는 중 */
+    var kw = String(DD.rq || '').toLowerCase().replace(/\s+/g, '');
+    if (!kw) { ddRenderRev(DD.revAll); return; }
+    ddRenderRev(DD.revAll.filter(function(it) {
+      var d = ddParse(it.detail);
+      return [d.order, it.branchName, it.hot, it.cold, it.name].join('|').toLowerCase().replace(/\s+/g, '').indexOf(kw) >= 0;
+    }));
+  }
+
   function ddLoadRev() {
     var box = document.getElementById('__wpDrList');
     DD.revItems = [];
+    DD.revAll = null;
     var f = DD.rev === '대기' ? { status: '대기' } : { from: DD.rfrom, to: DD.rto };
     listReq(f).then(function(items) {
       items = (items || []).filter(function(it) { return it.action === DD_ACTION; });
@@ -10643,7 +10659,8 @@ document.getElementById('__wpSave').onclick = function() {
         if (DD.rev !== '전체') { items = items.filter(function(it) { return it.status === DD.rev; }); }
       }
       items.sort(function(a, b) { return String(b.ts || '').localeCompare(String(a.ts || '')); });
-      ddRenderRev(items);
+      DD.revAll = items;
+      ddRevShow();
     }).catch(function(e) { box.innerHTML = '<div style="color:#b00;padding:10px">' + esc((e && e.message) || e) + '</div>'; });
   }
 
@@ -10651,7 +10668,13 @@ document.getElementById('__wpSave').onclick = function() {
     var box = document.getElementById('__wpDrList');
     DD.revItems = items || [];
     if (!box) { return; }
-    if (!items.length) { box.innerHTML = '<div style="padding:14px;color:#64748B">' + (DD.rev === '대기' ? '대기 중인 차감 요청이 없습니다.' : '해당 기간 차감 요청이 없습니다.') + '</div>'; return; }
+    var kwT = String(DD.rq || '').trim();
+    if (!items.length) {
+      box.innerHTML = '<div style="padding:14px;color:#64748B">' + (kwT && DD.revAll && DD.revAll.length ?
+        '‘' + esc(kwT) + '’에 맞는 요청이 없습니다.' + (DD.rev === '대기' ? '' : ' 조회 기간(' + esc(DD.rfrom) + ' ~ ' + esc(DD.rto) + ') 안에서 찾습니다 — 없으면 기간을 넓혀 [조회]하세요.') :
+        (DD.rev === '대기' ? '대기 중인 차감 요청이 없습니다.' : '해당 기간 차감 요청이 없습니다.')) + '</div>';
+      return;
+    }
     var map = {};
     var h = '<table class="wp-tbl"><thead><tr><th style="width:118px">요청</th><th>거래처 · 명세서</th><th style="width:96px">종류</th><th style="width:96px">사유</th><th style="width:110px;text-align:right">차감액</th><th>내용</th><th style="width:270px">처리</th></tr></thead><tbody>';
     items.forEach(function(it) {
